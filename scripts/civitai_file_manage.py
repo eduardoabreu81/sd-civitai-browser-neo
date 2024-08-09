@@ -189,6 +189,9 @@ def save_preview(file_path, api_response, overwrite_toggle=False, sha256=None):
                 if file_entry["hashes"].get("SHA256") == sha256:
                     for image in version["images"]:
                         if image["type"] == "image":
+                            if image['nsfwLevel'] >= 4 and 'KAGGLE_URL_BASE' in os.environ: # filter nsfw image for Kaggle
+                                continue
+
                             url_with_width = re.sub(r'/width=\d+', f'/width={image["width"]}', image["url"])
 
                             response = requests.get(url_with_width, proxies=proxies, verify=ssl)

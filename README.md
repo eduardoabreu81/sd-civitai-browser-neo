@@ -1,3 +1,7 @@
+#### This fork is intended for use in Kaggle only:
+- Added filter to skip model image preview download if its value is greater than or equal to 4.
+
+---
 
 ![CivitAI Browser-05+](https://github.com/BlafKing/sd-civitai-browser-plus/assets/9644716/95afcc41-56f0-4398-8779-51cb2a9e2f55)
 
