@@ -55,7 +55,7 @@
 
 /* End of Card list HTML */
 
-#quicksettings > div{
+#quicksettings0 > div{
 	max-width: None !important;
 	width: auto !important;
 }
@@ -107,7 +107,7 @@
     z-index: 60;
 }
 
-.acss-14flpmm .gap:has(#quicksettings):first-child {
+.acss-14flpmm .gap:has(#quicksettings0):first-child {
     gap: var(--layout-gap);
 }
 
@@ -536,6 +536,29 @@
     margin: 15px 0px 2px 0px;
     padding: 8px 8px;
 }
+
+.flex-column-layout {
+    display: flex;
+    gap: 10px;
+    flex-direction: column;
+}
+
+.sub-folder-button-container {
+    width: 100%;
+}
+
+.guide-button {
+    position: relative;
+    z-index: 1;
+}
+
+.plus-button {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 0;
+}
+
 
 #accordionToggle {
     width: 100%;
