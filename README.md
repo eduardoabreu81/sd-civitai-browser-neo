@@ -1,5 +1,5 @@
 #### This fork is intended for use in Kaggle only:
-- Added filter to skip model image preview download if its value is greater than or equal to 4.
+- Image encryption is used when saving image previews. To enable this feature, you need to additionally clone the [Encrypt-Image](https://github.com/anxety-solo/sd-encrypt-image) extension.
 
 ---
 
@@ -55,7 +55,7 @@
 **If you're experiencing issues with broken or frozen downloads, there are two possible solutions you can try:**
 
 1. **Revert to the old download method**:
-   A solution could be to disable the "Download models using Aria2" feature.  
+   A solution could be to disable the "Download models using Aria2" feature.
 This will switch back to the old download method, which may resolve the issue.
 
    ![Revert to old download method](https://github.com/BlafKing/sd-civitai-browser-plus/assets/9644716/982b0ebb-0cac-4053-8060-285533e0e176)
@@ -80,7 +80,7 @@ These settings can be found under the "Settings" tab in Web-UI and then under th
 
 <h3>Manual Installation:</h3>
 
-1. Download the latest version from this site and unpack the .zip  
+1. Download the latest version from this site and unpack the .zip
 ![2023-09-25 13_06_31](https://github.com/BlafKing/sd-civitai-browser-plus/assets/9644716/12e46c6b-74b5-4ed5-bf55-cb76c5f75c62)
 
 2. Navigate to your extensions folder (Your SD folder/webui/extensions)
@@ -127,7 +127,7 @@ https://github.com/BlafKing/sd-civitai-browser-plus/assets/9644716/44c5c7a0-4854
 <h3>v3.5.3</h3>
 
 * New Setting: Send model from the cards CivitAI button to the browser, instead of showing a popup.
-* Bug fix: No longer fetch HTML info when the file already exists and overwrite is off. 
+* Bug fix: No longer fetch HTML info when the file already exists and overwrite is off.
 * Bug fix: Fix NSFW models update functions.
 * Bug fix: Fixed CivitAI button on NSFW model cards.
 
@@ -191,7 +191,7 @@ https://github.com/BlafKing/sd-civitai-browser-plus/assets/9644716/44c5c7a0-4854
 
 * Feature: Ability to send individual parts of image generation data to txt2img.
 * Feature: Added compatibility for [stable-diffusion-webui-forge](https://github.com/lllyasviel/stable-diffusion-webui-forge) fork.
-* New setting: Use local images in the HTML 
+* New setting: Use local images in the HTML
    - Does not work in combination with the "Use local HTML file for model info" option!
 * New setting: Store the HTML and api_info in the custom images location
 * Bug fix: New HTML model info now scales with width so it should always fit.
@@ -283,7 +283,7 @@ https://github.com/BlafKing/sd-civitai-browser-plus/assets/9644716/44c5c7a0-4854
 <h3>v3.1.0</h3>
 
 * Feature: Send to txt2img, Send any image in the model info to txt2img.
-* Feature: Added new Base model filters: 
+* Feature: Added new Base model filters:
    - SD 1.5 LCM, SDXL 1.0 LCM, SDXL Distilled, SDXL Turbo, SVD, SVD XT
 * Feature: Hide installed models filter toggle.
 * Feature: Better display of permissions and tags in model info.
@@ -441,7 +441,7 @@ https://github.com/BlafKing/sd-civitai-browser-plus/assets/9644716/44c5c7a0-4854
 ---
 <h3>v1.13</h3>
 
-* Feature: Updated available content types: 
+* Feature: Updated available content types:
   - Upscaler
   - MotionModule
   - Wildcards
@@ -501,7 +501,7 @@ https://github.com/BlafKing/sd-civitai-browser-plus/assets/9644716/44c5c7a0-4854
 
 * Feature: Redesign of model page by [ManOrMonster](https://github.com/ManOrMonster)
 * <details><summary>Model page changes (https://github.com/BlafKing/sd-civitai-browser-plus/pull/33)</summary>
-   
+
    - Redesigned the look of the model page.
    - Added link to model page on CivitAI. Click on model name to open.
    - Added link to uploader/creator page on CivitAI. Click creator name to open.
@@ -552,7 +552,7 @@ https://github.com/BlafKing/sd-civitai-browser-plus/assets/9644716/44c5c7a0-4854
   - New setting: Disable downloading with Aria2. (will use old download method instead)
   - New setting: Disable using Async DNS. (can fix issues for some users who use DNS managing programs)
   - New setting: Show Aria2 logs in the CMD.
-  - New setting: Set the amount of connections when downloading a model with Aria2.  
+  - New setting: Set the amount of connections when downloading a model with Aria2.
     (The optimal connection count is different per user, try to find the lowest option which still gives you full bandwidth speed)
 ---
 <h3>v1.9.3</h3>
@@ -619,9 +619,9 @@ https://github.com/BlafKing/sd-civitai-browser-plus/assets/9644716/44c5c7a0-4854
 
 <h3>v1.6</h3>
 
-* Bug fix: Page count is now always correclty read when refreshing.  
+* Bug fix: Page count is now always correclty read when refreshing.
 (You can fill in the page number you'd like to visit and press refresh to go to that page)
-* Feature: 'Filter Base Model' to dynamically hide any unselected Base models.  
+* Feature: 'Filter Base Model' to dynamically hide any unselected Base models.
 (Please note: This does not impact search results, since the CivitAI API does not yet support this)
 ---
 
@@ -656,7 +656,7 @@ https://github.com/BlafKing/sd-civitai-browser-plus/assets/9644716/44c5c7a0-4854
 
 <h3>v1.3</h3>
 
-* Feature: 'Save Tags' button saves tags to a .json file which gets used in image creaton.  
+* Feature: 'Save Tags' button saves tags to a .json file which gets used in image creaton.
   (If a LORA with saved tags is used it will automatically input all tags into the txt box in image creation)
 * Feature: 'Save tags after download' toggle to automatically save .json tags.
 * Cleanup: Removed "Get model info" button.

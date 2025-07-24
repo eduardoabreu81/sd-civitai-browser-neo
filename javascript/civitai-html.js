@@ -49,7 +49,7 @@ function clickFirstFigureInColumn() {
 function updateCardSize(width, height) {
     var styleSheet = document.styleSheets[0];
     var dimensionsKeyframes = `width: ${width}em !important; height: ${height}em !important;`;
-    
+
     var fontSize = (width / 8) * 100;
     var textKeyframes = `font-size: ${fontSize}% !important;`;
 
@@ -172,7 +172,7 @@ function adjustFilterBoxAndButtons() {
     const isNarrowScreen = window.innerWidth < 800;
     const modelBlocks = document.querySelectorAll("#civitai_preview_html .model-block");
     const civitInfo = document.querySelector(".civitai-version-info");
-    
+
     if (modelBlocks) {
         modelBlocks.forEach(modelBlock => {
             if (isNarrowScreen) {
@@ -190,7 +190,7 @@ function adjustFilterBoxAndButtons() {
             civitInfo.style.flexWrap = "nowrap";
         }
     }
-    
+
 
     childDiv.style.marginLeft = isLargeScreen ? "0px" : isMediumScreen ? `${1250 - window.innerWidth}px` : "0px";
     element.style.justifyContent = isLargeScreen || isMediumScreen ? "center" : "flex-start";
@@ -260,7 +260,7 @@ function updateSVGIcons() {
     const searchIconUrl = isDark ? "https://gistcdn.githack.com/BlafKing/3f95619089bac3b4fd5470a986e1b3bb/raw/ebaa9cceee3436711eb560a7a65e151f1d651c6a/search-light.svg" : "https://gistcdn.githack.com/BlafKing/57573592d5857e102a4bfde852f62639/raw/aa213e9e82d705651603507e26545eb0ffe60c90/search-dark.svg";
 
     if (isDark) {
-        
+
     }
 
     const element = document.querySelector("#filterBox, #filterBoxL");
@@ -281,7 +281,7 @@ function updateSVGIcons() {
         #refreshBtnL > img {
             content: url('${searchIconUrl}');
         }
-            
+
         /* Gradio 4 */
         #filterBox > button:nth-child(2),
         #filterBoxL > button:nth-child(2) {
@@ -338,16 +338,16 @@ function createLink(infoElement) {
 
     const existingText = "(You can create your own API key in your CivitAI account settings, this required for some downloads, Requires UI reload)";
     const linkText = "CivitAI account settings";
-    
+
     const [textBefore, textAfter] = existingText.split(linkText);
-    
+
     const link = document.createElement('a');
     link.textContent = linkText;
     link.href = 'https://civitai.com/user/account';
     link.target = '_blank';
-    
+
     while (infoElement.firstChild) infoElement.removeChild(infoElement.firstChild);
-    
+
     infoElement.appendChild(document.createTextNode(textBefore));
     infoElement.appendChild(link);
     infoElement.appendChild(document.createTextNode(textAfter));
@@ -357,7 +357,7 @@ function createLink(infoElement) {
 function updateBackToTopVisibility(entries) {
     var backToTopDiv = document.getElementById('backToTopContainer');
     var civitaiDiv = document.getElementById('civitai_preview_html');
-    
+
     if (civitaiDiv.clientHeight > 0 && entries[0].isIntersecting && window.scrollY !== 0) {
         backToTopDiv.style.visibility = 'visible';
     } else {
@@ -370,7 +370,7 @@ function createAccordion(containerDiv, subfolders, name, id_name) {
     if (containerDiv == null) {
         return;
     }
-    var accordionContainer = document.createElement('div'); 
+    var accordionContainer = document.createElement('div');
     accordionContainer.id = id_name;
     accordionContainer.className = 'settings-accordion';
     var toggleButton = document.createElement('button');
@@ -387,7 +387,7 @@ function createAccordion(containerDiv, subfolders, name, id_name) {
     if (subfolders && subfolders.length > 0) {
         accordionDiv.append(...subfolders);
     }
-    
+
     accordionDiv.style.display = 'none'; // Initially hidden
     accordionContainer.appendChild(accordionDiv);
     containerDiv.appendChild(accordionContainer);
@@ -412,15 +412,15 @@ function createCivitAICardButtons() {
         const cardDivs = document.querySelectorAll('.card');
         if (cardDivs.length > 0) {
             clearInterval(checkForCardDivs);
-            
+
             cardDivs.forEach(cardDiv => {
                 const buttonRow = cardDiv.querySelector('.button-row');
                 if (!buttonRow) return;
-                
+
                 buttonRow.addEventListener('click', function(event) {
                     event.stopPropagation();
                 });
-                
+
                 if (!buttonRow.querySelector('.goto-civitbrowser.card-button')) {
                     const modelName = cardDiv.querySelector('.actions .name')?.textContent.trim();
                     if (!modelName) return;
@@ -504,7 +504,7 @@ function modelInfoPopUp(modelName=null, content_type=null, no_message=false) {
         for (const button of buttons) {
             if (button.textContent.includes('Browser+')) {
                 button.click();
-                
+
                 const firstButton = document.querySelector('#tab_civitai_interface > div > div > div > button');
                 if (firstButton) {
                     firstButton.click();
@@ -562,7 +562,7 @@ function modelInfoPopUp(modelName=null, content_type=null, no_message=false) {
             zIndex: '1001'
         });
         inner.classList.add('civitai-overlay-inner');
-        
+
         var modelInfo;
         if (!no_message) {
             modelInfo = createElementWithStyle('div', {
@@ -627,10 +627,10 @@ function inputHTMLPreviewContent(html_input) {
             extractedText = extractedText.replace(/\\n/g, ' ');
             extractedText = extractedText.replace(/\\t/g, '');
             extractedText = extractedText.replace(/\\'/g, "'");
-            
+
             var overlayText = document.querySelector('.civitai-overlay-text');
             var modelInfo = document.createElement('div');
-            
+
             overlayText.parentNode.removeChild(overlayText);
             if (!modelIdNotFound) {
                 inner.style.top = 0;
@@ -746,7 +746,7 @@ function multi_model_select(modelName, modelType, isChecked) {
 
     const selected_type_list = gradioApp().querySelector('#selected_type_list textarea');
     selected_type_list.value = JSON.stringify(selectedTypes);
-    
+
     updateInput(selected_model_list);
     updateInput(selected_type_list);
 }
@@ -1058,7 +1058,7 @@ function insertExistingSubfolders(input) {
 function createSubfolderButton() {
     const subfolderParent = document.getElementById("create-sub-accordion");
     const subfolderDiv = subfolderParent.querySelector(".accordion");
-    
+
     const subfolder = document.createElement("div");
     subfolder.classList.add("flex-column-layout", "civitai-custom-subfolder-div");
 
@@ -1079,7 +1079,7 @@ function createSubfolderButton() {
     buttonContainer.classList.add("sub-folder-button-container");
     buttonContainer.style.display = "flex";
     buttonContainer.style.gap = "10px";
-    
+
     const optionsDiv = document.createElement("div");
     optionsDiv.classList.add("placeholder-options-container");
     optionsDiv.style.display = "flex";
