@@ -163,28 +163,38 @@ def delete_associated_files(directory, base_name):
                 os.remove(path_to_delete)
                 print(f"Associated file deleted: {path_to_delete}")
 
+
+def _resize_image_bytes(image_bytes, target_size=512):
+    """Resize image bytes to target_size on the longer side, keeping aspect ratio."""
+    image = Image.open(io.BytesIO(image_bytes))
+    width, height = image.size
+
+    if width > height:
+        new_size = (target_size, int(height * target_size / width))
+    else:
+        new_size = (int(width * target_size / height), target_size)
+
+    output = io.BytesIO()
+    image.resize(new_size, Image.LANCZOS).save(output, format='PNG')
+    output.seek(0)
+    return output
+
 def save_preview(file_path, api_response, overwrite_toggle=False, sha256=None):
     proxies, ssl = _api.get_proxies()
-    json_file = os.path.splitext(file_path)[0] + ".json"
-    install_path, file_name = os.path.split(file_path)
-    name = os.path.splitext(file_name)[0]
-    filename = f'{name}.preview.png'
-    image_path = os.path.join(install_path, filename)
+    file_path = Path(file_path)
+    install_path = file_path.parent
+    name = file_path.stem
+    json_file = file_path.with_suffix('.json')
+    image_path = install_path / f'{name}.preview.png'
 
-    if not overwrite_toggle:
-        if os.path.exists(image_path):
-            return
+    if not overwrite_toggle and image_path.exists():
+        return
 
-    if not sha256:
-        if os.path.exists(json_file):
-            try:
-                with open(json_file, 'r', encoding="utf-8") as f:
-                    data = json.load(f)
-                    if 'sha256' in data and data['sha256']:
-                        sha256 = data['sha256'].upper()
-            except Exception as e:
-                print(f"Failed to open {json_file}: {e}")
-    else:
+    if not sha256 and json_file.exists():
+        data = json.loads(json_file.read_text(encoding='utf-8'))
+        if 'sha256' in data and data['sha256']:
+            sha256 = data['sha256'].upper()
+    elif sha256:
         sha256 = sha256.upper()
 
     for item in api_response["items"]:
@@ -194,27 +204,27 @@ def save_preview(file_path, api_response, overwrite_toggle=False, sha256=None):
                     for image in version["images"]:
                         if image["type"] == "image":
                             url_with_width = re.sub(r'/width=\d+', f'/width={image["width"]}', image["url"])
-
                             response = requests.get(url_with_width, proxies=proxies, verify=ssl)
+
                             if response.status_code == 200:
-                                img = response.content
+                                resized_image = _resize_image_bytes(response.content)
 
                                 if IS_KAGGLE:
                                     import sd_encrypt_image     # Import Module for Encrypt Image
 
+                                    img = Image.open(resized_image)
                                     imginfo = img.info or {}
                                     if not all(key in imginfo for key in ['Encrypt', 'EncryptPwdSha']):
                                         sd_encrypt_image.EncryptedImage.from_image(img).save(image_path)
                                 else:
-                                    with open(image_path, 'wb') as img_file:
-                                        img_file.write(img)
+                                    image_path.write_bytes(resized_image.read())
 
-                                print(f"Preview saved at \"{image_path}\"")
+                                print(f"Preview saved at '{image_path}'")
                             else:
                                 print(f"Failed to save preview. Status code: {response.status_code}")
-
                             return
-                    print(f"No preview images found for \"{name}\"")
+
+                    print(f"No preview images found for '{name}'")
                     return
 
 def get_image_path(install_path, api_response, sub_folder):
