@@ -210,12 +210,12 @@ def save_preview(file_path, api_response, overwrite_toggle=False, sha256=None):
                                 resized_image = _resize_image_bytes(response.content)
 
                                 if IS_KAGGLE:
-                                    import sd_encrypt_image     # Import Module for Encrypt Image
+                                    import sd_image_encryption     # Import Module for Encrypt Image
 
                                     img = Image.open(resized_image)
                                     imginfo = img.info or {}
                                     if not all(key in imginfo for key in ['Encrypt', 'EncryptPwdSha']):
-                                        sd_encrypt_image.EncryptedImage.from_image(img).save(image_path)
+                                        sd_image_encryption.EncryptedImage.from_image(img).save(image_path)
                                 else:
                                     image_path.write_bytes(resized_image.read())
 
