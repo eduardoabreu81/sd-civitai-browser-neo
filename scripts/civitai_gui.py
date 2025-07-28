@@ -217,7 +217,8 @@ def on_ui_tabs():
                         only_liked = gr.Checkbox(label="Liked models only", value=False, interactive=show_only_liked, elem_id=toggle4, min_width=163)
                         hide_installed = gr.Checkbox(label="Hide installed models", value=False, elem_id=toggle5, min_width=170)
                     with gr.Row():
-                        size_slider = gr.Slider(minimum=4, maximum=20, value=8, step=0.25, label='Tile size:')
+                        ## === ANXETY EDITs ===
+                        size_slider = gr.Slider(label='Tile size:', minimum=8, maximum=20, value=8, step=0.25)
                         tile_count_slider = gr.Slider(label="Tile count:", minimum=1, maximum=100, value=15, step=1)
                     with gr.Row(elem_id="save_set_box"):
                         save_settings = gr.Button(value="Save settings as default", elem_id="save_set_btn")

@@ -45,17 +45,23 @@ function clickFirstFigureInColumn() {
     }, 500);
 }
 
+// === ANXETY EDITs ===
 // Changes the card size
 function updateCardSize(width, height) {
     var styleSheet = document.styleSheets[0];
     var dimensionsKeyframes = `width: ${width}em !important; height: ${height}em !important;`;
 
-    var fontSize = (width / 8) * 100;
+    var fontSize = (width / 12) * 100;
     var textKeyframes = `font-size: ${fontSize}% !important;`;
 
     addOrUpdateRule(styleSheet, '.civmodelcard img', dimensionsKeyframes);
     addOrUpdateRule(styleSheet, '.civmodelcard .video-bg', dimensionsKeyframes);
     addOrUpdateRule(styleSheet, '.civmodelcard figcaption', textKeyframes);
+    
+    // Hide badges when tile size is less than 11
+    var badgeDisplay = width < 11 ? 'none !important' : 'flex !important';
+    addOrUpdateRule(styleSheet, '.model-type-badge', `display: ${badgeDisplay}`);
+    addOrUpdateRule(styleSheet, '.nsfw-badge', `display: ${badgeDisplay}`);
 }
 
 // Toggles NSFW display

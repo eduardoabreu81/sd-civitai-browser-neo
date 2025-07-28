@@ -257,8 +257,10 @@ def model_list_html(json_data):
         if installstatus != 'civmodelcardinstalled':
             card_html += (
                 f'<input type="checkbox" class="model-checkbox" id="checkbox-{model_string}" '
-                f'onchange="multi_model_select(\'{model_string}\', \'{item["type"]}\', this.checked)">'
-                f'<label for="checkbox-{model_string}" class="custom-checkbox"></label>'
+                f'onchange="multi_model_select(\'{model_string}\', \'{item["type"]}\', this.checked)">'\
+                f'<label for="checkbox-{model_string}" class="custom-checkbox">'
+                f'<span class="checkbox-checkmark"></span>'
+                f'</label>'
             )
 
         card_html += (
