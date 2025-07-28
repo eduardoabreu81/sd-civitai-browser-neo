@@ -1,16 +1,20 @@
-import gradio as gr
-from modules import script_callbacks, shared
-import os
-import json
-import fnmatch
-import re
 import subprocess
+import fnmatch
+import json
+import os
+import re
+import gradio as gr
+
+# ===  WebUI imports ===
+from modules import script_callbacks, shared
 from modules.shared import opts, cmd_opts
 from modules.paths import extensions_dir
-from scripts.civitai_global import print, debug_print
-import scripts.civitai_global as gl
+
+# === Extension imports ===
+from scripts.civitai_global import print
 import scripts.civitai_download as _download
 import scripts.civitai_file_manage as _file
+import scripts.civitai_global as gl
 import scripts.civitai_api as _api
 
 def git_tag():

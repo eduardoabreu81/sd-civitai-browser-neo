@@ -57,7 +57,7 @@ function updateCardSize(width, height) {
     addOrUpdateRule(styleSheet, '.civmodelcard img', dimensionsKeyframes);
     addOrUpdateRule(styleSheet, '.civmodelcard .video-bg', dimensionsKeyframes);
     addOrUpdateRule(styleSheet, '.civmodelcard figcaption', textKeyframes);
-    
+
     // Hide badges when tile size is less than 11
     var badgeDisplay = width < 11 ? 'none !important' : 'flex !important';
     addOrUpdateRule(styleSheet, '.model-type-badge', `display: ${badgeDisplay}`);

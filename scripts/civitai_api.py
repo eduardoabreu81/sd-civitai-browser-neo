@@ -1,25 +1,27 @@
-import requests
-import json
-import gradio as gr
-import urllib.request
 import urllib.parse
-import urllib.error
+import datetime
+import requests
+import platform
+import json
 import os
 import re
-import datetime
-import platform
-from PIL import Image
-from io import BytesIO
-from collections import defaultdict
 from datetime import datetime, timezone
+from collections import defaultdict
+from html import escape
+from io import BytesIO
+from PIL import Image
+import gradio as gr
+
+# ===  WebUI imports ===
+from modules.paths import models_path, extensions_dir, data_path
 from modules.images import read_info_from_image
 from modules.shared import cmd_opts, opts
-from modules.paths import models_path, extensions_dir, data_path
-from html import escape
+
+# === Extension imports ===
 from scripts.civitai_global import print, debug_print
-import scripts.civitai_global as gl
 import scripts.civitai_download as _download
 import scripts.civitai_file_manage as _file
+import scripts.civitai_global as gl
 
 gl.init()
 
@@ -240,7 +242,7 @@ def model_list_html(json_data):
         # Model name for JS and HTML
         model_name_js = model_name.replace("'", "\\'")
         model_string = escape(f"{model_name_js} ({model_id})")
-        display_name = escape(model_name[:25] + '...' if len(model_name) > 25 else model_name)
+        display_name = escape(model_name[:35] + '...' if len(model_name) > 35 else model_name)
         full_name = escape(model_name)
 
         # Badges

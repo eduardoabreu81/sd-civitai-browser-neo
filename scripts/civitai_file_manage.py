@@ -1,20 +1,23 @@
-import json
-import gradio as gr
 import urllib.request
-import urllib.parse
 import urllib.error
-import os
-import io
-import re
-import time
-import errno
 import requests
 import hashlib
 import base64
-from PIL import Image
-from pathlib import Path
+import errno
+import json
+import time
+import re
+import os
+import io
+import gradio as gr
 from urllib.parse import urlparse
+from pathlib import Path
+from PIL import Image
+
+# ===  WebUI imports ===
 from modules.shared import cmd_opts, opts
+
+# === Extension imports ===
 from scripts.civitai_global import print, debug_print
 import scripts.civitai_global as gl
 import scripts.civitai_api as _api

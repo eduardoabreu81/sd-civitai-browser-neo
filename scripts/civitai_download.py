@@ -1,21 +1,26 @@
-import requests
-import gradio as gr
-import time
 import subprocess
 import threading
-import os
-import re
-import random
+import requests
 import platform
+import random
 import stat
 import json
 import time
+import re
+import os
+import gradio as gr
 from pathlib import Path
+
+# ===  WebUI imports ===
 from modules.shared import opts, cmd_opts
-from scripts.civitai_global import print, debug_print
+
+# === Extension imports ===
+from scripts.civitai_global import print
+import scripts.civitai_file_manage as _file
 import scripts.civitai_global as gl
 import scripts.civitai_api as _api
-import scripts.civitai_file_manage as _file
+
+
 try:
     from zip_unicode import ZipHandler
 except ImportError:
