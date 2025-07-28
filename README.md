@@ -4,6 +4,10 @@
 - Added badges to model cards to display model type and NSFW status (if applicable)
 - Implemented encryption of image previews when images are saved (Kaggle only). The [Encrypt-Image](https://github.com/anxety-solo/sd-encrypt-image) extension must be installed to enable this feature.
 
+#### Preview (new style):
+
+<img src=".github/preview.png" alt="Extension Preview" width="100%"/>
+
 ---
 
 ![CivitAI Browser-05+](https://github.com/BlafKing/sd-civitai-browser-plus/assets/9644716/95afcc41-56f0-4398-8779-51cb2a9e2f55)
