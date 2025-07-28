@@ -23,6 +23,21 @@ import scripts.civitai_file_manage as _file
 
 gl.init()
 
+# Mapping for short/clear display names for model types
+MODEL_TYPE_DISPLAY_NAMES = {
+    'TextualInversion': 'Embedding',
+    'Hypernetwork': 'Hypernet',
+    'AestheticGradient': 'Aesthetic',
+    'MotionModule': 'Motion',
+    'Workflows': 'Workflow',
+    'Wildcards': 'Wildcard',
+    'modelFolder': 'Model',
+}
+
+def get_display_type(type_name):
+    """Return short/clear display name for model type."""
+    return MODEL_TYPE_DISPLAY_NAMES.get(type_name, type_name)
+
 def contenttype_folder(content_type, desc=None, fromCheck=False, custom_folder=None):
     use_LORA = getattr(opts, "use_LORA", False)
     folder = None
@@ -145,144 +160,155 @@ def contenttype_folder(content_type, desc=None, fromCheck=False, custom_folder=N
 
     return folder
 
+## === ANXETY EDITs ===
 def model_list_html(json_data):
-    video_playback = getattr(opts, "video_playback", True)
-    playback = ""
-    if video_playback: playback = "autoplay loop"
+    def filter_versions(item, hide_early_access, current_time):
+        """Filter model versions based on file presence and early access deadline."""
+        versions = []
+        for version in item.get('modelVersions', []):
+            if not version.get('files'):
+                continue
+            if hide_early_access:
+                deadline_str = version.get('earlyAccessDeadline')
+                if deadline_str:
+                    deadline = datetime.strptime(deadline_str, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+                    if current_time <= deadline:
+                        continue
+            versions.append(version)
+        return versions
 
-    hide_early_access = getattr(opts, "hide_early_access", True)
-    filtered_items = []
+    def collect_existing_files(model_folders):
+        """Collect existing file names and SHA256 hashes from model folders."""
+        files_set = set()
+        sha256_set = set()
+        for folder in model_folders:
+            for root, _, files in os.walk(folder, followlinks=True):
+                for file in files:
+                    files_set.add(file.lower())
+                    if file.endswith('.json'):
+                        json_path = os.path.join(root, file)
+                        try:
+                            with open(json_path, 'r', encoding='utf-8') as f:
+                                json_file = json.load(f)
+                                if isinstance(json_file, dict):
+                                    sha256 = json_file.get('sha256')
+                                    if sha256:
+                                        sha256_set.add(sha256.upper())
+                                else:
+                                    print(f'Invalid JSON data in {json_path}. Expected a dictionary.')
+                        except Exception as e:
+                            print(f'Error decoding JSON in {json_path}: {e}')
+        return files_set, sha256_set
+
+    def get_model_card(item, existing_files, existing_files_sha256, playback):
+        """Build HTML for a single model card."""
+        model_id = item.get('id')
+        model_name = item.get('name', '')
+        nsfw_class = 'civcardnsfw' if item.get('nsfw') else ''
+        base_model = item['modelVersions'][0].get('baseModel', 'Not Found') if item['modelVersions'] else 'Not Found'
+        date = item['modelVersions'][0].get('publishedAt', 'Not Found').split('T')[0] if item['modelVersions'] and 'publishedAt' in item['modelVersions'][0] else 'Not Found'
+
+        # Image or video preview
+        images = item['modelVersions'][0].get('images', []) if item['modelVersions'] else []
+        if images:
+            media_type = images[0].get('type')
+            image_url = images[0].get('url')
+            if media_type == 'video':
+                image_url = image_url.replace('width=', 'transcode=true,width=')
+                imgtag = f'<video class="video-bg" {playback} muted playsinline><source src="{image_url}" type="video/mp4"></video>'
+            else:
+                imgtag = f'<img src="{image_url}"></img>'
+        else:
+            # Try PNG first, then fallback to JPEG if PNG does not exist
+            imgtag = '<img src="./file=html/card-no-preview.png" onerror="this.onerror=null;this.src=\'./file=html/card-no-preview.jpg\';"></img>'
+
+        # Install status
+        installstatus = None
+        for version in reversed(item.get('modelVersions', [])):
+            for file in version.get('files', []):
+                file_name, file_extension = os.path.splitext(file['name'])
+                file_name_full = f'{file_name}_{file["id"]}{file_extension}'
+                file_sha256 = file.get('hashes', {}).get('SHA256', '').upper()
+                name_match = file_name_full.lower() in existing_files
+                sha256_match = file_sha256 in existing_files_sha256
+                if name_match or sha256_match:
+                    if version == item['modelVersions'][0]:
+                        installstatus = 'civmodelcardinstalled'
+                    else:
+                        installstatus = 'civmodelcardoutdated'
+
+        # Model name for JS and HTML
+        model_name_js = model_name.replace("'", "\\'")
+        model_string = escape(f"{model_name_js} ({model_id})")
+        display_name = escape(model_name[:25] + '...' if len(model_name) > 25 else model_name)
+        full_name = escape(model_name)
+
+        # Badges
+        model_type_badge = f'<div class="model-type-badge {item["type"].lower()}">{get_display_type(item["type"])}</div>'
+        nsfw_badge = '<div class="nsfw-badge">NSFW</div>' if item.get('nsfw') else ''
+
+        # Card HTML
+        card_html = (
+            f'<figure class="civmodelcard {nsfw_class} {installstatus or ""}" base-model="{base_model}" date="{date}" '
+            f'onclick="select_model(\'{model_string}\', event)">'
+            f'{model_type_badge}{nsfw_badge}'
+        )
+
+        if installstatus != 'civmodelcardinstalled':
+            card_html += (
+                f'<input type="checkbox" class="model-checkbox" id="checkbox-{model_string}" '
+                f'onchange="multi_model_select(\'{model_string}\', \'{item["type"]}\', this.checked)">'
+                f'<label for="checkbox-{model_string}" class="custom-checkbox"></label>'
+            )
+
+        card_html += (
+            f'{imgtag}'
+            f'<figcaption title="{full_name}">{display_name}</figcaption></figure>'
+        )
+        return card_html, date
+
+    # Main function logic
+    video_playback = getattr(opts, 'video_playback', True)
+    playback = 'autoplay loop' if video_playback else ''
+    hide_early_access = getattr(opts, 'hide_early_access', True)
     current_time = datetime.now(timezone.utc)
 
-    for item in json_data['items']:
-        versions_to_keep = []
-
-        for version in item['modelVersions']:
-            if not version['files']:
-                continue
-
-            if hide_early_access:
-                early_access_deadline_str = version.get('earlyAccessDeadline')
-                if early_access_deadline_str:
-                    early_access_deadline = datetime.strptime(early_access_deadline_str, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
-                    if current_time <= early_access_deadline:
-                        continue
-
-            versions_to_keep.append(version)
-
-        if versions_to_keep:
-            item['modelVersions'] = versions_to_keep
+    # Filter model versions and items
+    filtered_items = []
+    for item in json_data.get('items', []):
+        versions = filter_versions(item, hide_early_access, current_time)
+        if versions:
+            item['modelVersions'] = versions
             filtered_items.append(item)
-
     json_data['items'] = filtered_items
 
+    # Collect model folders
+    model_folders = {
+        os.path.join(contenttype_folder(item['type'], item['description']))
+        for item in json_data['items']
+    }
+    existing_files, existing_files_sha256 = collect_existing_files(model_folders)
+
+    # Build HTML
     HTML = '<div class="column civmodellist">'
-    sorted_models = {}
-    existing_files = set()
-    existing_files_sha256 = set()
-    model_folders = set()
+    sorted_models = {} if gl.sortNewest else None
 
     for item in json_data['items']:
-        model_folder = os.path.join(contenttype_folder(item['type'], item['description']))
-        model_folders.add(model_folder)
-
-    for folder in model_folders:
-        for root, dirs, files in os.walk(folder, followlinks=True):
-            for file in files:
-                existing_files.add(file.lower())
-                if file.endswith('.json'):
-                    json_path = os.path.join(root, file)
-                    with open(json_path, 'r', encoding="utf-8") as f:
-                        try:
-                            json_file = json.load(f)
-                            if isinstance(json_file, dict):
-                                sha256 = json_file.get('sha256')
-                                if sha256:
-                                    existing_files_sha256.add(sha256.upper())
-                            else:
-                                print(f"Invalid JSON data in {json_path}. Expected a dictionary.")
-                        except Exception as e:
-                            print(f"Error decoding JSON in {json_path}: {e}")
-
-    for item in json_data['items']:
-        model_id = item.get('id')
-        model_name = item.get('name')
-        nsfw = ""
-        installstatus = ""
-        baseModel = ""
-        try:
-            if 'baseModel' in item['modelVersions'][0]:
-                baseModel = item['modelVersions'][0]['baseModel']
-        except:
-            baseModel = "Not Found"
-
-        try:
-            if 'publishedAt' in item['modelVersions'][0]:
-                date = item['modelVersions'][0]['publishedAt'].split('T')[0]
-        except:
-            date = "Not Found"
-
-        if item.get("nsfw"):
-            nsfw = "civcardnsfw"
-
+        model_card, date = get_model_card(item, existing_files, existing_files_sha256, playback)
         if gl.sortNewest:
             if date not in sorted_models:
                 sorted_models[date] = []
-
-        if any(item['modelVersions']):
-            if len(item['modelVersions'][0]['images']) > 0:
-                media_type = item["modelVersions"][0]["images"][0]["type"]
-                image = item["modelVersions"][0]["images"][0]["url"]
-                if media_type == "video":
-                    image = image.replace("width=", "transcode=true,width=")
-                    imgtag = f'<video class="video-bg" {playback} muted playsinline><source src="{image}" type="video/mp4"></video>'
-                else:
-                    imgtag = f'<img src="{image}"></img>'
-            else:
-                imgtag = f'<img src="./file=html/card-no-preview.png"></img>'
-
-            installstatus = None
-
-            for version in reversed(item['modelVersions']):
-                for file in version.get('files', []):
-                    file_name = os.path.splitext(file['name'])[0]
-                    file_extension = os.path.splitext(file['name'])[1]
-                    file_name = f"{file_name}_{file['id']}{file_extension}"
-                    file_sha256 = file.get('hashes', {}).get('SHA256', "").upper()
-
-                    #filename_check
-                    name_match = file_name.lower() in existing_files
-                    sha256_match = file_sha256 in existing_files_sha256
-                    if name_match or sha256_match:
-                        if version == item['modelVersions'][0]:
-                            installstatus = "civmodelcardinstalled"
-                        else:
-                            installstatus = "civmodelcardoutdated"
-            model_name_js = model_name.replace("'", "\\'")
-            model_string = escape(f"{model_name_js} ({model_id})")
-            model_card = f'<figure class="civmodelcard {nsfw} {installstatus}" base-model="{baseModel}" date="{date}" onclick="select_model(\'{model_string}\', event)">'
-            if installstatus != "civmodelcardinstalled":
-                model_card += f'<input type="checkbox" class="model-checkbox" id="checkbox-{model_string}" onchange="multi_model_select(\'{model_string}\', \'{item["type"]}\', this.checked)" style="opacity: 0; position: absolute; top: 10px; right: 10px;">' \
-                            + f'<label for="checkbox-{model_string}" class="custom-checkbox"></label>'
-            if len(item["name"]) > 40:
-                display_name = item["name"][:40] + '...'
-            else:
-                display_name = item["name"]
-
-            display_name = escape(display_name)
-            full_name = escape(item['name'])
-            model_card += imgtag \
-                        + f'<figcaption title="{full_name}">{display_name}</figcaption></figure>'
-
-        if gl.sortNewest:
             sorted_models[date].append(model_card)
         else:
             HTML += model_card
 
     if gl.sortNewest:
         for date, cards in sorted(sorted_models.items(), reverse=True):
-            HTML += f'<div class="date-section"><h4>{date}</h4><hr style="margin-bottom: 5px; margin-top: 5px;">'
-            HTML += '<div class="card-row">'
+            HTML += (
+                f'<div class="date-section"><h4>{date}</h4>'
+                '<hr style="margin-bottom: 5px; margin-top: 5px;">'
+                '<div class="card-row">'
+            )
             for card in cards:
                 HTML += card
             HTML += '</div></div>'

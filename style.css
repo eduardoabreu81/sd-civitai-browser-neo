@@ -1,56 +1,180 @@
+/* === ANXETY EDITs === */
 /* Card list HTML */
 .civmodellist {
-	display: flex;
-	flex-wrap: wrap;
-	justify-content: center;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 16px;
+    padding: 16px;
 }
 
 .civmodellist figure {
-	margin: 6px;
-	transition: transform .3s ease-out, box-shadow 0.3s ease;
-	cursor: pointer;
-	border-radius: 10px;
+    margin: 0;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+    border-radius: 16px;
+    overflow: hidden;
+    position: relative;
+    background: var(--background-fill-primary);
+    border: solid 2px transparent;
 }
 
 .civmodelcard {
     position: relative;
+    box-shadow: 0 4px 6px -2px rgba(0, 0, 0, 0.25);
 }
 
 .civmodelcard:hover {
-	transform: scale(1.1, 1.1);
-	position: relative;
-	z-index: var(--layer-5);
-	box-shadow: 0px 0px 1px 3px whitesmoke;
+    z-index: var(--layer-5);
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 0 2px 2px rgba(255, 255, 255, 0.45);
 }
 
 .civmodelcardinstalled {
-	box-shadow: 0px 0px 1px 3px aquamarine;
+    box-shadow: 0 0 2px 2px aquamarine;
 }
 
 .civmodelcardoutdated {
-	box-shadow: 0px 0px 1px 3px orange;
-}
-
-.civmodelcard:hover figcaption{
-	bottom: initial;
-	background-color: rgba(32, 32, 32, 0.9);
+    box-shadow: 0 0 2px 2px orange;
 }
 
 .civmodelcard img, .civmodelcard .video-bg {
-	width: 8em;
-	height: 12em;
-	object-fit: cover;
-	border-radius: 10px;
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+    border-radius: 0;
+    flex-shrink: 0;
 }
 
 .civmodelcard figcaption {
-	position: absolute;
-	bottom: 5px;
-	text-align: center;
-	width: 8em;
-	word-break: break-word;
-	background-color: rgba(32, 32, 32, 0.5);
-	color: white !important;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    text-align: center;
+    padding: 20px 12px 14px;
+    word-break: break-word;
+    background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.75) 60%, rgba(0, 0, 0, 0.95) 100%);
+    color: white !important;
+    font-size: 14px !important;
+    font-weight: 500;
+    line-height: 1.4;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    opacity: 1;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+    /* backdrop-filter: blur(2px); */
+}
+
+.civmodelcard:hover figcaption {
+    opacity: 0;
+    transform: translateY(10px);
+}
+
+.civmodelcard:has(.model-checkbox:checked) {
+    border-color: #2ee59d;
+}
+
+/* --- Model Card Badges --- */
+/* Type Badge */
+.model-type-badge {
+    display: flex;
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    height: 26px;
+    padding: 4px 12px;
+    color: #ffffff;
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 12px;
+    box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.10);
+    backdrop-filter: blur(6px);
+    font-size: 0.8em;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    pointer-events: none !important;
+    align-items: center;
+    z-index: 10;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* NSFW Badge */
+.nsfw-badge {
+    display: flex;
+    position: absolute;
+    top: 40px;
+    left: 10px;
+    height: 26px;
+    padding: 4px 12px 4px 30px;
+    color: #ffffff;
+    background: rgba(0, 0, 0, 0.6);
+    background-image: url('data:image/svg+xml;utf8,<svg width="18" height="18" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="8" fill="%23fff" fill-opacity="0.18"/><text x="9" y="14" font-size="12" text-anchor="middle" fill="%23fff" font-family="Arial" font-weight="bold">!</text></svg>');
+    background-repeat: no-repeat;
+    background-position: 8px center;
+    background-size: 18px 18px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 12px;
+    box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.15);
+    backdrop-filter: blur(6px);
+    font-size: 0.8em;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    pointer-events: none !important;
+    align-items: center;
+    z-index: 10;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.civmodelcard:hover .model-type-badge,
+.civmodelcard:hover .nsfw-badge {
+    opacity: 0;
+    transform: translateX(-10px);
+}
+
+/* Modern Custom-Checkbox */
+/* This style is required for the correct display and functionality of the custom checkbox */
+.model-checkbox {
+    opacity: 0;
+    position: absolute;
+    /* top: 10px;
+    right: 10px; */
+}
+
+.custom-checkbox {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 12px;
+    box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(8px);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    z-index: 10;
+}
+
+.custom-checkbox:hover {
+    border-color: #ffffff;
+    box-shadow: 0 2px 12px 0 rgba(0 ,0, 0, 0.2);
+}
+
+.model-checkbox:checked + .custom-checkbox {
+    background: rgba(0, 0, 0, 0.75);
+    border: 2px solid  #2ee59d;
+    box-shadow: 0 2px 12px 0 rgba(46, 229, 157, 0.25);
+    /* SVG checkmark as background image */
+    background-image: url("data:image/svg+xml;utf8,<svg width='16' height='16' xmlns='http://www.w3.org/2000/svg'><polyline points='3,9 7,13 13,5' fill='none' stroke='%23fff' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 14px 14px;
 }
 
 /* End of Card list HTML */
@@ -271,32 +395,6 @@
 
 #searchType > div:nth-child(3) {
     justify-content: center;
-}
-
-.custom-checkbox {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    width: 20px;
-    min-width: 20px;
-    height: 20px;
-    background: #111B;
-    border-radius: var(--checkbox-border-radius);
-    border: 1px solid #bbbbbb;
-    cursor: pointer;
-}
-
-.custom-checkbox:hover {
-    border-color: #ffffff;
-}
-
-.model-checkbox:checked + .custom-checkbox {
-    background-color: var(--checkbox-background-color-selected);
-    border-color: var(--checkbox-border-color-selected);
-    background-image: var(--checkbox-check);
-    background-size: contain;
-    background-position: center;
-    background-repeat: no-repeat;
 }
 
 .open-in-civitai {
