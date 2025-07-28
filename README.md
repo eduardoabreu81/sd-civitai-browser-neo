@@ -1,5 +1,8 @@
-#### This fork is intended for use in Kaggle only:
-- Image encryption is used when saving image previews. To enable this feature, you need to additionally clone the [Encrypt-Image](https://github.com/anxety-solo/sd-encrypt-image) extension.
+### Key features and changes in this fork:
+
+- Redesigned the model cards in the browser to give them a modern look :3
+- Added badges to model cards to display model type and NSFW status (if applicable)
+- Implemented encryption of image previews when images are saved (Kaggle only). The [Encrypt-Image](https://github.com/anxety-solo/sd-encrypt-image) extension must be installed to enable this feature.
 
 ---
 
