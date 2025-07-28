@@ -3,11 +3,16 @@
 **_All changes in this fork are marked in the code as `=== ANXETY EDITs ===`_**
 
 - Redesigned the model cards in the browser to give them a modern look :3
-- Added badges to model cards to display model type and NSFW status (if applicable).
+- Added badges to model cards to display model type and NSFW status (if applicable).</br>
   _Note: Badges are only visible when `Tile Size` is set to 11 or higher._
-- Implemented encryption of image previews when images are saved (Kaggle only). The [Encrypt-Image](https://github.com/anxety-solo/sd-encrypt-image) extension must be installed to enable this feature.
+- Implemented encryption of image previews when images are saved (Kaggle only).</br>
+  _The [Encrypt-Image](https://github.com/anxety-solo/sd-encrypt-image) extension must be installed to enable this feature._
 
-#### Preview (new style):
+#### List of changes made by me from created PRs:
+
+- None
+
+#### Preview Cards (new style):
 
 <img src=".github/preview.png" alt="Extension Preview" width="100%"/>
 

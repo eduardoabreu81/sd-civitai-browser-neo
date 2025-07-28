@@ -7,6 +7,7 @@ import os
 import re
 from datetime import datetime, timezone
 from collections import defaultdict
+from pathlib import Path
 from html import escape
 from io import BytesIO
 from PIL import Image
@@ -25,6 +26,7 @@ import scripts.civitai_global as gl
 
 gl.init()
 
+## === ANXETY EDITs ===
 # Mapping for short/clear display names for model types
 MODEL_TYPE_DISPLAY_NAMES = {
     'TextualInversion': 'Embedding',
@@ -41,126 +43,67 @@ def get_display_type(type_name):
     return MODEL_TYPE_DISPLAY_NAMES.get(type_name, type_name)
 
 def contenttype_folder(content_type, desc=None, fromCheck=False, custom_folder=None):
-    use_LORA = getattr(opts, "use_LORA", False)
-    folder = None
-    if desc:
-        desc = desc.upper()
-    else:
-        desc = "PLACEHOLDER"
-    if custom_folder:
-        main_models = custom_folder
-        main_data = custom_folder
-    else:
-        main_models = models_path
-        main_data = data_path
+    """
+    Returns the appropriate folder path for a given content type.
+    Args:
+        content_type (str): The type of content/model.
+        desc (str, optional): Description or additional info for type-specific logic.
+        fromCheck (bool, optional): Used for LoCon/LORA logic.
+        custom_folder (str or Path, optional): Custom base folder to use instead of defaults.
+    Returns:
+        Path: The resolved folder path for the content type, or None if not found.
+    """
+    use_LORA    = getattr(opts, 'use_LORA', False)                              # Whether to use LORA folder logic
+    desc_upper  = (desc or 'PLACEHOLDER').upper()                               # Uppercase description for type checks
+    main_models = Path(custom_folder) if custom_folder else Path(models_path)   # Main models folder path
+    main_data   = Path(custom_folder) if custom_folder else Path(data_path)     # Main data folder path (WebUI root)
+    ext_dir     = Path(extensions_dir)                                          # Extensions directory path
 
-    if content_type == "modelFolder":
-        folder = os.path.join(main_models)
+    def resolve_path(attr, fallback):
+        # Returns a Path from cmd_opts if set, otherwise fallback
+        if getattr(cmd_opts, attr, None) and not custom_folder:
+            return Path(getattr(cmd_opts, attr))
+        return fallback
 
-    if content_type == "Checkpoint":
-        if cmd_opts.ckpt_dir and not custom_folder:
-            folder = cmd_opts.ckpt_dir
-        else:
-            folder = os.path.join(main_models,"Stable-diffusion")
+    # Mapping for content types
+    content_type_map = {
+        'modelFolder': lambda: main_models,
+        'Checkpoint': lambda: resolve_path('ckpt_dir', main_models / 'Stable-diffusion'),
+        'Hypernetwork': lambda: resolve_path('hypernetwork_dir', main_models / 'hypernetworks'),
+        'TextualInversion': lambda: resolve_path('embeddings_dir', main_data / 'embeddings'),
+        'AestheticGradient': lambda: (Path(custom_folder) if custom_folder else ext_dir / 'stable-diffusion-webui-aesthetic-gradients') / 'aesthetic_embeddings',
+        'LORA': lambda: resolve_path('lora_dir', main_models / 'Lora'),
+        'LoCon': lambda: resolve_path('lora_dir', main_models / 'Lora') if use_LORA and not fromCheck else main_models / 'LyCORIS',
+        'DoRA': lambda: resolve_path('lora_dir', main_models / 'Lora'),
+        'VAE': lambda: resolve_path('vae_dir', main_models / 'VAE'),
+        'Controlnet': lambda: resolve_path('controlnet_dir', main_models / 'ControlNet'),
+        'Poses': lambda: main_models / 'Poses',
+        'MotionModule': lambda: ext_dir / 'sd-webui-animatediff' / 'model',
+        'Workflows': lambda: main_models / 'Workflows',
+        'Other': lambda: main_models / 'adetailer' if 'ADETAILER' in desc_upper else main_models / 'Other',
+        'Wildcards': lambda: (ext_dir / 'UnivAICharGen' / 'wildcards') if (ext_dir / 'UnivAICharGen' / 'wildcards').exists() else (ext_dir / 'sd-dynamic-prompts' / 'wildcards'),
+        'Upscaler': lambda: _resolve_upscaler_folder(desc_upper, main_models, resolve_path)
+    }
 
-    elif content_type == "Hypernetwork":
-        if cmd_opts.hypernetwork_dir and not custom_folder:
-            folder = cmd_opts.hypernetwork_dir
-        else:
-            folder = os.path.join(main_models, "hypernetworks")
+    def _resolve_upscaler_folder(desc, main_models, resolve_path):
+        # Helper for upscaler folder logic
+        if 'SWINIR' in desc:
+            return resolve_path('swinir_models_path', main_models / 'SwinIR')
+        if 'REALESRGAN' in desc:
+            return resolve_path('realesrgan_models_path', main_models / 'RealESRGAN')
+        if 'GFPGAN' in desc:
+            return resolve_path('gfpgan_models_path', main_models / 'GFPGAN')
+        if 'BSRGAN' in desc:
+            return resolve_path('bsrgan_models_path', main_models / 'BSRGAN')
+        return resolve_path('esrgan_models_path', main_models / 'ESRGAN')
 
-    elif content_type == "TextualInversion":
-        if cmd_opts.embeddings_dir and not custom_folder:
-            folder = cmd_opts.embeddings_dir
-        else:
-            folder = os.path.join(main_data, "embeddings")
+    # Get the folder resolver function for the content type
+    folder_resolver = content_type_map.get(content_type)
+    if folder_resolver:
+        return folder_resolver()
 
-    elif content_type == "AestheticGradient":
-        if not custom_folder:
-            folder = os.path.join(extensions_dir, "stable-diffusion-webui-aesthetic-gradients", "aesthetic_embeddings")
-        else:
-            folder = os.path.join(custom_folder, "aesthetic_embeddings")
+    return None
 
-    elif content_type == "LORA":
-        if cmd_opts.lora_dir and not custom_folder:
-            folder = cmd_opts.lora_dir
-        else:
-            folder = folder = os.path.join(main_models, "Lora")
-
-    elif content_type == "LoCon":
-        folder = os.path.join(main_models, "LyCORIS")
-        if use_LORA and not fromCheck:
-            if cmd_opts.lora_dir and not custom_folder:
-                folder = cmd_opts.lora_dir
-            else:
-                folder = folder = os.path.join(main_models, "Lora")
-
-    elif content_type == "DoRA":
-        if cmd_opts.lora_dir and not custom_folder:
-            folder = cmd_opts.lora_dir
-        else:
-            folder = folder = os.path.join(main_models, "Lora")
-
-    elif content_type == "VAE":
-        if cmd_opts.vae_dir and not custom_folder:
-            folder = cmd_opts.vae_dir
-        else:
-            folder = os.path.join(main_models, "VAE")
-
-    elif content_type == "Controlnet":
-        if hasattr(cmd_opts, 'controlnet_dir') and cmd_opts.controlnet_dir and not custom_folder:
-            folder = cmd_opts.controlnet_dir
-        else:
-            folder = os.path.join(main_models, "ControlNet")
-
-    elif content_type == "Poses":
-        folder = os.path.join(main_models, "Poses")
-
-    elif content_type == "Upscaler":
-        if "SWINIR" in desc:
-            if cmd_opts.swinir_models_path and not custom_folder:
-                folder = cmd_opts.swinir_models_path
-            else:
-                folder = os.path.join(main_models, "SwinIR")
-        elif "REALESRGAN" in desc:
-            if cmd_opts.realesrgan_models_path and not custom_folder:
-                folder = cmd_opts.realesrgan_models_path
-            else:
-                folder = os.path.join(main_models, "RealESRGAN")
-        elif "GFPGAN" in desc:
-            if cmd_opts.gfpgan_models_path and not custom_folder:
-                folder = cmd_opts.gfpgan_models_path
-            else:
-                folder = os.path.join(main_models, "GFPGAN")
-        elif "BSRGAN" in desc:
-            if cmd_opts.bsrgan_models_path and not custom_folder:
-                folder = cmd_opts.bsrgan_models_path
-            else:
-                folder = os.path.join(main_models, "BSRGAN")
-        else:
-            if cmd_opts.esrgan_models_path and not custom_folder:
-                folder = cmd_opts.esrgan_models_path
-            else:
-                folder = os.path.join(main_models, "ESRGAN")
-
-    elif content_type == "MotionModule":
-        folder = os.path.join(extensions_dir, "sd-webui-animatediff", "model")
-
-    elif content_type == "Workflows":
-        folder = os.path.join(main_models, "Workflows")
-
-    elif content_type == "Other":
-        if "ADETAILER" in desc:
-            folder = os.path.join(main_models, "adetailer")
-        else:
-            folder = os.path.join(main_models, "Other")
-
-    elif content_type == "Wildcards":
-        folder = os.path.join(extensions_dir, "UnivAICharGen", "wildcards")
-        if not os.path.exists(folder):
-            folder = os.path.join(extensions_dir, "sd-dynamic-prompts", "wildcards")
-
-    return folder
 
 ## === ANXETY EDITs ===
 def model_list_html(json_data):
@@ -334,15 +277,17 @@ def create_api_url(content_type=None, sort_type=None, period_type=None, use_sear
     if content_type:
         params["types"] = content_type
 
+    ## === ANXETY EDITs ===
     if use_search_term != "None" and search_term:
-        search_term = search_term.replace("\\", "\\\\").lower()
-        if "civitai.com" in search_term:
-            model_number = re.search(r'models/(\d+)', search_term).group(1)
-            params = {'ids': model_number}
-
+        search_term = search_term.replace('\\', '\\\\').lower()
+        if 'civitai.com' in search_term:
+            model_match = re.search(r'models/(\d+)', search_term)
+            if model_match:
+                model_number = model_match.group(1)
+                params = {'ids': model_number}
         else:
-            key_map = {"User name": "username", "Tag": "tag"}
-            search_key = key_map.get(use_search_term, "query")
+            key_map = {'User name': 'username', 'Tag': 'tag'}
+            search_key = key_map.get(use_search_term, 'query')
             params[search_key] = search_term
 
     if base_filter:

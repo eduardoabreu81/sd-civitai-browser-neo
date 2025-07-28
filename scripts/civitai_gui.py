@@ -9,6 +9,7 @@ import gradio as gr
 from modules import script_callbacks, shared
 from modules.shared import opts, cmd_opts
 from modules.paths import extensions_dir
+from modules.options import categories
 
 # === Extension imports ===
 from scripts.civitai_global import print
@@ -150,19 +151,58 @@ def txt2img_output(image_url):
         geninfo = nr + geninfo
         return gr.Textbox.update(value=geninfo)
 
+## === ANXETY EDITs ===
 def get_base_models():
     api_url = 'https://civitai.com/api/v1/models?baseModels=GetModels'
     json_return = _api.request_civit_api(api_url, True)
-    default_options = ["SD 1.4","SD 1.5","SD 1.5 LCM","SD 2.0","SD 2.0 768","SD 2.1","SD 2.1 768",
-    "SD 2.1 Unclip","SDXL 0.9","SDXL 1.0","SDXL 1.0 LCM","SDXL Distilled","SDXL Turbo","SDXL Lightning",
-    "Stable Cascade","Pony","SVD","SVD XT","Playground v2","PixArt a", "Flux.1 S", "Flux.1 D","Other"]
+    # The data below is taken from the API response
+    default_options = [
+        'SD 1.4',
+        'SD 1.5',
+        'SD 1.5 LCM',
+        'SD 1.5 Hyper',
+        'SD 2.0',
+        'SD 2.0 768',
+        'SD 2.1',
+        'SD 2.1 768',
+        'SD 2.1 Unclip',
+        'SDXL 0.9',
+        'SDXL 1.0',
+        'SD 3',
+        'SD 3.5',
+        'SD 3.5 Medium',
+        'SD 3.5 Large',
+        'SD 3.5 Large Turbo',
+        'Pony',
+        'Flux.1 S',
+        'Flux.1 D',
+        'Flux.1 Kontext',
+        'AuraFlow',
+        'SDXL 1.0 LCM',
+        'SDXL Distilled',
+        'SDXL Turbo',
+        'SDXL Lightning',
+        'SDXL Hyper',
+        'SVD',
+        'SVD XT',
+        'Playground v2',
+        'PixArt a',
+        'PixArt E',
+        'Hunyuan 1',
+        'Hunyuan Video',
+        'Illustrious',
+        'LTXV',
+        'NoobAI',
+        'Wan Video',
+        'Other'
+    ]
 
     if not isinstance(json_return, dict):
         print("Couldn't fetch latest baseModel options, using default.")
         return default_options
 
     try:
-        options = json_return['error']['issues'][0]['unionErrors'][0]['issues'][0]['options']
+        options = json.loads(json_return['error']['message'])[0]['errors'][0][0]['values']
         return options
     except (KeyError, IndexError) as e:
         print(f"Basemodel fetch error extracting options: {e}")
@@ -226,7 +266,8 @@ def on_ui_tabs():
                         tile_count_slider = gr.Slider(label="Tile count:", minimum=1, maximum=100, value=15, step=1)
                     with gr.Row(elem_id="save_set_box"):
                         save_settings = gr.Button(value="Save settings as default", elem_id="save_set_btn")
-                search_term = gr.Textbox(label="", placeholder="Search CivitAI", elem_id="searchBox")
+                ## === ANXETY EDITs ===
+                search_term = gr.Textbox(label='', placeholder='Enter model name, or paste a CivitAI link', elem_id='searchBox')
                 refresh = gr.Button(value="", elem_id=refreshbtn, icon="placeholder")
             with gr.Row(elem_id=header):
                 with gr.Row(elem_id="pageBox"):
@@ -1037,7 +1078,7 @@ def on_ui_settings():
     if ver_bool:
         browser = ("civitai_browser", "Browser")
         download = ("civitai_browser_download", "Downloads")
-        from modules.options import categories
+
         categories.register_category("civitai_browser_plus", "CivitAI Browser+")
         cat_id = "civitai_browser_plus"
     else:
