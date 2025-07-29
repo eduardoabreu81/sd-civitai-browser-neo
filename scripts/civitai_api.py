@@ -42,6 +42,12 @@ def get_display_type(type_name):
     """Return short/clear display name for model type."""
     return MODEL_TYPE_DISPLAY_NAMES.get(type_name, type_name)
 
+def is_early_access(model_data):
+    """Check if the model is an early access model"""
+    avail = model_data.get('availability')
+    early_end = model_data.get('earlyAccessEndsAt')
+    return (isinstance(avail, str) and avail == 'EarlyAccess') or bool(early_end)
+
 def contenttype_folder(content_type, desc=None, fromCheck=False, custom_folder=None):
     """
     Returns the appropriate folder path for a given content type.
@@ -154,12 +160,6 @@ def model_list_html(json_data):
         base_model = item['modelVersions'][0].get('baseModel', 'Not Found') if item['modelVersions'] else 'Not Found'
         date = item['modelVersions'][0].get('publishedAt', 'Not Found').split('T')[0] if item['modelVersions'] and 'publishedAt' in item['modelVersions'][0] else 'Not Found'
 
-        # Check if the model is an early access model
-        def is_early_access(model_data):
-            avail = model_data.get('availability')
-            early_end = model_data.get('earlyAccessEndsAt')
-            return (isinstance(avail, str) and avail == 'EarlyAccess') or bool(early_end)
-
         early_access = is_early_access(item['modelVersions'][0]) if item['modelVersions'] else False
         early_access_class = 'early-access' if early_access else ''
 
@@ -200,7 +200,7 @@ def model_list_html(json_data):
 
         ## Badges
         # Model Type Badge ( + Early Access)
-        if is_early_access:
+        if early_access:
             # Gold badge with a lightning icon
             model_type_badge = (
                 f'<div class="model-type-badge {item["type"].lower()} early-access-badge">'
@@ -220,7 +220,7 @@ def model_list_html(json_data):
                 '<div class="nsfw-badge">'
                 '<svg class="nsfw-badge-icon" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" fill="currentColor">'
                 '<circle cx="10" cy="10" r="10"/>'
-                '<text x="10" y="12" font-size="12" text-anchor="middle" dominant-baseline="middle" font-family="Arial" font-weight="bold" fill="#fff">!</text>'
+                '<text x="10" y="11" font-size="12" text-anchor="middle" dominant-baseline="middle" font-family="Arial" font-weight="bold" fill="#fff">!</text>'
                 '</svg>'
                 'NSFW'
                 '</div>'
@@ -543,10 +543,23 @@ def update_model_versions(model_id, json_input=None):
                             installed_versions.add(version_name)
                             break
 
+            ## === ANXETY EDITs ===
             version_names = list(versions_dict.keys())
-            display_version_names = [f"{v} [Installed]" if v in installed_versions else v for v in version_names]
-            default_installed = next((f"{v} [Installed]" for v in installed_versions), None)
-            default_value = default_installed or next(iter(version_names), None)
+            # Build display names with [Installed] and (Early Access) if applicable
+            display_version_names = []
+            for v in version_names:
+                # Find the version object for this name
+                version_obj = next((ver for ver in versions if ver['name'] == v), None)
+                name = v
+                installed = v in installed_versions
+                early_access = is_early_access(version_obj) if version_obj else False
+                if installed:
+                    name += ' [Installed]'
+                if early_access:
+                    name += ' (Early Access)'
+                display_version_names.append(name)
+            default_installed = next((name for name in display_version_names if '[Installed]' in name), None)
+            default_value = default_installed or (display_version_names[0] if display_version_names else None)
 
             return gr.Dropdown.update(choices=display_version_names, value=default_value, interactive=True) # Version List
 
@@ -652,10 +665,13 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                 if model_version is None:
                     selected_version = item['modelVersions'][0]
                 else:
+                    selected_version = None
                     for model in item['modelVersions']:
                         if model['name'] == model_version:
                             selected_version = model
                             break
+                    if selected_version is None and item['modelVersions']:
+                        selected_version = item['modelVersions'][0]  # fallback to first version
 
                 model_availability = selected_version.get('availability', 'Unknown')
                 model_date_published = selected_version.get('publishedAt', '').split('T')[0]
@@ -1111,7 +1127,7 @@ def get_proxies():
     if custom_proxy:
         if not disable_ssl:
             if cabundle_path:
-                ssl = os.path(cabundle_path)
+                ssl = os.path.exists(cabundle_path) # Check if cabundle_path is a valid file
         else:
             ssl = False
         proxies = {

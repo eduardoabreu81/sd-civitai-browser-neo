@@ -387,6 +387,31 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
 
         file_name = os.path.basename(file_path)
 
+        ## === ANXETY EDITs ===
+        # Find the model item in the download queue (by model_id and file_name)
+        early_access = False
+        for item in gl.download_queue:
+            if int(item.get('model_id', -1)) == int(model_id):
+                # Try to get early access status from model_json
+                model_json = item.get('model_json', {})
+                items = model_json.get('items', [])
+                if items and 'modelVersions' in items[0]:
+                    version = items[0]['modelVersions'][0]
+                    avail = version.get('availability')
+                    early_end = version.get('earlyAccessEndsAt')
+                    if (isinstance(avail, str) and avail == 'EarlyAccess') or bool(early_end):
+                        early_access = True
+                break
+
+        if early_access:
+            msg = f'File: "{file_name}" is marked as Early Access on CivitAI. You need to purchase this model to download it.'
+            print(msg)
+            gl.download_fail = "EARLY_ACCESS"
+            if progress is not None:
+                progress(0, desc=msg)
+                time.sleep(5)
+            return
+
         download_link = get_download_link(url, model_id)
         if not download_link:
             print(f'File: "{file_name}" not found on CivitAI servers, it looks like the file is not available for download.')

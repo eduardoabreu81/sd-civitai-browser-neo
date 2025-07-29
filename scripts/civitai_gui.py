@@ -241,6 +241,7 @@ def on_ui_tabs():
 
     content_choices = _file.get_content_choices()
     scan_choices = _file.get_content_choices(scan_choices=True)
+    ## === ANXETY EDITs ===
     with gr.Blocks() as civitai_interface:
         with gr.Tab(label="Browser", elem_id="browserTab"):
             with gr.Row(elem_id="searchRow"):
@@ -252,8 +253,8 @@ def on_ui_tabs():
                     with gr.Row():
                         base_filter = gr.Dropdown(label='Base model:', multiselect=True, choices=get_base_models(), value=None, type="value", elem_id="centerText")
                     with gr.Row():
-                        period_type = gr.Dropdown(label='Time period:', choices=["All Time", "Year", "Month", "Week", "Day"], value="All Time", type="value", elem_id="centerText")
-                        sort_type = gr.Dropdown(label='Sort by:', choices=["Newest","Oldest","Most Downloaded","Highest Rated","Most Liked","Most Buzz","Most Discussed","Most Collected","Most Images"], value="Most Downloaded", type="value", elem_id="centerText")
+                        period_type = gr.Dropdown(label='Time period:', choices=["All Time", "Year", "Month", "Week", "Day"], value="Month", type="value", elem_id="centerText")
+                        sort_type = gr.Dropdown(label='Sort by:', choices=["Newest","Oldest","Most Downloaded","Highest Rated","Most Liked","Most Buzz","Most Discussed","Most Collected","Most Images"], value="Highest Rated", type="value", elem_id="centerText")
                     with gr.Row(elem_id=component_id):
                         create_json = gr.Checkbox(label=f"Save info after download", value=True, elem_id=toggle1, min_width=171)
                         show_nsfw = gr.Checkbox(label="NSFW content", value=False, elem_id=toggle2, min_width=107)
@@ -261,12 +262,10 @@ def on_ui_tabs():
                         only_liked = gr.Checkbox(label="Liked models only", value=False, interactive=show_only_liked, elem_id=toggle4, min_width=163)
                         hide_installed = gr.Checkbox(label="Hide installed models", value=False, elem_id=toggle5, min_width=170)
                     with gr.Row():
-                        ## === ANXETY EDITs ===
                         size_slider = gr.Slider(label='Tile size:', minimum=8, maximum=20, value=8, step=0.25)
                         tile_count_slider = gr.Slider(label="Tile count:", minimum=1, maximum=100, value=15, step=1)
                     with gr.Row(elem_id="save_set_box"):
                         save_settings = gr.Button(value="Save settings as default", elem_id="save_set_btn")
-                ## === ANXETY EDITs ===
                 search_term = gr.Textbox(label='', placeholder='Enter model name, or paste a CivitAI link', elem_id='searchBox')
                 refresh = gr.Button(value="", elem_id=refreshbtn, icon="placeholder")
             with gr.Row(elem_id=header):
