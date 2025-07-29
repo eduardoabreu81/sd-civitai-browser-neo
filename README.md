@@ -4,14 +4,16 @@
 
 - Redesigned the model cards in the browser to give them a modern look :3
 - Added badges to model cards to display model type and NSFW status (if applicable).</br>
-  _Note: Badges are only visible when `Tile Size` is set to 11 or higher._
+  _Note: Badges are only visible when `Tile Size` is set to 12 or higher._
+- Models that require purchase are marked with a gold color.</br>
+  _Note: The model type badge turns gold and displays a lightning icon :3_
 - Implemented encryption of image previews when images are saved (Kaggle only).</br>
   _Note: The [Encrypt-Image](https://github.com/anxety-solo/sd-encrypt-image) extension must be installed to enable this feature._
 - All CSS and JS files have been formatted using Prettier for consistent code style.
 
 #### List of changes taken from pull requests (PRs) or bugfixes:
 
-- HTML description cleanup fix taken from [PR #384](https://github.com/BlafKing/sd-civitai-browser-plus/pull/384) (see `clean_description` in `scripts/civitai_file_manage.py` - `Line 642`)
+- HTML description cleanup fix taken from [PR #384](https://github.com/BlafKing/sd-civitai-browser-plus/pull/384) (see `clean_description` in [scripts/civitai_file_manage.py](./scripts/civitai_file_manage.py#L642))
 
 <h1></h1>
 
@@ -19,9 +21,11 @@
 
 <img src=".github/preview.png" alt="Extension Preview" width="100%"/>
 
-<h1></h1>
+<div align="center">
+    <h6>For better UI experience, I recommend using my theme - <a href="https://github.com/anxety-solo/anxety-theme">Anxety-Theme</a> :3</h6>
+<div>
 
----
+<h1></h1>
 
 ![CivitAI Browser-05+](https://github.com/BlafKing/sd-civitai-browser-plus/assets/9644716/95afcc41-56f0-4398-8779-51cb2a9e2f55)
 

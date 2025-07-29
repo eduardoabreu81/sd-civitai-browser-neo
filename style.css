@@ -95,8 +95,26 @@
     text-transform: uppercase;
     pointer-events: none !important;
     align-items: center;
+    line-height: 1;
     z-index: 10;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* Early Access Badge */
+.civmodelcard.early-access .early-access-icon { /* Icon */
+    fill: gold;
+    margin-left: -4px;
+    margin-right: 2px;
+    width: 16px;
+    height: 16px;
+}
+
+.civmodelcard.early-access { /* Model Card */
+    box-shadow: 0 6px 15px -2px color-mix(in srgb, gold 20%, rgba(0, 0, 0, 0.1));
+    border-color: color-mix(in srgb, gold 40%, rgba(255, 255, 255, 0.3));
+}
+.civmodelcard.early-access .early-access-badge { /* Model Type Badge */
+  	color: gold;
+    border-color: color-mix(in srgb, gold 40%, rgba(255, 255, 255, 0.3));
 }
 
 /* NSFW Badge */
@@ -106,13 +124,16 @@
     top: 40px;
     left: 10px;
     height: 26px;
-    padding: 4px 10px 4px 30px; /* Padding left for the icon */
+    padding: 4px 10px; /* 4px 10px 4px 28px */ /* Padding for OLD ICON */
     color: #ffffff;
     background: rgba(0, 0, 0, 0.6);
+    /* OLD ICON */
+    /*
     background-image: url('data:image/svg+xml;utf8,<svg width="18" height="18" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="8" fill="%23fff" fill-opacity="0.18"/><text x="9" y="14" font-size="12" text-anchor="middle" fill="%23fff" font-family="Arial" font-weight="bold">!</text></svg>');
     background-repeat: no-repeat;
     background-position: 8px center;
-    background-size: 18px 18px;
+    background-size: 16px 16px;
+    */
     border: 1px solid rgba(255, 255, 255, 0.3);
     border-radius: 12px;
     box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.15);
@@ -123,8 +144,16 @@
     text-transform: uppercase;
     pointer-events: none !important;
     align-items: center;
+    line-height: 1;
     z-index: 10;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.nsfw-badge .nsfw-badge-icon { /* Icon */
+    fill: rgba(255, 255, 255, 0.2);
+    margin-left: -4px;
+    margin-right: 4px;
+    width: 16px;
+    height: 16px;
 }
 
 .civmodelcard:hover .model-type-badge,

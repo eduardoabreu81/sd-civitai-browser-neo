@@ -145,6 +145,7 @@ def model_list_html(json_data):
                             print(f'Error decoding JSON in {json_path}: {e}')
         return files_set, sha256_set
 
+    ## === ANXETY EDITs ===
     def get_model_card(item, existing_files, existing_files_sha256, playback):
         """Build HTML for a single model card."""
         model_id = item.get('id')
@@ -152,6 +153,15 @@ def model_list_html(json_data):
         nsfw_class = 'civcardnsfw' if item.get('nsfw') else ''
         base_model = item['modelVersions'][0].get('baseModel', 'Not Found') if item['modelVersions'] else 'Not Found'
         date = item['modelVersions'][0].get('publishedAt', 'Not Found').split('T')[0] if item['modelVersions'] and 'publishedAt' in item['modelVersions'][0] else 'Not Found'
+
+        # Check if the model is an early access model
+        def is_early_access(model_data):
+            avail = model_data.get('availability')
+            early_end = model_data.get('earlyAccessEndsAt')
+            return (isinstance(avail, str) and avail == 'EarlyAccess') or bool(early_end)
+
+        early_access = is_early_access(item['modelVersions'][0]) if item['modelVersions'] else False
+        early_access_class = 'early-access' if early_access else ''
 
         # Image or video preview
         images = item['modelVersions'][0].get('images', []) if item['modelVersions'] else []
@@ -168,7 +178,7 @@ def model_list_html(json_data):
             imgtag = '<img src="./file=html/card-no-preview.png" onerror="this.onerror=null;this.src=\'./file=html/card-no-preview.jpg\';"></img>'
 
         # Install status
-        installstatus = None
+        installstatus = ''
         for version in reversed(item.get('modelVersions', [])):
             for file in version.get('files', []):
                 file_name, file_extension = os.path.splitext(file['name'])
@@ -188,13 +198,39 @@ def model_list_html(json_data):
         display_name = escape(model_name[:35] + '...' if len(model_name) > 35 else model_name)
         full_name = escape(model_name)
 
-        # Badges
-        model_type_badge = f'<div class="model-type-badge {item["type"].lower()}">{get_display_type(item["type"])}</div>'
-        nsfw_badge = '<div class="nsfw-badge">NSFW</div>' if item.get('nsfw') else ''
+        ## Badges
+        # Model Type Badge ( + Early Access)
+        if is_early_access:
+            # Gold badge with a lightning icon
+            model_type_badge = (
+                f'<div class="model-type-badge {item["type"].lower()} early-access-badge">'
+                '<svg class="early-access-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor">'
+                '<path d="M13 2L3 14h9l-1 8 10-12h-8z"/>'
+                '</svg>'
+                f'{get_display_type(item["type"])}'
+                '</div>'
+            )
+        else:
+            model_type_badge = f'<div class="model-type-badge {item["type"].lower()}">{get_display_type(item["type"])}</div>'
+
+        # NSFW Badge
+        # nsfw_badge = '<div class="nsfw-badge">NSFW</div>' if item.get('nsfw') else '' # OLD
+        if item.get('nsfw'):
+            nsfw_badge = (
+                '<div class="nsfw-badge">'
+                '<svg class="nsfw-badge-icon" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" fill="currentColor">'
+                '<circle cx="10" cy="10" r="10"/>'
+                '<text x="10" y="12" font-size="12" text-anchor="middle" dominant-baseline="middle" font-family="Arial" font-weight="bold" fill="#fff">!</text>'
+                '</svg>'
+                'NSFW'
+                '</div>'
+            )
+        else:
+            nsfw_badge = ''
 
         # Card HTML
         card_html = (
-            f'<figure class="civmodelcard {nsfw_class} {installstatus or ""}" base-model="{base_model}" date="{date}" '
+            f'<figure class="civmodelcard {nsfw_class} {early_access_class} {installstatus}" base-model="{base_model}" date="{date}" '
             f'onclick="select_model(\'{model_string}\', event)">'
             f'{model_type_badge}{nsfw_badge}'
         )
@@ -797,13 +833,14 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                             f'{allow_svg if item.get("allowDifferentLicense") else deny_svg} Have different permissions when sharing merges'\
                             '</p>'
 
+                ## === ANXETY EDITs ===
                 if not creator or model_uploader == 'User not found':
                     uploader = f'<h3 class="model-uploader"><span>{escape(str(model_uploader))}</span>{uploader_avatar}</h3>'
                 else:
                     uploader = f'<h3 class="model-uploader">Uploaded by <a href="https://civitai.com/user/{escape(str(model_uploader))}" target="_blank">{escape(str(model_uploader))}</a>{uploader_avatar}</h3>'
                 output_html = f'''
                 <div class="model-block">
-                    <h2><a href={model_main_url} target="_blank" id="model_header">{escape(str(model_name))}</a></h2>
+                    <h2>Model Page: <a href={model_main_url} target="_blank" id="model_header" style="text-decoration: underline;">{escape(str(model_name))}</a></h2>
                     {uploader}
                     <div class="civitai-version-info" style="display:flex; flex-wrap:wrap; justify-content:space-between;">
                         <dl id="info_block">
