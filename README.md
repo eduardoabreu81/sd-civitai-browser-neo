@@ -16,7 +16,7 @@
 - HTML description cleanup fix taken from [PR #384](https://github.com/BlafKing/sd-civitai-browser-plus/pull/384)</br>
   _(see `clean_description` in [scripts/civitai_file_manage.py](./scripts/civitai_file_manage.py#L642))_
 - Added a clarifying message about Early Access to avoid confusion~ [Issues #383](https://github.com/BlafKing/sd-civitai-browser-plus/issues/383)</br>
-  _(see `download_file` in [scrits/civitai_download.py](./scripts/civitai_file_manage.py#L380))_
+  _(see `download_file` in [scripts/civitai_download.py](./scripts/civitai_download.py#L380))_
 
 <h1></h1>
 
