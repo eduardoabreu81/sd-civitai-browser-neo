@@ -1,4 +1,4 @@
-"use strict";
+'use strict';
 
 // Selects a model by pressing on card
 function select_model(model_name, event, bool = false, content_type = null, sendToBrowser = false) {
@@ -11,7 +11,7 @@ function select_model(model_name, event, bool = false, content_type = null, send
 
     let output;
     if (sendToBrowser) {
-        output = gradioApp().querySelector('#send_to_browser textarea')
+        output = gradioApp().querySelector('#send_to_browser textarea');
     } else {
         output = bool ? gradioApp().querySelector('#model_sent textarea') : gradioApp().querySelector('#model_select textarea');
     }
@@ -19,7 +19,7 @@ function select_model(model_name, event, bool = false, content_type = null, send
     if (output && model_name) {
         const randomNumber = Math.floor(Math.random() * 1000);
         const paddedNumber = String(randomNumber).padStart(3, '0');
-        output.value = model_name + "." + paddedNumber;
+        output.value = model_name + '.' + paddedNumber;
         updateInput(output);
     }
 
@@ -27,7 +27,7 @@ function select_model(model_name, event, bool = false, content_type = null, send
         const outputType = gradioApp().querySelector('#type_sent textarea');
         const randomNumber = Math.floor(Math.random() * 1000);
         const paddedNumber = String(randomNumber).padStart(3, '0');
-        outputType.value = content_type + "." + paddedNumber;
+        outputType.value = content_type + '.' + paddedNumber;
         updateInput(outputType);
     }
 }
@@ -67,17 +67,17 @@ function updateCardSize(width, height) {
 // Toggles NSFW display
 function toggleNSFWContent(hideAndBlur) {
     const nsfwCards = document.querySelectorAll('.civcardnsfw');
-    nsfwCards.forEach(card => {
+    nsfwCards.forEach((card) => {
         card.style.display = hideAndBlur ? 'block' : 'none';
-    })
+    });
 
     const nsfwImages = document.querySelectorAll('.civnsfw img');
-    nsfwImages.forEach(img => {
+    nsfwImages.forEach((img) => {
         img.style.filter = hideAndBlur ? 'none' : 'blur(10px)';
     });
 
     const dateSections = document.querySelectorAll('.date-section');
-    dateSections.forEach(section => {
+    dateSections.forEach((section) => {
         const cards = section.querySelectorAll('.civmodelcard');
         const nsfwCards = section.querySelectorAll('.civmodelcard.civcardnsfw');
         section.style.display = !hideAndBlur && cards.length === nsfwCards.length ? 'none' : 'block';
@@ -102,7 +102,7 @@ function updateCard(modelNameWithSuffix) {
     const modelName = modelNameWithSuffix.slice(0, lastDotIndex);
     const suffix = modelNameWithSuffix.slice(lastDotIndex + 1);
     let additionalClassName = '';
-    switch(suffix) {
+    switch (suffix) {
         case 'None':
             additionalClassName = '';
             break;
@@ -132,15 +132,14 @@ function keydownHandler(e) {
     var handled = false;
 
     if (e.key !== undefined) {
-        if ((e.key == "Enter" && (e.metaKey || e.ctrlKey || e.altKey))) handled = true;
+        if (e.key == 'Enter' && (e.metaKey || e.ctrlKey || e.altKey)) handled = true;
     } else if (e.keyCode !== undefined) {
-        if ((e.keyCode == 13 && (e.metaKey || e.ctrlKey || e.altKey))) handled = true;
+        if (e.keyCode == 13 && (e.metaKey || e.ctrlKey || e.altKey)) handled = true;
     }
 
     if (handled) {
         var currentTabContent = get_uiCurrentTabContent();
-        if (currentTabContent && currentTabContent.id === "tab_civitai_interface") {
-
+        if (currentTabContent && currentTabContent.id === 'tab_civitai_interface') {
             var refreshButton = currentTabContent.querySelector('#refreshBtn');
             if (!refreshButton) {
                 refreshButton = currentTabContent.querySelector('#refreshBtnL');
@@ -167,69 +166,69 @@ function BackToTop() {
 
 // Function to adjust alignment of Filter Accordion
 function adjustFilterBoxAndButtons() {
-    const element = document.querySelector("#filterBox") || document.querySelector("#filterBoxL");
+    const element = document.querySelector('#filterBox') || document.querySelector('#filterBoxL');
     if (!element) return;
 
-    const childDiv = element.querySelector("div:nth-child(3)");
+    const childDiv = element.querySelector('div:nth-child(3)');
     if (!childDiv) return;
 
     const isLargeScreen = window.innerWidth >= 1250;
     const isMediumScreen = window.innerWidth < 1250 && window.innerWidth > 915;
     const isNarrowScreen = window.innerWidth < 800;
-    const modelBlocks = document.querySelectorAll("#civitai_preview_html .model-block");
-    const civitInfo = document.querySelector(".civitai-version-info");
+    const modelBlocks = document.querySelectorAll('#civitai_preview_html .model-block');
+    const civitInfo = document.querySelector('.civitai-version-info');
 
     if (modelBlocks) {
-        modelBlocks.forEach(modelBlock => {
+        modelBlocks.forEach((modelBlock) => {
             if (isNarrowScreen) {
-                modelBlock.style.flexWrap = "wrap";
-                modelBlock.style.justifyContent = "center";
+                modelBlock.style.flexWrap = 'wrap';
+                modelBlock.style.justifyContent = 'center';
             } else {
-                modelBlock.style.flexWrap = "nowrap";
-                modelBlock.style.justifyContent = "flex-start";
+                modelBlock.style.flexWrap = 'nowrap';
+                modelBlock.style.justifyContent = 'flex-start';
             }
         });
-    } if (civitInfo) {
+    }
+    if (civitInfo) {
         if (window.innerWidth < 900) {
-            civitInfo.style.flexWrap = "wrap";
+            civitInfo.style.flexWrap = 'wrap';
         } else {
-            civitInfo.style.flexWrap = "nowrap";
+            civitInfo.style.flexWrap = 'nowrap';
         }
     }
 
+    childDiv.style.marginLeft = isLargeScreen ? '0px' : isMediumScreen ? `${1250 - window.innerWidth}px` : '0px';
+    element.style.justifyContent = isLargeScreen || isMediumScreen ? 'center' : 'flex-start';
 
-    childDiv.style.marginLeft = isLargeScreen ? "0px" : isMediumScreen ? `${1250 - window.innerWidth}px` : "0px";
-    element.style.justifyContent = isLargeScreen || isMediumScreen ? "center" : "flex-start";
-
-    const pageBtn1 = document.querySelector("#pageBtn1");
-    const pageBtn2 = document.querySelector("#pageBtn2");
-    const pageBox = document.querySelector("#pageBox");
-    const pageBoxMobile = document.querySelector("#pageBoxMobile");
+    const pageBtn1 = document.querySelector('#pageBtn1');
+    const pageBtn2 = document.querySelector('#pageBtn2');
+    const pageBox = document.querySelector('#pageBox');
+    const pageBoxMobile = document.querySelector('#pageBoxMobile');
 
     if (window.innerWidth < 530) {
-        childDiv.style.width = "300px";
+        childDiv.style.width = '300px';
         if (pageBoxMobile) {
             pageBtn1 && pageBoxMobile.appendChild(pageBtn1);
             pageBtn2 && pageBoxMobile.appendChild(pageBtn2);
-            pageBoxMobile.style.paddingBottom = "15px";
+            pageBoxMobile.style.paddingBottom = '15px';
         }
     } else {
-        childDiv.style.width = "400px";
+        childDiv.style.width = '400px';
         if (pageBox) {
             pageBtn1 && pageBox.insertBefore(pageBtn1, pageBox.firstChild);
             pageBtn2 && pageBox.appendChild(pageBtn2);
-            pageBoxMobile.style.paddingBottom = "0px";
+            pageBoxMobile.style.paddingBottom = '0px';
         }
     }
 }
 
 // Calls the function above whenever the window is resized
-window.addEventListener("resize", adjustFilterBoxAndButtons);
+window.addEventListener('resize', adjustFilterBoxAndButtons);
 
 // Function to trigger refresh button with extra checks for page slider
 function pressRefresh() {
     setTimeout(() => {
-        const input = document.querySelector("#pageSlider > div:nth-child(2) > div > input");
+        const input = document.querySelector('#pageSlider > div:nth-child(2) > div > input');
         if (document.activeElement === input) {
             function keydownHandler(event) {
                 if (event.key === 'Enter' || event.keyCode === 13) {
@@ -262,15 +261,18 @@ function pressRefresh() {
 // Update SVG Icons based on dark theme or light theme
 function updateSVGIcons() {
     const isDark = document.body.classList.contains('dark');
-    const filterIconUrl = isDark ? "https://gistcdn.githack.com/BlafKing/a20124cedafad23d4eecc1367ec22896/raw/04a4dae0771353377747dadf57c91d55bf841bed/filter-light.svg" : "https://gistcdn.githack.com/BlafKing/686c3438f5d0d13e7e47135f25445ef3/raw/46477777faac7209d001829a171462d9a2ff1467/filter-dark.svg";
-    const searchIconUrl = isDark ? "https://gistcdn.githack.com/BlafKing/3f95619089bac3b4fd5470a986e1b3bb/raw/ebaa9cceee3436711eb560a7a65e151f1d651c6a/search-light.svg" : "https://gistcdn.githack.com/BlafKing/57573592d5857e102a4bfde852f62639/raw/aa213e9e82d705651603507e26545eb0ffe60c90/search-dark.svg";
+    const filterIconUrl = isDark
+        ? 'https://gistcdn.githack.com/BlafKing/a20124cedafad23d4eecc1367ec22896/raw/04a4dae0771353377747dadf57c91d55bf841bed/filter-light.svg'
+        : 'https://gistcdn.githack.com/BlafKing/686c3438f5d0d13e7e47135f25445ef3/raw/46477777faac7209d001829a171462d9a2ff1467/filter-dark.svg';
+    const searchIconUrl = isDark
+        ? 'https://gistcdn.githack.com/BlafKing/3f95619089bac3b4fd5470a986e1b3bb/raw/ebaa9cceee3436711eb560a7a65e151f1d651c6a/search-light.svg'
+        : 'https://gistcdn.githack.com/BlafKing/57573592d5857e102a4bfde852f62639/raw/aa213e9e82d705651603507e26545eb0ffe60c90/search-dark.svg';
 
     if (isDark) {
-
     }
 
-    const element = document.querySelector("#filterBox, #filterBoxL");
-    const childDiv = element?.querySelector("div:nth-child(3)");
+    const element = document.querySelector('#filterBox, #filterBoxL');
+    const childDiv = element?.querySelector('div:nth-child(3)');
 
     if (childDiv) {
         childDiv.style.cssText = `box-shadow: ${isDark ? '#ffffff' : '#000000'} 0px 0px 2px 0px; display: none;`;
@@ -322,28 +324,27 @@ function createTooltip(element, hover_element, insertText) {
 
 // Function that closes filter dropdown if clicked outside the dropdown
 function setupClickOutsideListener() {
-    var filterBox = document.getElementById("filterBoxL") || document.getElementById("filterBox");
+    var filterBox = document.getElementById('filterBoxL') || document.getElementById('filterBox');
     var filterButton = filterBox.children[1];
-    var dropDown = filterBox.getElementsByTagName("div")[2];
+    var dropDown = filterBox.getElementsByTagName('div')[2];
 
     function clickOutsideHandler(event) {
         var target = event.target;
         if (!filterBox.contains(target)) {
             if (!dropDown.contains(target)) {
-                if (filterButton.className.endsWith("open")) {
+                if (filterButton.className.endsWith('open')) {
                     filterButton.click();
                 }
             }
         }
     }
-    document.addEventListener("click", clickOutsideHandler);
+    document.addEventListener('click', clickOutsideHandler);
 }
 
 // Create hyperlink in settings to CivitAI account settings
 function createLink(infoElement) {
-
-    const existingText = "(You can create your own API key in your CivitAI account settings, this required for some downloads, Requires UI reload)";
-    const linkText = "CivitAI account settings";
+    const existingText = '(You can create your own API key in your CivitAI account settings, this required for some downloads, Requires UI reload)';
+    const linkText = 'CivitAI account settings';
 
     const [textBefore, textAfter] = existingText.split(linkText);
 
@@ -383,7 +384,7 @@ function createAccordion(containerDiv, subfolders, name, id_name) {
     toggleButton.id = 'accordionToggle';
     toggleButton.innerHTML = name + '<div style="transition: transform 0.15s; transform: rotate(90deg)">▼</div>';
     toggleButton.onclick = function () {
-        accordionDiv.style.display = (accordionDiv.style.display === 'none') ? 'block' : 'none';
+        accordionDiv.style.display = accordionDiv.style.display === 'none' ? 'block' : 'none';
         toggleButton.lastChild.style.transform = accordionDiv.style.display === 'none' ? 'rotate(90deg)' : 'rotate(0)';
     };
 
@@ -419,11 +420,11 @@ function createCivitAICardButtons() {
         if (cardDivs.length > 0) {
             clearInterval(checkForCardDivs);
 
-            cardDivs.forEach(cardDiv => {
+            cardDivs.forEach((cardDiv) => {
                 const buttonRow = cardDiv.querySelector('.button-row');
                 if (!buttonRow) return;
 
-                buttonRow.addEventListener('click', function(event) {
+                buttonRow.addEventListener('click', function (event) {
                     event.stopPropagation();
                 });
 
@@ -449,12 +450,12 @@ function createCivitAICardButtons() {
 }
 
 function createSVGIcon(fontSize) {
-    const svgIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const svgIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svgIcon.setAttribute('width', fontSize);
     svgIcon.setAttribute('height', fontSize);
     svgIcon.setAttribute('viewBox', '75 85 350 350');
     svgIcon.setAttribute('fill', 'white');
-    if (fontSize == "1.8rem") {
+    if (fontSize == '1.8rem') {
         svgIcon.setAttribute('style', 'margin-top: -2px');
     }
     svgIcon.innerHTML = `
@@ -466,15 +467,10 @@ function createSVGIcon(fontSize) {
 }
 
 function addOnClickToButtons() {
-    const tabs = ['img2img_extra_tabs', 'txt2img_extra_tabs'].map(id => document.getElementById(id));
-    const buttonIds = [
-        'txt2img_checkpoints_extra_refresh',
-        'img2img_checkpoints_extra_refresh',
-        'txt2img_extra_refresh',
-        'img2img_extra_refresh',
-    ];
+    const tabs = ['img2img_extra_tabs', 'txt2img_extra_tabs'].map((id) => document.getElementById(id));
+    const buttonIds = ['txt2img_checkpoints_extra_refresh', 'img2img_checkpoints_extra_refresh', 'txt2img_extra_refresh', 'img2img_extra_refresh'];
 
-    buttonIds.forEach(buttonId => {
+    buttonIds.forEach((buttonId) => {
         let button = document.getElementById(buttonId);
         if (button) {
             button.addEventListener('click', (event) => {
@@ -483,10 +479,10 @@ function addOnClickToButtons() {
         }
     });
 
-    tabs.forEach(tab => {
+    tabs.forEach((tab) => {
         if (tab) {
             const buttons = tab.querySelectorAll('div > button:not(:first-child)');
-            buttons.forEach(button => {
+            buttons.forEach((button) => {
                 button.addEventListener('click', (event) => {
                     createCivitAICardButtons(button);
                 });
@@ -495,7 +491,7 @@ function addOnClickToButtons() {
     });
 }
 
-function modelInfoPopUp(modelName=null, content_type=null, no_message=false) {
+function modelInfoPopUp(modelName = null, content_type = null, no_message = false) {
     const sendToBrowserElement = gradioApp().querySelector('#setting_civitai_send_to_browser input');
     let sendToBrowser = false;
     if (sendToBrowserElement) {
@@ -532,11 +528,11 @@ function modelInfoPopUp(modelName=null, content_type=null, no_message=false) {
             height: '100%',
             backgroundColor: 'rgba(20, 20, 20, 0.95)',
             zIndex: '1001',
-            overflowY: 'auto'
+            overflowY: 'auto',
         });
         overlay.classList.add('civitai-overlay');
         overlay.addEventListener('keydown', handleKeyPress);
-        overlay.addEventListener('click', event => {
+        overlay.addEventListener('click', (event) => {
             if (event.target === overlay) hidePopup();
         });
 
@@ -547,7 +543,7 @@ function modelInfoPopUp(modelName=null, content_type=null, no_message=false) {
             top: '0',
             cursor: 'pointer',
             color: 'white',
-            fontSize: '32pt'
+            fontSize: '32pt',
         });
         closeButton.classList.add('civitai-overlay-close');
         closeButton.textContent = '×';
@@ -565,7 +561,7 @@ function modelInfoPopUp(modelName=null, content_type=null, no_message=false) {
             borderStyle: 'solid',
             borderWidth: 'var(--block-border-width)',
             borderColor: 'var(--block-border-color)',
-            zIndex: '1001'
+            zIndex: '1001',
         });
         inner.classList.add('civitai-overlay-inner');
 
@@ -574,7 +570,7 @@ function modelInfoPopUp(modelName=null, content_type=null, no_message=false) {
             modelInfo = createElementWithStyle('div', {
                 fontSize: '24px',
                 color: 'white',
-                fontFamily: 'var(--font)'
+                fontFamily: 'var(--font)',
             });
             modelInfo.classList.add('civitai-overlay-text');
             modelInfo.textContent = 'Loading model info, please wait!';
@@ -617,7 +613,7 @@ function handleKeyPress(event) {
 
 function inputHTMLPreviewContent(html_input) {
     //console.log("Last 500 characters of HTML input:", html_input.slice(-500));
-    var inner = document.querySelector('.civitai-overlay-inner')
+    var inner = document.querySelector('.civitai-overlay-inner');
     let startIndex = html_input.indexOf("'value': '");
     if (startIndex !== -1) {
         startIndex += "'value': '".length;
@@ -627,7 +623,7 @@ function inputHTMLPreviewContent(html_input) {
         }
         if (endIndex !== -1) {
             let extractedText = html_input.substring(startIndex, endIndex);
-            var modelIdNotFound = extractedText.includes(">Model ID not found.<br>The");
+            var modelIdNotFound = extractedText.includes('>Model ID not found.<br>The');
 
             extractedText = extractedText.replace(/\\n\s*</g, '<');
             extractedText = extractedText.replace(/\\n/g, ' ');
@@ -646,7 +642,7 @@ function inputHTMLPreviewContent(html_input) {
             inner.appendChild(modelInfo);
 
             inner.style.top = 'unset';
-            inner.style.transform = 'translate(-50%, 0%)'
+            inner.style.transform = 'translate(-50%, 0%)';
 
             setDescriptionToggle();
         }
@@ -658,7 +654,7 @@ function metaToTxt2Img(type, element) {
     if (selection.toString().length > 0) {
         return;
     }
-    const genButton = gradioApp().querySelector('#txt2img_extra_tabs > div > button')
+    const genButton = gradioApp().querySelector('#txt2img_extra_tabs > div > button');
     let input = element.querySelector('dd').textContent;
     let inf;
     if (input.endsWith(',')) {
@@ -666,15 +662,15 @@ function metaToTxt2Img(type, element) {
     } else {
         inf = input + ', ';
     }
-    let is_positive = false
-    let is_negative = false
-    switch(type) {
+    let is_positive = false;
+    let is_negative = false;
+    switch (type) {
         case 'Prompt':
-            is_positive = true
+            is_positive = true;
             break;
         case 'Negative prompt':
             inf = 'Negative prompt: ' + inf;
-            is_negative = true
+            is_negative = true;
             break;
         case 'Seed':
             inf = 'Seed: ' + inf;
@@ -709,16 +705,16 @@ function metaToTxt2Img(type, element) {
     const neg_prompt = gradioApp().querySelector('#txt2img_neg_prompt textarea');
     const cfg_scale = gradioApp().querySelector('#txt2img_cfg_scale > div:nth-child(2) > div > input');
     let final = '';
-    let cfg = 'CFG scale: ' + cfg_scale.value + ", "
-    let prompt_addon = cfg + cfg + cfg
+    let cfg = 'CFG scale: ' + cfg_scale.value + ', ';
+    let prompt_addon = cfg + cfg + cfg;
     if (is_positive) {
-        final = inf + "\nNegative prompt: " + neg_prompt.value + "\n" + prompt_addon;
+        final = inf + '\nNegative prompt: ' + neg_prompt.value + '\n' + prompt_addon;
     } else if (is_negative) {
-        final = prompt.value + "\n" + inf + "\n" + prompt_addon;
+        final = prompt.value + '\n' + inf + '\n' + prompt_addon;
     } else {
-        final = prompt.value + "\nNegative prompt: " + neg_prompt.value + "\n" + inf;
+        final = prompt.value + '\nNegative prompt: ' + neg_prompt.value + '\n' + inf;
     }
-    genInfo_to_txt2img(final, false)
+    genInfo_to_txt2img(final, false);
     hidePopup();
     sendClick(genButton);
 }
@@ -736,7 +732,7 @@ function multi_model_select(modelName, modelType, isChecked) {
         if (!selectedModels.includes(modelName)) {
             selectedModels.push(modelName);
         }
-        selectedTypes.push(modelType)
+        selectedTypes.push(modelType);
     } else {
         var modelIndex = selectedModels.indexOf(modelName);
         if (modelIndex > -1) {
@@ -761,7 +757,7 @@ function sendClick(location) {
     const clickEvent = new MouseEvent('click', {
         view: window,
         bubbles: true,
-        cancelable: true
+        cancelable: true,
     });
     location.dispatchEvent(clickEvent);
 }
@@ -780,15 +776,15 @@ function cancelAllDl() {
 
 function setSortable() {
     new Sortable(document.getElementById('queue_list'), {
-        onEnd: function(evt) {
+        onEnd: function (evt) {
             const gradio_input = document.querySelector('#civitai_dl_list.prose').innerHTML;
             const gradio_html = gradioApp().querySelector('#queue_html_input textarea');
             let output = gradioApp().querySelector('#arrange_dl_id textarea');
-            output.value = evt.item.getAttribute('dl_id') + "." +  evt.newIndex;
+            output.value = evt.item.getAttribute('dl_id') + '.' + evt.newIndex;
             updateInput(output);
             gradio_html.value = gradio_input;
             updateInput(gradio_html);
-        }
+        },
     });
 }
 
@@ -797,7 +793,8 @@ function cancelQueueDl() {
     const randomNumber = Math.floor(Math.random() * 1000);
     const paddedNumber = String(randomNumber).padStart(3, '0');
     cancelBtn.value = paddedNumber;
-    updateInput(cancelBtn);cancelBtn
+    updateInput(cancelBtn);
+    cancelBtn;
 }
 
 function setDownloadProgressBar() {
@@ -813,7 +810,7 @@ function setDownloadProgressBar() {
     let nonQueue = dlList.querySelector('.civitai_nonqueue_list');
     let dlItem = dlList.querySelector('.civitai_dl_item');
     let dlBtn = dlItem.querySelector('.dl_action_btn > span');
-    dlBtn.innerText = "Cancel";
+    dlBtn.innerText = 'Cancel';
     dlBtn.setAttribute('onclick', 'cancelQueueDl()');
     let dlId = dlItem.getAttribute('dl_id');
     let selector = '.civitai_dl_item[dl_id="' + parseInt(dlId) + '"]';
@@ -831,7 +828,7 @@ function setDownloadProgressBar() {
         if (!dlText) {
             return;
         }
-        dlText = dlText.innerText
+        dlText = dlText.innerText;
         percentage = parseFloat(browserProgress.style.width);
 
         dlItem = dlList.querySelector(selector);
@@ -843,13 +840,13 @@ function setDownloadProgressBar() {
         if (percentage >= 100) {
             clearInterval(interval);
             dlBtn = dlItem.querySelector('.dl_action_btn > span');
-            dlBtn.innerText = "Remove";
+            dlBtn.innerText = 'Remove';
             dlBtn.setAttribute('onclick', 'removeDlItem(' + parseInt(dlId) + ', this)');
             dlItem.className = 'civitai_dl_item_completed';
             dlProgressBar.textContent = 'Completed';
             dlProgressBar.style.width = '100%';
             const gradio_input = document.querySelector('#civitai_dl_list.prose').innerHTML;
-            gradio_html.value = gradio_input
+            gradio_html.value = gradio_input;
             updateInput(gradio_html);
             return;
         }
@@ -857,44 +854,44 @@ function setDownloadProgressBar() {
         if (currentDlCancelled) {
             clearInterval(interval);
             dlBtn = dlItem.querySelector('.dl_action_btn > span');
-            dlBtn.innerText = "Remove";
+            dlBtn.innerText = 'Remove';
             dlBtn.setAttribute('onclick', 'removeDlItem(' + parseInt(dlId) + ', this)');
             currentDlCancelled = false;
             dlItem.className = 'civitai_dl_item_failed';
             dlProgressBar.textContent = 'Cancelled';
-            dlProgressBar.style.width = "0%";
+            dlProgressBar.style.width = '0%';
             const gradio_input = document.querySelector('#civitai_dl_list.prose').innerHTML;
-            gradio_html.value = gradio_input
+            gradio_html.value = gradio_input;
             updateInput(gradio_html);
             return;
         } else if (allDlCancelled) {
             clearInterval(interval);
             allDlCancelled = false;
             let dlItems = dlList.querySelectorAll('.civitai_dl_item');
-            dlItems.forEach(function(item) {
+            dlItems.forEach(function (item) {
                 dlBtn = dlItem.querySelector('.dl_action_btn > span');
-                dlBtn.innerText = "Remove";
+                dlBtn.innerText = 'Remove';
                 dlBtn.setAttribute('onclick', 'removeDlItem(' + parseInt(dlId) + ', this)');
                 dlProgressBar = item.querySelector('.dl_progress_bar');
                 dlProgressBar.textContent = 'Cancelled';
-                dlProgressBar.style.width = "0%";
+                dlProgressBar.style.width = '0%';
                 nonQueue.appendChild(item);
                 item.className = 'civitai_dl_item_failed';
             });
             const gradio_input = document.querySelector('#civitai_dl_list.prose').innerHTML;
-            gradio_html.value = gradio_input
+            gradio_html.value = gradio_input;
             updateInput(gradio_html);
             return;
         } else if (dlText.includes('Encountered an error during download of') || dlText.includes('not found on CivitAI servers') || dlText.includes('requires a personal CivitAI API to be downloaded')) {
             clearInterval(interval);
             dlBtn = dlItem.querySelector('.dl_action_btn > span');
-            dlBtn.innerText = "Remove";
+            dlBtn.innerText = 'Remove';
             dlBtn.setAttribute('onclick', 'removeDlItem(' + parseInt(dlId) + ', this)');
             dlItem.className = 'civitai_dl_item_failed';
             dlProgressBar.textContent = 'Failed';
-            dlProgressBar.style.width = "0%";
+            dlProgressBar.style.width = '0%';
             const gradio_input = document.querySelector('#civitai_dl_list.prose').innerHTML;
-            gradio_html.value = gradio_input
+            gradio_html.value = gradio_input;
             updateInput(gradio_html);
             return;
         }
@@ -906,7 +903,7 @@ function removeDlItem(dl_id, element) {
     const output = gradioApp().querySelector('#remove_dl_id textarea');
     var dl_item = element.parentNode.parentNode;
     dl_item.parentNode.removeChild(dl_item);
-    output.value = dl_id
+    output.value = dl_id;
     updateInput(output);
 
     const gradio_input = document.querySelector('#civitai_dl_list.prose').innerHTML;
@@ -917,12 +914,12 @@ function removeDlItem(dl_id, element) {
 // Selects all models
 function selectAllModels() {
     const checkboxes = Array.from(document.querySelectorAll('.model-checkbox'));
-    const allChecked = checkboxes.every(checkbox => checkbox.checked);
-    const allUnchecked = checkboxes.every(checkbox => !checkbox.checked);
+    const allChecked = checkboxes.every((checkbox) => checkbox.checked);
+    const allUnchecked = checkboxes.every((checkbox) => !checkbox.checked);
     if (allChecked || allUnchecked) {
         checkboxes.forEach(sendClick);
     } else {
-        checkboxes.filter(checkbox => !checkbox.checked).forEach(sendClick);
+        checkboxes.filter((checkbox) => !checkbox.checked).forEach(sendClick);
     }
 }
 
@@ -930,71 +927,71 @@ function selectAllModels() {
 function deselectAllModels() {
     setTimeout(() => {
         const checkboxes = Array.from(document.querySelectorAll('.model-checkbox'));
-        checkboxes.filter(checkbox => checkbox.checked).forEach(sendClick);
+        checkboxes.filter((checkbox) => checkbox.checked).forEach(sendClick);
     }, 1000);
 }
 
 // Sends Image URL to Python to pull generation info
 function sendImgUrl(image_url) {
     const randomNumber = Math.floor(Math.random() * 1000);
-    const genButton = gradioApp().querySelector('#txt2img_extra_tabs > div > button')
+    const genButton = gradioApp().querySelector('#txt2img_extra_tabs > div > button');
     const paddedNumber = String(randomNumber).padStart(3, '0');
     const input = gradioApp().querySelector('#civitai_text2img_input textarea');
-    input.value = paddedNumber + "." + image_url;
+    input.value = paddedNumber + '.' + image_url;
     updateInput(input);
     hidePopup();
     sendClick(genButton);
 }
 
 // Sends txt2img info to txt2img tab
-function genInfo_to_txt2img(genInfo, do_slice=true) {
+function genInfo_to_txt2img(genInfo, do_slice = true) {
     let insert = gradioApp().querySelector('#txt2img_prompt textarea');
     let pasteButton = gradioApp().querySelector('#paste');
     if (genInfo) {
         insert.value = do_slice ? genInfo.slice(5) : genInfo;
-        insert.dispatchEvent(new Event('input', { bubbles: true }));
-        pasteButton.dispatchEvent(new Event('click', { bubbles: true }));
+        insert.dispatchEvent(new Event('input', {bubbles: true}));
+        pasteButton.dispatchEvent(new Event('click', {bubbles: true}));
     }
 }
 
 // Hide installed models
 function hideInstalled(toggleValue) {
-    const modelList =  document.querySelectorAll('.column.civmodellist > .civmodelcardinstalled')
-    modelList.forEach(item => {
+    const modelList = document.querySelectorAll('.column.civmodellist > .civmodelcardinstalled');
+    modelList.forEach((item) => {
         item.style.display = toggleValue ? 'none' : 'block';
     });
 }
 
 function setDescriptionToggle() {
-    const popUp = document.querySelector(".civitai-overlay-inner");
+    const popUp = document.querySelector('.civitai-overlay-inner');
     let toggleButton = null;
     let descriptionDiv = null;
 
     if (popUp) {
-        descriptionDiv = popUp.querySelector(".model-description");
-        toggleButton = popUp.querySelector(".description-toggle-label");
+        descriptionDiv = popUp.querySelector('.model-description');
+        toggleButton = popUp.querySelector('.description-toggle-label');
     } else {
-        descriptionDiv = document.querySelector(".model-description");
-        toggleButton = document.querySelector(".description-toggle-label");
+        descriptionDiv = document.querySelector('.model-description');
+        toggleButton = document.querySelector('.description-toggle-label');
     }
 
     if (descriptionDiv && descriptionDiv.scrollHeight <= 400) {
-        toggleButton.style.visibility = "hidden";
-        toggleButton.style.height = "0";
-        descriptionDiv.style.position = "unset";
+        toggleButton.style.visibility = 'hidden';
+        toggleButton.style.height = '0';
+        descriptionDiv.style.position = 'unset';
     }
 }
 
 function submitNewSubfolder(subfolderId, subfolderValue) {
     const output = gradioApp().querySelector('#create_subfolder textarea');
-    output.value = subfolderId + ".add." + subfolderValue;
-    updateInput(output)
+    output.value = subfolderId + '.add.' + subfolderValue;
+    updateInput(output);
 }
 
 function deleteSubfolder(subfolderId) {
     const output = gradioApp().querySelector('#create_subfolder textarea');
-    output.value = subfolderId + ".delete.";
-    updateInput(output)
+    output.value = subfolderId + '.delete.';
+    updateInput(output);
 }
 
 function createCustomSubfolder(subfolderDiv, subfolderId, subfolderValue) {
@@ -1003,48 +1000,48 @@ function createCustomSubfolder(subfolderDiv, subfolderId, subfolderValue) {
         return;
     }
 
-    const newContainerDiv = document.createElement("div");
-    newContainerDiv.classList.add("svelte-1f354aw", "container", "CivitDefaultSubfolder");
-    newContainerDiv.style.display = "flex";
-    newContainerDiv.style.alignItems = "center";
+    const newContainerDiv = document.createElement('div');
+    newContainerDiv.classList.add('svelte-1f354aw', 'container', 'CivitDefaultSubfolder');
+    newContainerDiv.style.display = 'flex';
+    newContainerDiv.style.alignItems = 'center';
 
-    newContainerDiv.setAttribute("subfolder_id", subfolderId);
+    newContainerDiv.setAttribute('subfolder_id', subfolderId);
 
-    const newTextArea = document.createElement("textarea");
-    newTextArea.setAttribute("data-testid", "textbox");
-    newTextArea.classList.add("scroll-hide", "svelte-1f354aw");
-    newTextArea.setAttribute("dir", "ltr");
-    newTextArea.setAttribute("placeholder", "{BASEMODEL}/{NSFW}/{AUTHOR}/{MODELNAME}/{MODELID}/{VERSIONNAME}/{VERSIONID}");
-    newTextArea.setAttribute("rows", "1");
-    newTextArea.style.overflowY = "scroll";
-    newTextArea.style.height = "42px";
-    newTextArea.style.flex = "1";
+    const newTextArea = document.createElement('textarea');
+    newTextArea.setAttribute('data-testid', 'textbox');
+    newTextArea.classList.add('scroll-hide', 'svelte-1f354aw');
+    newTextArea.setAttribute('dir', 'ltr');
+    newTextArea.setAttribute('placeholder', '{BASEMODEL}/{NSFW}/{AUTHOR}/{MODELNAME}/{MODELID}/{VERSIONNAME}/{VERSIONID}');
+    newTextArea.setAttribute('rows', '1');
+    newTextArea.style.overflowY = 'scroll';
+    newTextArea.style.height = '42px';
+    newTextArea.style.flex = '1';
 
     if (typeof subfolderValue !== 'undefined') {
         newTextArea.value = subfolderValue;
     }
 
-    newTextArea.addEventListener("keydown", function(event) {
-        if (event.key === "Enter") {
+    newTextArea.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') {
             event.preventDefault();
             submitNewSubfolder(subfolderId, newTextArea.value);
         }
     });
 
-    const saveButton = document.createElement("button");
-    saveButton.textContent = "Save";
-    saveButton.classList.add("save-button", "lg", "primary", "gradio-button", "svelte-cmf5ev");
-    saveButton.setAttribute("title", "")
-    saveButton.style.marginRight = "10px";
-    saveButton.addEventListener("click", function() {
+    const saveButton = document.createElement('button');
+    saveButton.textContent = 'Save';
+    saveButton.classList.add('save-button', 'lg', 'primary', 'gradio-button', 'svelte-cmf5ev');
+    saveButton.setAttribute('title', '');
+    saveButton.style.marginRight = '10px';
+    saveButton.addEventListener('click', function () {
         submitNewSubfolder(subfolderId, newTextArea.value);
     });
 
-    const deleteButton = document.createElement("button");
-    deleteButton.textContent = "Delete";
-    deleteButton.classList.add("delete-button", "lg", "primary", "gradio-button", "svelte-cmf5ev");
-    deleteButton.style.marginRight = "10px";
-    deleteButton.addEventListener("click", function() {
+    const deleteButton = document.createElement('button');
+    deleteButton.textContent = 'Delete';
+    deleteButton.classList.add('delete-button', 'lg', 'primary', 'gradio-button', 'svelte-cmf5ev');
+    deleteButton.style.marginRight = '10px';
+    deleteButton.addEventListener('click', function () {
         deleteSubfolder(subfolderId);
         newContainerDiv.remove();
     });
@@ -1057,16 +1054,16 @@ function createCustomSubfolder(subfolderDiv, subfolderId, subfolderValue) {
 }
 
 function insertExistingSubfolders(input) {
-    const subfolder = document.querySelectorAll("civitai-custom-subfolder-div");
+    const subfolder = document.querySelectorAll('civitai-custom-subfolder-div');
     createCustomSubfolder(subfolder, Id, Value);
 }
 
 function createSubfolderButton() {
-    const subfolderParent = document.getElementById("create-sub-accordion");
-    const subfolderDiv = subfolderParent.querySelector(".accordion");
+    const subfolderParent = document.getElementById('create-sub-accordion');
+    const subfolderDiv = subfolderParent.querySelector('.accordion');
 
-    const subfolder = document.createElement("div");
-    subfolder.classList.add("flex-column-layout", "civitai-custom-subfolder-div");
+    const subfolder = document.createElement('div');
+    subfolder.classList.add('flex-column-layout', 'civitai-custom-subfolder-div');
 
     const customSubfoldersList = document.querySelector('#custom_subfolders_list');
     const textarea = customSubfoldersList.querySelector('textarea');
@@ -1081,22 +1078,22 @@ function createSubfolderButton() {
         createCustomSubfolder(subfolder, subfolderId, subfolderValue);
     }
 
-    const buttonContainer = document.createElement("div");
-    buttonContainer.classList.add("sub-folder-button-container");
-    buttonContainer.style.display = "flex";
-    buttonContainer.style.gap = "10px";
+    const buttonContainer = document.createElement('div');
+    buttonContainer.classList.add('sub-folder-button-container');
+    buttonContainer.style.display = 'flex';
+    buttonContainer.style.gap = '10px';
 
-    const optionsDiv = document.createElement("div");
-    optionsDiv.classList.add("placeholder-options-container");
-    optionsDiv.style.display = "flex";
-    optionsDiv.style.justifyContent = "center";
+    const optionsDiv = document.createElement('div');
+    optionsDiv.classList.add('placeholder-options-container');
+    optionsDiv.style.display = 'flex';
+    optionsDiv.style.justifyContent = 'center';
 
-    const plusButton = document.createElement("button");
-    plusButton.textContent = "Create new default sub folder entry";
-    plusButton.classList.add("plus-button", "lg", "primary", "gradio-button", "svelte-cmf5ev");
-    plusButton.style.marginTop = "10px";
-    plusButton.addEventListener("click", function() {
-        const existingSubfolderDivs = document.querySelectorAll("div.CivitDefaultSubfolder");
+    const plusButton = document.createElement('button');
+    plusButton.textContent = 'Create new default sub folder entry';
+    plusButton.classList.add('plus-button', 'lg', 'primary', 'gradio-button', 'svelte-cmf5ev');
+    plusButton.style.marginTop = '10px';
+    plusButton.addEventListener('click', function () {
+        const existingSubfolderDivs = document.querySelectorAll('div.CivitDefaultSubfolder');
         let highestSubfolderId = 0;
 
         existingSubfolderDivs.forEach((div) => {
@@ -1133,17 +1130,17 @@ function createSubfolderButton() {
         <div>Always use '/' as a seperator, regardless of your OS</div>
     </div>
     `;
-    const guideButton = document.createElement("button");
-    guideButton.textContent = "Guide";
-    guideButton.classList.add("guide-button", "lg", "primary", "gradio-button", "svelte-cmf5ev");
-    guideButton.style.marginTop = "10px";
-    guideButton.addEventListener("click", function() {
+    const guideButton = document.createElement('button');
+    guideButton.textContent = 'Guide';
+    guideButton.classList.add('guide-button', 'lg', 'primary', 'gradio-button', 'svelte-cmf5ev');
+    guideButton.style.marginTop = '10px';
+    guideButton.addEventListener('click', function () {
         modelInfoPopUp(null, null, true);
         insertGuideMessage(guide_html);
     });
 
-    const optionsText = document.createElement("span");
-    optionsText.textContent = "Available options: {BASEMODEL} {NSFW} {AUTHOR} {MODELNAME} {MODELID} {VERSIONNAME} {VERSIONID}";
+    const optionsText = document.createElement('span');
+    optionsText.textContent = 'Available options: {BASEMODEL} {NSFW} {AUTHOR} {MODELNAME} {MODELID} {VERSIONNAME} {VERSIONID}';
 
     // Append buttons to the container
     buttonContainer.appendChild(guideButton);
@@ -1157,7 +1154,7 @@ function createSubfolderButton() {
 }
 
 function insertGuideMessage(html_input) {
-    const overlayContainer = document.querySelector(".civitai-overlay-inner");
+    const overlayContainer = document.querySelector('.civitai-overlay-inner');
     if (overlayContainer) {
         const guideHtml = document.createElement('div');
         guideHtml.innerHTML = html_input;
@@ -1171,22 +1168,22 @@ function insertGuideMessage(html_input) {
 function onPageLoad() {
     updateSVGIcons();
 
-    let subfolderDiv = document.querySelector("#settings_civitai_browser_plus > div > div");
-    let downloadDiv = document.querySelector("#settings_civitai_browser_download > div > div");
-    let settingsDiv = document.querySelector("#settings_civitai_browser > div > div");
+    let subfolderDiv = document.querySelector('#settings_civitai_browser_plus > div > div');
+    let downloadDiv = document.querySelector('#settings_civitai_browser_download > div > div');
+    let settingsDiv = document.querySelector('#settings_civitai_browser > div > div');
 
     if (subfolderDiv || downloadDiv) {
         let div = subfolderDiv || downloadDiv;
         let subfolders = div.querySelectorAll("[id$='subfolder']");
-        createAccordion(div, subfolders, "Default sub folders", 'default-sub-accordion');
-        createAccordion(div, null, "Create sub folder entries", 'create-sub-accordion');
+        createAccordion(div, subfolders, 'Default sub folders', 'default-sub-accordion');
+        createAccordion(div, null, 'Create sub folder entries', 'create-sub-accordion');
         createSubfolderButton();
     }
 
     if (subfolderDiv || settingsDiv) {
         let div = subfolderDiv || settingsDiv;
         let proxy = div.querySelectorAll("[id$='proxy']");
-        createAccordion(div, proxy, "Proxy options", 'proxy-accordion');
+        createAccordion(div, proxy, 'Proxy options', 'proxy-accordion');
     }
 
     let toggle4L = document.getElementById('toggle4L');
@@ -1201,7 +1198,8 @@ function onPageLoad() {
     }
 
     if (hash_toggle) {
-        let insertText = 'This option generates unique hashes for models that were not downloaded with this extension.\nA hash is required for any of the options below to work, a model with no hash will be skipped.\nInitial hash generation is a one-time process per file.';
+        let insertText =
+            'This option generates unique hashes for models that were not downloaded with this extension.\nA hash is required for any of the options below to work, a model with no hash will be skipped.\nInitial hash generation is a one-time process per file.';
         createTooltip(hash_toggle, hash_toggle_hover, insertText);
     }
 
