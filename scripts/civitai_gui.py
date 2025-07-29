@@ -1367,7 +1367,6 @@ def on_ui_settings():
         "TextualInversion",
         "Poses",
         "Controlnet",
-        "Hypernetwork",
         "MotionModule",
         ("Upscaler", "SWINIR"),
         ("Upscaler", "REALESRGAN"),

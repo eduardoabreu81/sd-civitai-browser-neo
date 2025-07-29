@@ -400,8 +400,6 @@ def model_from_sent(model_name, content_type):
     content_type = re.sub(r'\.\d{3}$', '', content_type).lower()
     if 'inversion' in content_type:
         content_type = ['TextualInversion']
-    elif 'hypernetwork' in content_type:
-        content_type = ['Hypernetwork']
     elif 'checkpoint' in content_type:
         content_type = ['Checkpoint']
     elif 'lora' in content_type:
@@ -503,8 +501,6 @@ def send_to_browser(model_name, content_type, click_first_item):
     content_type = re.sub(r'\.\d{3}$', '', content_type).lower()
     if 'inversion' in content_type:
         content_type = ['TextualInversion']
-    elif 'hypernetwork' in content_type:
-        content_type = ['Hypernetwork']
     elif 'checkpoint' in content_type:
         content_type = ['Checkpoint']
     elif 'lora' in content_type:
@@ -945,9 +941,9 @@ def version_match(file_paths, api_response):
 def get_content_choices(scan_choices=False):
     use_LORA = getattr(opts, "use_LORA", False)
     if use_LORA:
-        content_list = ["Checkpoint", "TextualInversion", "LORA, LoCon, DoRA", "Poses", "Controlnet", "Hypernetwork", "AestheticGradient", "VAE", "Upscaler", "MotionModule", "Wildcards", "Workflows", "Other"]
+        content_list = ["Checkpoint", "TextualInversion", "LORA, LoCon, DoRA", "Poses", "Controlnet", "AestheticGradient", "VAE", "Upscaler", "MotionModule", "Wildcards", "Workflows", "Other"]
     else:
-        content_list = ["Checkpoint", "TextualInversion", "LORA", "LoCon", "DoRA", "Poses", "Controlnet", "Hypernetwork", "AestheticGradient", "VAE", "Upscaler", "MotionModule", "Wildcards", "Workflows", "Other"]
+        content_list = ["Checkpoint", "TextualInversion", "LORA", "LoCon", "DoRA", "Poses", "Controlnet", "AestheticGradient", "VAE", "Upscaler", "MotionModule", "Wildcards", "Workflows", "Other"]
     if scan_choices:
         content_list.insert(0, 'All')
         return content_list

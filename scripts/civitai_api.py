@@ -30,7 +30,6 @@ gl.init()
 # Mapping for short/clear display names for model types
 MODEL_TYPE_DISPLAY_NAMES = {
     'TextualInversion': 'Embedding',
-    'Hypernetwork': 'Hypernet',
     'AestheticGradient': 'Aesthetic',
     'MotionModule': 'Motion',
     'Workflows': 'Workflow',
@@ -75,7 +74,6 @@ def contenttype_folder(content_type, desc=None, fromCheck=False, custom_folder=N
     content_type_map = {
         'modelFolder': lambda: main_models,
         'Checkpoint': lambda: resolve_path('ckpt_dir', main_models / 'Stable-diffusion'),
-        'Hypernetwork': lambda: resolve_path('hypernetwork_dir', main_models / 'hypernetworks'),
         'TextualInversion': lambda: resolve_path('embeddings_dir', main_data / 'embeddings'),
         'AestheticGradient': lambda: (Path(custom_folder) if custom_folder else ext_dir / 'stable-diffusion-webui-aesthetic-gradients') / 'aesthetic_embeddings',
         'LORA': lambda: resolve_path('lora_dir', main_models / 'Lora'),
