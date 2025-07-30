@@ -1,7 +1,8 @@
 ## Key features and changes in this fork:
 
 **_All changes in this fork are marked in the code as `=== ANXETY EDITs ===`_**</br>
-**_Treat this fork as an author's vision – it's not a fork that will fix absolutely every problem... (The codebase really is bullsh*t)_**
+**_Treat this fork as an author's vision – it's not a fork that will fix absolutely every problem...</br>
+(The codebase really is bullsh*t)_**
 
 - Redesigned the model cards in the browser to give them a modern look :3
 - Added badges to model cards to display model type and NSFW status (if applicable).</br>
@@ -31,7 +32,7 @@
 - [X] Become terrified at the thought of a complete refactor of the extension.
 - [X] Add a cat to the code 🐱
 
-
+<h1></h1>
 
 #### Preview Cards (new style):
 
