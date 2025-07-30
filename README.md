@@ -13,12 +13,20 @@
 
 #### List of changes taken from pull requests (PRs) or bugfixes:
 
+- Added a way to search for a model by its `hash`. [Issues #309](https://github.com/BlafKing/sd-civitai-browser-plus/issues/309)
 - Models are now saved using their original file names, without any extra or "random" IDs. [Issues #361](https://github.com/BlafKing/sd-civitai-browser-plus/issues/361)
 - Complete removal of HyperNetwork support – this type is deprecated and its removal should resolve launch issues in [Forge-Classic](https://github.com/Haoming02/sd-webui-forge-classic) ([Issue #390](https://github.com/BlafKing/sd-civitai-browser-plus/issues/390))
 - HTML description cleanup fix taken from [PR #384](https://github.com/BlafKing/sd-civitai-browser-plus/pull/384)</br>
   _(see `clean_description` in [scripts/civitai_file_manage.py](./scripts/civitai_file_manage.py#L642))_
 - Added a clarifying message about Early Access to avoid confusion~ [Issues #383](https://github.com/BlafKing/sd-civitai-browser-plus/issues/383)</br>
   _(see `download_file` in [scripts/civitai_download.py](./scripts/civitai_download.py#L380))_
+
+#### ToDo:
+- [X] Add the ability to search for models by hash. (Only SHA256)
+- [ ] Implement an option to compress preview images, both in the browser and for downloaded files (optionally toggleable in settings).
+- [ ] Fix the issue with displaying local model HTML files (should open the local file instead of the online page).
+- [ ] Fix the model update buttons (if they are broken).
+- [ ] Fix model deletion to ensure complete cleanup: including preview images, JSON, and HTML files.
 
 <h1></h1>
 

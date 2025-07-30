@@ -247,7 +247,7 @@ def on_ui_tabs():
             with gr.Row(elem_id="searchRow"):
                 with gr.Accordion(label="", open=False, elem_id=filterBox):
                     with gr.Row():
-                        use_search_term = gr.Radio(label="Search type:", choices=["Model name", "User name", "Tag"], value="Model name", elem_id="searchType")
+                        use_search_term = gr.Radio(label="Search type:", choices=["Model name", "User name", "Tag", "SHA256"], value="Model name", elem_id="searchType")
                     with gr.Row():
                         content_type = gr.Dropdown(label='Content type:', choices=content_choices, value=None, type="value", multiselect=True, elem_id="centerText")
                     with gr.Row():

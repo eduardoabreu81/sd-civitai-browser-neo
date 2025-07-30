@@ -297,6 +297,58 @@ def model_list_html(json_data):
     HTML += '</div>'
     return HTML
 
+## === ANXETY EDITs ===
+def search_by_sha256(sha256_hash):
+    """
+    Search for a model by SHA256 hash.
+    Returns the model data if found, or an error message if not.
+    """
+    if not re.match(r'^[A-F0-9]{64}$', sha256_hash.upper()):
+        return "invalid_hash"
+
+    api_url = f"https://civitai.com/api/v1/model-versions/by-hash/{sha256_hash.upper()}"
+    headers = get_headers()
+    proxies, ssl = get_proxies()
+
+    try:
+        response = requests.get(api_url, headers=headers, timeout=(60,30), proxies=proxies, verify=ssl)
+        if response.status_code == 200:
+            data = response.json()
+            if 'error' in data:
+                return "not_found"
+            else:
+                # Get the model ID and fetch the full model data
+                model_id = data.get("modelId")
+                if model_id:
+                    model_url = f"https://civitai.com/api/v1/models/{model_id}"
+                    model_response = requests.get(model_url, headers=headers, timeout=(60,30), proxies=proxies, verify=ssl)
+                    if model_response.status_code == 200:
+                        model_data = model_response.json()
+                        # Create a response format similar to the regular search
+                        return {
+                            "items": [model_data],
+                            "metadata": {
+                                "totalItems": 1,
+                                "currentPage": 1,
+                                "pageSize": 1,
+                                "totalPages": 1
+                            }
+                        }
+                return "not_found"
+        elif response.status_code == 404:
+            return "not_found"
+        elif response.status_code == 503:
+            return "offline"
+        else:
+            return "error"
+    except requests.exceptions.Timeout:
+        return "timeout"
+    except requests.exceptions.RequestException:
+        return "error"
+    except Exception:
+        return "error"
+
+## === ANXETY EDITs ===
 def create_api_url(content_type=None, sort_type=None, period_type=None, use_search_term=None, base_filter=None, only_liked=None, tile_count=None, search_term=None, nsfw=None, isNext=None):
     base_url = "https://civitai.com/api/v1/models"
     version_url = "https://civitai.com/api/v1/model-versions"
@@ -319,6 +371,10 @@ def create_api_url(content_type=None, sort_type=None, period_type=None, use_sear
             if model_match:
                 model_number = model_match.group(1)
                 params = {'ids': model_number}
+        elif use_search_term == "SHA256":
+            # SHA256 search is handled separately in initial_model_page
+            # This function is not used for SHA256 search
+            pass
         else:
             key_map = {'User name': 'username', 'Tag': 'tag'}
             search_key = key_map.get(use_search_term, 'query')
@@ -359,6 +415,7 @@ def convert_LORA_LoCon(content_type):
                 content_type.append('DoRA')
     return content_type
 
+## === ANXETY EDITs ===
 def initial_model_page(content_type=None, sort_type=None, period_type=None, use_search_term=None, search_term=None, current_page=None, base_filter=None, only_liked=None, nsfw=None, tile_count=None, from_update_tab=False):
     content_type = convert_LORA_LoCon(content_type)
     current_inputs = (content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, nsfw)
@@ -370,21 +427,47 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
         gl.from_update_tab = False
 
         if current_page == 1:
-            api_url = create_api_url(content_type, sort_type, period_type, use_search_term, base_filter, only_liked, tile_count, search_term, nsfw)
-            gl.url_list = {1 : api_url}
+            # Handle SHA256 search specially
+            if use_search_term == "SHA256" and search_term:
+                sha256_hash = search_term.strip().upper()
+                gl.json_data = search_by_sha256(sha256_hash)
+                if isinstance(gl.json_data, dict):
+                    gl.url_list = {1: f"sha256_search_{sha256_hash}"}
+                else:
+                    # Handle error cases
+                    gl.url_list = {1: "error"}
+            else:
+                api_url = create_api_url(content_type, sort_type, period_type, use_search_term, base_filter, only_liked, tile_count, search_term, nsfw)
+                gl.url_list = {1: api_url}
+                gl.json_data = request_civit_api(api_url)
         else:
             api_url = gl.url_list.get(current_page)
+            if api_url and api_url.startswith("sha256_search_"):
+                # For SHA256 search, we don't support pagination, so return to page 1
+                return initial_model_page(content_type, sort_type, period_type, use_search_term, search_term, 1, base_filter, only_liked, nsfw, tile_count, from_update_tab)
+            else:
+                gl.json_data = request_civit_api(api_url)
     else:
         api_url = gl.url_list.get(current_page)
         gl.from_update_tab = True
-
-    gl.json_data = request_civit_api(api_url)
+        if api_url and not api_url.startswith("sha256_search_"):
+            gl.json_data = request_civit_api(api_url)
 
     max_page = 1
     model_list = []
     hasPrev, hasNext = False, False
     if not isinstance(gl.json_data, dict):
-        HTML = api_error_msg(gl.json_data)
+        # Handle SHA256 specific errors
+        if use_search_term == "SHA256" and gl.json_data == "not_found":
+            print(f"No model found with SHA256 hash: {search_term}")
+            print("The model might not exist on CivitAI or the hash might be incorrect.")
+            HTML = api_error_msg("sha256_not_found")
+        elif use_search_term == "SHA256" and gl.json_data == "invalid_hash":
+            print(f"Invalid SHA256 hash format: {search_term}")
+            print("Please enter a valid 64-character hexadecimal hash.")
+            HTML = api_error_msg("invalid_hash")
+        else:
+            HTML = api_error_msg(gl.json_data)
 
     else:
         gl.json_data = insert_metadata(1)
@@ -1179,6 +1262,7 @@ def request_civit_api(api_url=None, skip_error_check=False):
             return "offline"
     return data
 
+## === ANXETY EDITs ===
 def api_error_msg(input_string):
     div = '<div style="color: white; font-family: var(--font); font-size: 24px; text-align: center; margin: 50px !important;">'
     if input_string == "not_found":
@@ -1191,5 +1275,9 @@ def api_error_msg(input_string):
         return div + "The CivitAI servers are currently offline.<br>Please try again later."
     elif input_string == "no_items":
         return div + "Failed to retrieve any models from CivitAI<br>The servers might be too busy or down if the issue persists."
+    elif input_string == "invalid_hash":
+        return div + "Invalid SHA256 hash format.<br>Please enter a valid 64-character hexadecimal hash.</div>"
+    elif input_string == "sha256_not_found":
+        return div + "No model found with this SHA256 hash.<br>The model might not exist on CivitAI or the hash might be incorrect.</div>"
     else:
         return div + "The CivitAI-API failed to respond due to an error.<br>Check the logs for more details."
