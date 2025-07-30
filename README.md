@@ -1,6 +1,7 @@
 ## Key features and changes in this fork:
 
-**_All changes in this fork are marked in the code as `=== ANXETY EDITs ===`_**
+**_All changes in this fork are marked in the code as `=== ANXETY EDITs ===`_**</br>
+**_Treat this fork as an author's vision – it's not a fork that will fix absolutely every problem... (The codebase really is bullsh*t)_**
 
 - Redesigned the model cards in the browser to give them a modern look :3
 - Added badges to model cards to display model type and NSFW status (if applicable).</br>
@@ -21,14 +22,16 @@
 - Added a clarifying message about Early Access to avoid confusion~ [Issues #383](https://github.com/BlafKing/sd-civitai-browser-plus/issues/383)</br>
   _(see `download_file` in [scripts/civitai_download.py](./scripts/civitai_download.py#L380))_
 
-#### ToDo:
+### ToDo:
 - [X] Add the ability to search for models by hash. (Only SHA256)
 - [ ] Implement an option to compress preview images, both in the browser and for downloaded files (optionally toggleable in settings).
 - [ ] Fix the issue with displaying local model HTML files (should open the local file instead of the online page).
 - [ ] Fix the model update buttons (if they are broken).
 - [ ] Fix model deletion to ensure complete cleanup: including preview images, JSON, and HTML files.
+- [X] Become terrified at the thought of a complete refactor of the extension.
+- [X] Add a cat to the code 🐱
 
-<h1></h1>
+
 
 #### Preview Cards (new style):
 

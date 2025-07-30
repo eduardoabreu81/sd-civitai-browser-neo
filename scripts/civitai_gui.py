@@ -18,36 +18,7 @@ import scripts.civitai_file_manage as _file
 import scripts.civitai_global as gl
 import scripts.civitai_api as _api
 
-def git_tag():
-    try:
-        return subprocess.check_output([os.environ.get('GIT', "git"), "describe", "--tags"], shell=False, encoding='utf8').strip()
-    except:
-        return None
 
-try:
-    import modules_forge
-    forge = True
-    ver_bool = True
-except ImportError:
-    forge = False
-
-if not forge:
-    try:
-        from packaging import version
-        ver = git_tag()
-
-        if not ver:
-            try:
-                from modules import launch_utils
-                ver = launch_utils.git_tag()
-            except:
-                ver_bool = False
-        if ver:
-            ver = ver.split('-')[0].rsplit('-', 1)[0]
-            ver_bool = version.parse(ver[0:]) >= version.parse("1.7")
-    except ImportError:
-        print("Python module 'packaging' has not been imported correctly, please try to restart or install it manually.")
-        ver_bool = False
 
 gl.init()
 
@@ -1056,10 +1027,7 @@ def on_ui_tabs():
             outputs=[]
         )
 
-    if ver_bool:
-        tab_name = "CivitAI Browser+"
-    else:
-        tab_name = "Civitai Browser+"
+    tab_name = "CivitAI Browser+"
 
     return (civitai_interface, tab_name, "civitai_interface"),
 
@@ -1073,17 +1041,15 @@ def subfolder_list(folder, desc=None):
 def make_lambda(folder, desc):
     return lambda: {"choices": subfolder_list(folder, desc)}
 
+## === ANXETY EDITs ===
 def on_ui_settings():
-    if ver_bool:
-        browser = ("civitai_browser", "Browser")
-        download = ("civitai_browser_download", "Downloads")
+    browser = ('civitai_browser', 'Browser')
+    download = ('civitai_browser_download', 'Downloads')
 
-        categories.register_category("civitai_browser_plus", "CivitAI Browser+")
-        cat_id = "civitai_browser_plus"
-    else:
-        section = ("civitai_browser_plus", "CivitAI Browser+")
-        browser = download = section
-    if not (hasattr(shared.OptionInfo, "info") and callable(getattr(shared.OptionInfo, "info"))):
+    categories.register_category('civitai_browser_plus', 'CivitAI Browser+')
+    cat_id = 'civitai_browser_plus'   # ANXETY: You have to name a variable like - pussy_id 🐱 :3
+
+    if not (hasattr(shared.OptionInfo, 'info') and callable(getattr(shared.OptionInfo, 'info'))):
         def info(self, info):
             self.label += f" ({info})"
             return self
@@ -1091,312 +1057,322 @@ def on_ui_settings():
 
     # Download Options
     shared.opts.add_option(
-        "use_aria2",
+        'use_aria2',
         shared.OptionInfo(
-            True,
-            "Download models using Aria2",
+            default=True,
+            label='Download models using Aria2',
             section=download,
-            **({'category_id': cat_id} if ver_bool else {})
+            category_id=cat_id
         ).info("Disable this option if you're experiencing any issues with downloads or if you want to use a proxy.")
     )
 
     shared.opts.add_option(
-        "disable_dns",
+        'disable_dns',
         shared.OptionInfo(
-            False,
-            "Disable Async DNS for Aria2",
+            default=False,
+            label='Disable Async DNS for Aria2',
             section=download,
-            **({'category_id': cat_id} if ver_bool else {})
-        ).info("Useful for users who use PortMaster or other software that controls the DNS")
+            category_id=cat_id
+        ).info('Useful for users who use PortMaster or other software that controls the DNS')
     )
 
     shared.opts.add_option(
-        "show_log",
+        'show_log',
         shared.OptionInfo(
-            False,
-            "Show Aria2 logs in console",
+            default=False,
+            label='Show Aria2 logs in console',
             section=download,
-            **({'category_id': cat_id} if ver_bool else {})
-        ).info("Requires UI reload")
+            category_id=cat_id
+        ).info('Requires UI reload')
     )
 
     shared.opts.add_option(
-        "split_aria2",
+        'split_aria2',
         shared.OptionInfo(
-            64,
-            "Number of connections to use for downloading a model",
-            gr.Slider,
-            lambda: {"maximum": "64", "minimum": "1", "step": "1"},
+            default=64,
+            label='Number of connections to use for downloading a model',
+            component=gr.Slider,
+            component_args=lambda: {'maximum': '64', 'minimum': '1', 'step': '1'},
             section=download,
-            **({'category_id': cat_id} if ver_bool else {})
-        ).info("Only applies to Aria2")
+            category_id=cat_id
+        ).info('Only applies to Aria2')
     )
 
     shared.opts.add_option(
-        "aria2_flags",
+        'aria2_flags',
         shared.OptionInfo(
-            r"",
-            "Custom Aria2 command line flags",
+            default=r'',
+            label='Custom Aria2 command line flags',
             section=download,
-            **({'category_id': cat_id} if ver_bool else {})
-        ).info("Requires UI reload")
+            category_id=cat_id
+        ).info('Requires UI reload')
     )
 
     shared.opts.add_option(
-        "unpack_zip",
+        'unpack_zip',
         shared.OptionInfo(
-            False,
-            "Automatically unpack .zip files after downloading",
+            default=False,
+            label='Automatically unpack .zip files after downloading',
             section=download,
-            **({'category_id': cat_id} if ver_bool else {})
+            category_id=cat_id
         )
     )
 
     shared.opts.add_option(
-        "save_api_info",
+        'save_api_info',
         shared.OptionInfo(
-            False,
-            "Save API info of model when saving model info",
+            default=False,
+            label='Save API info of model when saving model info',
             section=download,
-            **({'category_id': cat_id} if ver_bool else {})
-        ).info("creates an api_info.json file when saving any model info with all the API data of the model")
+            category_id=cat_id
+        ).info('creates an api_info.json file when saving any model info with all the API data of the model')
     )
 
     shared.opts.add_option(
-        "auto_save_all_img",
+        'auto_save_all_img',
         shared.OptionInfo(
-            False,
-            "Automatically save all images",
+            default=False,
+            label='Automatically save all images',
             section=download,
-            **({'category_id': cat_id} if ver_bool else {})
-        ).info("Automatically saves all the images of a model after downloading")
+            category_id=cat_id
+        ).info('Automatically saves all the images of a model after downloading')
     )
 
     # Browser Options
     shared.opts.add_option(
-        "custom_api_key",
+        'custom_api_key',
         shared.OptionInfo(
-            r"",
-            "Personal CivitAI API key",
+            default=r'',
+            label='Personal CivitAI API key',
             section=browser,
-            **({'category_id': cat_id} if ver_bool else {})
-        ).info("You can create your own API key in your CivitAI account settings, this required for some downloads, Requires UI reload")
+            category_id=cat_id
+        ).info('You can create your own API key in your CivitAI account settings, this required for some downloads, Requires UI reload')
     )
 
     shared.opts.add_option(
-        "hide_early_access",
+        'hide_early_access',
         shared.OptionInfo(
-            True,
-            "Hide early access models",
+            default=True,
+            label='Hide early access models',
             section=browser,
-            **({'category_id': cat_id} if ver_bool else {})
-        ).info("Early access models are only downloadable for supporter tier members")
+            category_id=cat_id
+        ).info('Early access models are only downloadable for supporter tier members')
     )
 
     shared.opts.add_option(
-        "use_LORA",
+        'use_LORA',
         shared.OptionInfo(
-            ver_bool,
-            "Combine LoCon, LORA & DoRA as one option",
+            default=True,
+            label='Combine LoCon, LORA & DoRA as one option',
             section=browser,
-            **({'category_id': cat_id} if ver_bool else {})
-        ).info("LoCon requires SD-WebUI v1.5 or higher,  DoRA requires v1.9 or higher")
-    )
-
-    shared.opts.add_option(
-        "dot_subfolders",
-        shared.OptionInfo(
-            True,
-            "Hide sub-folders that start with a '.'",
-            section=browser,
-            **({'category_id': cat_id} if ver_bool else {})
+            category_id=cat_id
         )
     )
 
     shared.opts.add_option(
-        "use_local_html",
+        'dot_subfolders',
         shared.OptionInfo(
-            False,
-            "Use local HTML file for model info",
+            default=True,
+            label='Hide sub-folders that start with a `.`',
             section=browser,
-            **({'category_id': cat_id} if ver_bool else {})
-        ).info("Uses the matching local HTML file when pressing CivitAI button on model cards in txt2img and img2img")
+            category_id=cat_id
+        )
     )
 
     shared.opts.add_option(
-        "local_path_in_html",
+        'use_local_html',
         shared.OptionInfo(
-            False,
-            "Use local images in the HTML",
+            default=False,
+            label='Use local HTML file for model info',
             section=browser,
-            **({'category_id': cat_id} if ver_bool else {})
-        ).info("Only works if all images of the corresponding model are downloaded")
+            category_id=cat_id
+        ).info('Uses the matching local HTML file when pressing CivitAI button on model cards in txt2img and img2img')
     )
 
     shared.opts.add_option(
-        "page_header",
+        'local_path_in_html',
         shared.OptionInfo(
-            False,
-            "Page navigation as header",
+            default=False,
+            label='Use local images in the HTML',
             section=browser,
-            **({'category_id': cat_id} if ver_bool else {})
-        ).info("Keeps the page navigation always visible at the top, Requires UI reload")
+            category_id=cat_id
+        ).info('Only works if all images of the corresponding model are downloaded')
     )
 
     shared.opts.add_option(
-        "video_playback",
+        'page_header',
         shared.OptionInfo(
-            True,
-            'Gif/video playback in the browser',
+            default=False,
+            label='Page navigation as header',
             section=browser,
-            **({'category_id': cat_id} if ver_bool else {})
+            category_id=cat_id
+        ).info('Keeps the page navigation always visible at the top, Requires UI reload')
+    )
+
+    shared.opts.add_option(
+        'video_playback',
+        shared.OptionInfo(
+            default=False,
+            label='Gif/video playback in the browser',
+            section=browser,
+            category_id=cat_id
         ).info("Disable this option if you're experiencing high CPU usage during video/gif playback")
     )
 
     shared.opts.add_option(
-        "individual_meta_btn",
+        'individual_meta_btn',
         shared.OptionInfo(
-            True,
-            'Individual prompt buttons',
+            default=True,
+            label='Individual prompt buttons',
             section=browser,
-            **({'category_id': cat_id} if ver_bool else {})
-        ).info("Turns individual prompts from an example image into a button to send it to txt2img")
+            category_id=cat_id
+        ).info('Turns individual prompts from an example image into a button to send it to txt2img')
     )
 
     shared.opts.add_option(
-        "model_desc_to_json",
+        'model_desc_to_json',
         shared.OptionInfo(
-            True,
-            'Save model description to json',
+            default=True,
+            label='Save model description to json',
             section=browser,
-            **({'category_id': cat_id} if ver_bool else {})
+            category_id=cat_id
         ).info('This saves the models description to the description field on model cards')
     )
 
     shared.opts.add_option(
-        "civitai_not_found_print",
+        'civitai_not_found_print',
         shared.OptionInfo(
-            True,
-            'Show "Model not found" print during update scanning',
+            default=True,
+            label='Show "Model not found" print during update scanning',
             section=browser,
-            **({'category_id': cat_id} if ver_bool else {})
+            category_id=cat_id
         )
     )
 
     shared.opts.add_option(
-        "civitai_send_to_browser",
+        'civitai_send_to_browser',
         shared.OptionInfo(
-            False,
-            'Send model from the cards CivitAI button to the browser, instead of showing a popup',
+            default=False,
+            label='Send model from the cards CivitAI button to the browser, instead of showing a popup',
             section=browser,
-            **({'category_id': cat_id} if ver_bool else {})
+            category_id=cat_id
         )
     )
 
     shared.opts.add_option(
-        "image_location",
+        'image_location',
         shared.OptionInfo(
-            r"",
-            "Custom save images location",
+            default=r'',
+            label='Custom save images location',
             section=browser,
-            **({'category_id': cat_id} if ver_bool else {})
-        ).info("Overrides the download folder location when saving images.")
+            category_id=cat_id
+        ).info('Overrides the download folder location when saving images.')
     )
 
     shared.opts.add_option(
-        "sub_image_location",
+        'sub_image_location',
         shared.OptionInfo(
-            True,
-            'Use sub folders inside custom images location',
+            default=True,
+            label='Use sub folders inside custom images location',
             section=browser,
-            **({'category_id': cat_id} if ver_bool else {})
-        ).info("Will append any content type and sub folders to the custom path.")
+            category_id=cat_id
+        ).info('Will append any content type and sub folders to the custom path.')
     )
 
     shared.opts.add_option(
-        "save_to_custom",
+        'save_to_custom',
         shared.OptionInfo(
-            False,
-            "Store the HTML and api_info in the custom images location",
+            default=False,
+            label='Store the HTML and api_info in the custom images location',
             section=browser,
-            **({'category_id': cat_id} if ver_bool else {})
+            category_id=cat_id
         )
     )
 
     shared.opts.add_option(
-        "custom_civitai_proxy",
+        'custom_civitai_proxy',
         shared.OptionInfo(
-            r"",
-            "Proxy address",
-            gr.Textbox,
-            {"placeholder": "socks4://0.0.0.0:00000 | socks5://0.0.0.0:00000"},
+            default=r'',
+            label='Proxy address',
+            component=gr.Textbox,
+            component_args={'placeholder': 'socks4://0.0.0.0:00000 | socks5://0.0.0.0:00000'},
             section=browser,
-            **({'category_id': cat_id} if ver_bool else {})
-        ).info("Only works with proxies that support HTTPS, turn Aria2 off for proxy downloads")
+            category_id=cat_id
+        ).info('Only works with proxies that support HTTPS, turn Aria2 off for proxy downloads')
     )
 
     shared.opts.add_option(
-        "cabundle_path_proxy",
+        'cabundle_path_proxy',
         shared.OptionInfo(
-            r"",
-            "Path to custom CA Bundle",
-            gr.Textbox,
-            {"placeholder": "/path/to/custom/cabundle.pem"},
+            default=r'',
+            label='Path to custom CA Bundle',
+            component=gr.Textbox,
+            component_args={'placeholder': '/path/to/custom/cabundle.pem'},
             section=browser,
-            **({'category_id': cat_id} if ver_bool else {})
-        ).info("Specify custom CA bundle for SSL certificate checks if required")
+            category_id=cat_id
+        ).info('Specify custom CA bundle for SSL certificate checks if required')
     )
 
     shared.opts.add_option(
-        "disable_sll_proxy",
+        'disable_sll_proxy',
         shared.OptionInfo(
-            False,
-            "Disable SSL certificate checks",
+            default=False,
+            label='Disable SSL certificate checks',
             section=browser,
-            **({'category_id': cat_id} if ver_bool else {})
-        ).info("Not recommended for security, may be required if you do not have the correct CA Bundle available")
+            category_id=cat_id
+        ).info('Not recommended for security, may be required if you do not have the correct CA Bundle available')
     )
 
     # Default sub folders
-    use_LORA = getattr(opts, "use_LORA", False)
+    use_LORA = getattr(opts, 'use_LORA', False)
     folders = [
-        "Checkpoint",
-        "LORA, LoCon, DoRA" if use_LORA else "LORA",
-        "LoCon" if not use_LORA else None,
-        "DoRA" if not use_LORA else None,
-        "TextualInversion",
-        "Poses",
-        "Controlnet",
-        "MotionModule",
-        ("Upscaler", "SWINIR"),
-        ("Upscaler", "REALESRGAN"),
-        ("Upscaler", "GFPGAN"),
-        ("Upscaler", "BSRGAN"),
-        ("Upscaler", "ESRGAN"),
-        "VAE",
-        "AestheticGradient",
-        "Wildcards",
-        "Workflows",
-        "Other"
+        'Checkpoint',
+        'LORA, LoCon, DoRA' if use_LORA else 'LORA',
+        'LoCon' if not use_LORA else None,
+        'DoRA' if not use_LORA else None,
+        'TextualInversion',
+        'Poses',
+        'Controlnet',
+        'MotionModule',
+        ('Upscaler', 'SWINIR'),
+        ('Upscaler', 'REALESRGAN'),
+        ('Upscaler', 'GFPGAN'),
+        ('Upscaler', 'BSRGAN'),
+        ('Upscaler', 'ESRGAN'),
+        'VAE',
+        'AestheticGradient',
+        'Wildcards',
+        'Workflows',
+        'Other'
     ]
 
     for folder in folders:
-        if folder == None:
+        if folder is None:
             continue
         desc = None
         if isinstance(folder, tuple):
-            folder_name = " - ".join(folder)
+            folder_name = ' - '.join(folder)
             setting_name = f"{folder[1]}_upscale"
             folder = folder[0]
             desc = folder[1]
         else:
             folder_name = folder
             setting_name = folder
-        if folder == "LORA, LoCon, DoRA":
-            folder = "LORA"
-            setting_name = "LORA_LoCon"
+        if folder == 'LORA, LoCon, DoRA':
+            folder = 'LORA'
+            setting_name = 'LORA_LoCon'
 
-        shared.opts.add_option(f"{setting_name}_default_subfolder", shared.OptionInfo("None", folder_name, gr.Dropdown, make_lambda(folder, desc), section=download, **({'category_id': cat_id} if ver_bool else {})))
+        shared.opts.add_option(
+            f"{setting_name}_default_subfolder",
+            shared.OptionInfo(
+                default='None',
+                label=folder_name,
+                component=gr.Dropdown,
+                component_args=make_lambda(folder, desc),
+                section=download,
+                category_id=cat_id
+            )
+        )
 
 script_callbacks.on_ui_tabs(on_ui_tabs)
 script_callbacks.on_ui_settings(on_ui_settings)
