@@ -13,6 +13,7 @@
 
 #### List of changes taken from pull requests (PRs) or bugfixes:
 
+- Models are now saved using their original file names, without any extra or "random" IDs. [Issues #361](https://github.com/BlafKing/sd-civitai-browser-plus/issues/361)
 - Complete removal of HyperNetwork support – this type is deprecated and its removal should resolve launch issues in [Forge-Classic](https://github.com/Haoming02/sd-webui-forge-classic) ([Issue #390](https://github.com/BlafKing/sd-civitai-browser-plus/issues/390))
 - HTML description cleanup fix taken from [PR #384](https://github.com/BlafKing/sd-civitai-browser-plus/pull/384)</br>
   _(see `clean_description` in [scripts/civitai_file_manage.py](./scripts/civitai_file_manage.py#L642))_

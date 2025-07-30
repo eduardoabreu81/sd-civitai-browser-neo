@@ -513,9 +513,11 @@ def update_model_versions(model_id, json_input=None):
                 versions_dict[version['name']].append(item["name"])
                 for version_file in version['files']:
                     file_sha256 = version_file.get('hashes', {}).get('SHA256', "").upper()
-                    version_filename = os.path.splitext(version_file['name'])[0]
-                    version_extension = os.path.splitext(version_file['name'])[1]
-                    version_filename = f"{version_filename}_{version_file['id']}{version_extension}"
+                    ## === ANXETY EDITs ===
+                    # version_filename = os.path.splitext(version_file['name'])[0]
+                    # version_extension = os.path.splitext(version_file['name'])[1]
+                    # version_filename = f"{version_filename}_{version_file['id']}{version_extension}"
+                    version_filename = version_file['name']
                     version_files.add((version['name'], version_filename, file_sha256))
 
             for root, _, files in os.walk(model_folder, followlinks=True):
@@ -709,9 +711,11 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                     })
                     if is_primary:
                         default_file = unique_file_name
-                        model_filename = os.path.splitext(file['name'])[0]
-                        model_extension = os.path.splitext(file['name'])[1]
-                        model_filename = f"{model_filename}_{file['id']}{model_extension}"
+                        ## === ANXETY EDITs ===
+                        model_filename = file['name']
+                        # model_filename = os.path.splitext(file['name'])[0]
+                        # model_extension = os.path.splitext(file['name'])[1]
+                        # model_filename = f"{model_filename}_{file['id']}{model_extension}"
                         dl_url = file['downloadUrl']
                         gl.json_info = item
                         sha256_value = file['hashes'].get('SHA256', 'Unknown')
