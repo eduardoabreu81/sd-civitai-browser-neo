@@ -19,8 +19,8 @@ import scripts.civitai_global as gl
 import scripts.civitai_api as _api
 
 
-
 gl.init()
+
 
 def saveSettings(ust, ct, pt, st, bf, cj, td, ol, hi, sn, ss, ts):
     config = cmd_opts.ui_config_file
@@ -482,36 +482,71 @@ def on_ui_tabs():
         list_html_input.change(fn=all_visible, inputs=list_html, outputs=select_all)
 
         def update_models_dropdown(input):
+            # If there is no loaded model data, reset all UI elements and show a message
             if not gl.json_data:
                 return (
-                    gr.Dropdown.update(value=None, choices=[], interactive=False), # List models
-                    gr.Dropdown.update(value=None, choices=[], interactive=False), # List version
-                    gr.Textbox.update(value=None), # Preview HTML
-                    gr.Textbox.update(value=None, interactive=False), # Trained Tags
-                    gr.Textbox.update(value=None, interactive=False), # Base Model
-                    gr.Textbox.update(value=None, interactive=False), # Model filename
-                    gr.Textbox.update(value=None, interactive=False), # Install path
-                    gr.Dropdown.update(value=None, choices=[], interactive=False), # Sub folder
-                    gr.Button.update(interactive=False), # Download model btn
-                    gr.Button.update(interactive=False), # Save image btn
-                    gr.Button.update(interactive=False, visible=False), # Delete model btn
-                    gr.Dropdown.update(value=None, choices=[], interactive=False), # File list
-                    gr.Textbox.update(value=None), # DL Url
-                    gr.Textbox.update(value=None), # Model ID
-                    gr.Textbox.update(value=None), # Current sha256
-                    gr.Button.update(interactive=False),  # Save model info
-                    gr.Textbox.update(value='<div style="font-size: 24px; text-align: center; margin: 50px;">Click the search icon to load models.<br>Use the filter icon to filter results.</div>') # Model list
+                    gr.Dropdown.update(value=None, choices=[], interactive=False),  # Model list dropdown
+                    gr.Dropdown.update(value=None, choices=[], interactive=False),  # Version list dropdown
+                    gr.Textbox.update(value=None),                                  # Preview HTML
+                    gr.Textbox.update(value=None, interactive=False),               # Trained tags textbox
+                    gr.Textbox.update(value=None, interactive=False),               # Base model textbox
+                    gr.Textbox.update(value=None, interactive=False),               # Model filename textbox
+                    gr.Textbox.update(value=None, interactive=False),               # Install path textbox
+                    gr.Dropdown.update(value=None, choices=[], interactive=False),  # Subfolder dropdown
+                    gr.Button.update(interactive=False),                            # Download model button
+                    gr.Button.update(interactive=False),                            # Save image button
+                    gr.Button.update(interactive=False, visible=False),             # Delete model button
+                    gr.Dropdown.update(value=None, choices=[], interactive=False),  # File list dropdown
+                    gr.Textbox.update(value=None),                                  # Download URL textbox
+                    gr.Textbox.update(value=None),                                  # Model ID textbox
+                    gr.Textbox.update(value=None),                                  # Current SHA256 textbox
+                    gr.Button.update(interactive=False),                            # Save model info button
+                    gr.Textbox.update(
+                        value='<div style="font-size: 24px; text-align: center; margin: 50px;">Click the search icon to load models.<br>Use the filter icon to filter results.</div>'
+                    )  # Model list HTML message
                 )
 
             model_string = re.sub(r'\.\d{3}$', '', input)
             model_name, model_id = _api.extract_model_info(model_string)
             model_versions = _api.update_model_versions(model_id)
-            (html, tags, base_mdl, DwnButton, SaveImages, DelButton, filelist, filename, dl_url, id, current_sha256, install_path, sub_folder) = _api.update_model_info(model_string, model_versions.get('value'))
-            return (gr.Dropdown.update(value=model_string, interactive=True),
-                    model_versions,html,tags,base_mdl,filename,install_path,sub_folder,DwnButton,SaveImages,DelButton,filelist,dl_url,id,current_sha256,
-                    gr.Button.update(interactive=True),
-                    gr.Textbox.update()
-                    )
+
+            # Get detailed model info for the selected version
+            (
+                html,
+                tags,
+                base_model,
+                download_button,
+                save_images_button,
+                delete_button,
+                file_list,
+                model_filename,
+                download_url,
+                model_id_value,
+                current_sha256,
+                install_path,
+                sub_folder
+            ) = _api.update_model_info(model_string, model_versions.get('value'))
+
+            # Return all UI updates in the expected order
+            return (
+                gr.Dropdown.update(value=model_string, interactive=True), # Model dropdown
+                model_versions,                                           # Version dropdown
+                html,                                                     # Preview HTML
+                tags,                                                     # Trained tags
+                base_model,                                               # Base model
+                model_filename,                                           # Model filename
+                install_path,                                             # Install path
+                sub_folder,                                               # Sub folder
+                download_button,                                          # Download button
+                save_images_button,                                       # Save images button
+                delete_button,                                            # Delete button
+                file_list,                                                # File list
+                download_url,                                             # Download URL
+                model_id_value,                                           # Model ID
+                current_sha256,                                           # Current SHA256
+                gr.Button.update(interactive=True),                       # Save model info button
+                gr.Textbox.update()                                       # Model list HTML
+            )
 
         model_select.change(
             fn=update_models_dropdown,
@@ -1111,7 +1146,7 @@ def on_ui_settings():
     shared.opts.add_option(
         'unpack_zip',
         shared.OptionInfo(
-            default=False,
+            default=True,
             label='Automatically unpack .zip files after downloading',
             section=download,
             category_id=cat_id
@@ -1227,6 +1262,39 @@ def on_ui_settings():
             section=browser,
             category_id=cat_id
         ).info('Turns individual prompts from an example image into a button to send it to txt2img')
+    )
+
+    # === ANXETY EDITs ===
+    shared.opts.add_option(
+        'resize_preview_cards',
+        shared.OptionInfo(
+            default=True,
+            label='Resize preview images/videos in model cards',
+            section=browser,
+            category_id=cat_id
+        ).info('Resize preview images/videos in model cards to improve loading speeds')
+    )
+
+    shared.opts.add_option(
+        'preview_resize_size',
+        shared.OptionInfo(
+            default=512,
+            label='Preview resize size (pixels)',
+            component=gr.Slider,
+            component_args=lambda: {'maximum': '1024', 'minimum': '128', 'step': '32'},
+            section=browser,
+            category_id=cat_id
+        ).info('Size in pixels the width of preview images/videos. Images retain the aspect ratio.')
+    )
+
+    shared.opts.add_option(
+        'resize_saved_previews',
+        shared.OptionInfo(
+            default=True,
+            label='Resize saved preview images',
+            section=browser,
+            category_id=cat_id
+        ).info('Apply resizing to preview images when saving them locally?')
     )
 
     shared.opts.add_option(

@@ -166,8 +166,24 @@ def model_list_html(json_data):
         if images:
             media_type = images[0].get('type')
             image_url = images[0].get('url')
+
+            # Apply resize if enabled
+            resize_preview = getattr(opts, 'resize_preview_cards', True)
+            resize_size = getattr(opts, 'preview_resize_size', 512)
+
+            if resize_preview and media_type == 'image':
+                # For images, modify the URL to request specific size
+                image_url = re.sub(r'/width=\d+', f'/width={resize_size}', image_url)
+
             if media_type == 'video':
-                image_url = image_url.replace('width=', 'transcode=true,width=')
+                if resize_preview:
+                    # For videos, replace or add width parameter
+                    if '/width=' in image_url:
+                        image_url = re.sub(r'/width=\d+', f'/width={resize_size}', image_url)
+                    else:
+                        image_url = image_url.replace('transcode=true,', f'transcode=true,width={resize_size},')
+                else:
+                    image_url = image_url.replace('width=', 'transcode=true,width=')
                 imgtag = f'<video class="video-bg" {playback} muted playsinline><source src="{image_url}" type="video/mp4"></video>'
             else:
                 imgtag = f'<img src="{image_url}"></img>'
@@ -597,10 +613,10 @@ def update_model_versions(model_id, json_input=None):
                 for version_file in version['files']:
                     file_sha256 = version_file.get('hashes', {}).get('SHA256', "").upper()
                     ## === ANXETY EDITs ===
+                    version_filename = version_file['name']
                     # version_filename = os.path.splitext(version_file['name'])[0]
                     # version_extension = os.path.splitext(version_file['name'])[1]
                     # version_filename = f"{version_filename}_{version_file['id']}{version_extension}"
-                    version_filename = version_file['name']
                     version_files.add((version['name'], version_filename, file_sha256))
 
             for root, _, files in os.walk(model_folder, followlinks=True):

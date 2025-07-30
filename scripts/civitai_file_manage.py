@@ -211,7 +211,15 @@ def save_preview(file_path, api_response, overwrite_toggle=False, sha256=None):
                             response = requests.get(url_with_width, proxies=proxies, verify=ssl)
 
                             if response.status_code == 200:
-                                resized_image = _resize_image_bytes(response.content)
+                                # Check if resize is enabled for saved previews
+                                resize_saved = getattr(opts, 'resize_saved_previews', True)
+                                if resize_saved:
+                                    resize_size = getattr(opts, 'preview_resize_size', 512)
+                                    resized_image = _resize_image_bytes(response.content, resize_size)
+                                else:
+                                    # Save original size
+                                    resized_image = io.BytesIO(response.content)
+                                    resized_image.seek(0)
 
                                 if IS_KAGGLE:
                                     import sd_image_encryption     # Import Module for Encrypt Image
