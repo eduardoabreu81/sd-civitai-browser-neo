@@ -1,10 +1,14 @@
+## === ANXETY EDITs ===
+import warnings, os, json
+from urllib3.exceptions import InsecureRequestWarning
+from datetime import datetime
+
 # ===  WebUI imports ===
 from modules.shared import opts
 
+
 do_debug_print = getattr(opts, "civitai_debug_prints", False)
 def init():
-    import warnings, os, json
-    from urllib3.exceptions import InsecureRequestWarning
     warnings.simplefilter('ignore', InsecureRequestWarning)
 
     config_folder = os.path.join(os.getcwd(), "config_states")
@@ -26,7 +30,8 @@ def init():
     subfolder_json = os.path.join(config_folder, "civitai_subfolders.json")
     if not os.path.exists(subfolder_json):
         with open(subfolder_json, 'w') as json_file:
-            json.dump({}, json_file)
+            #json.dump({}, json_file)
+            json.dump({"created_at": datetime.now().timestamp()}, json_file)
 
     from_update_tab = False
     scan_files = False

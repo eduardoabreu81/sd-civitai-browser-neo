@@ -335,11 +335,15 @@ def on_ui_tabs():
                 </div>
                 ''')
 
+        ## === ANXETY EDITs ===
         def format_custom_subfolders():
             separator = '␞␞'
             with open(gl.subfolder_json, 'r') as f:
                 data = json.load(f)
-            result = separator.join([f"{key}{separator}{value}" for key, value in data.items()])
+            # Filter out timestamp and non-string values
+            filtered_data = {key: value for key, value in data.items()
+                           if key != "created_at" and isinstance(value, str)}
+            result = separator.join([f"{key}{separator}{value}" for key, value in filtered_data.items()])
             return result
 
         #Invisible triggers/variables
@@ -1171,6 +1175,16 @@ def on_ui_settings():
             section=download,
             category_id=cat_id
         ).info('Automatically saves all the images of a model after downloading')
+    )
+
+    shared.opts.add_option(
+        'save_html_on_save',
+        shared.OptionInfo(
+            default=True,
+            label='Save HTML file when saving model',
+            section=download,
+            category_id=cat_id
+        ).info('If enabled, saves the HTML file locally when saving a model')
     )
 
     # Browser Options

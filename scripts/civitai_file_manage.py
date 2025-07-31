@@ -154,10 +154,14 @@ def delete_model(delete_finish=None, model_filename=None, model_string=None, lis
             gr.Dropdown.update(value=ver_value, choices=ver_choices)  # Version List
     )
 
+## === ANXETY EDITs ===
 def delete_associated_files(directory, base_name):
     for file in os.listdir(directory):
         current_base_name, ext = os.path.splitext(file)
-        if current_base_name == base_name or current_base_name == f"{base_name}.preview" or current_base_name == f"{base_name}.api_info":
+        if (current_base_name == base_name or
+            current_base_name == f"{base_name}.preview" or
+            current_base_name == f"{base_name}.api_info" or
+            current_base_name == f"{base_name}.html"):
             path_to_delete = os.path.join(directory, file)
             try:
                 send2trash(path_to_delete)
@@ -597,6 +601,10 @@ def getSubfolders(model_folder, basemodel=None, nsfw=None, author=None, modelNam
             config_data = json.load(json_file)
 
         for key, value in config_data.items():
+            # Skip timestamp field and non-string values
+            if key == "created_at" or not isinstance(value, str):
+                continue
+
             if basemodel:
                 try:
                     converted_value = convertCustomFolder(value, basemodel, nsfw, author, modelName, modelId, versionName, versionId)
@@ -702,6 +710,7 @@ def make_dir(path):
     except Exception as e:
         print(f"Error creating directory: {e}")
 
+## === ANXETY EDITs ===
 def save_model_info(install_path, file_name, sub_folder, sha256=None, preview_html=None, overwrite_toggle=False, api_response=None):
     save_path, filename = get_save_path_and_name(install_path, file_name, api_response, sub_folder)
     image_path = get_image_path(install_path, api_response, sub_folder)
@@ -710,6 +719,7 @@ def save_model_info(install_path, file_name, sub_folder, sha256=None, preview_ht
 
     save_api_info = getattr(opts, "save_api_info", False)
     use_local = getattr(opts, "local_path_in_html", False)
+    save_html_on_save = getattr(opts, 'save_html_on_save', False)
 
     if not api_response:
         api_response = gl.json_data
@@ -718,9 +728,9 @@ def save_model_info(install_path, file_name, sub_folder, sha256=None, preview_ht
     if result != "found":
         result = find_and_save(api_response, sha256, file_name, json_file, True, overwrite_toggle)
 
-    if preview_html:
+    if preview_html and save_html_on_save:
         if use_local:
-            img_urls = re.findall(r'data-sampleimg="true" src=[\'"]?([^\'" >]+)', preview_html)
+            img_urls = re.findall(r"data-sampleimg='true' src=[\'\"]?([^\'\" >]+)", preview_html)
             for i, img_url in enumerate(img_urls):
                 img_name = f'{filename}_{i}.jpg'
                 preview_html = preview_html.replace(img_url,f'{os.path.join(image_path, img_name)}')

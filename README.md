@@ -1,4 +1,4 @@
-## Key features and changes in this fork:
+## ✨ Key features and changes in this fork:
 
 **_All changes in this fork are marked in the code as `=== ANXETY EDITs ===`_**</br>
 **_Treat this fork as an author's vision – it's not a fork that will fix absolutely every problem...</br>
@@ -16,33 +16,34 @@
 - Implemented encryption of image previews when images are saved (For Kaggle Only!).</br>
   _Note: The [Encrypt-Image](https://github.com/anxety-solo/sd-encrypt-image) extension must be installed to enable this feature._
 
-#### List of changes taken from pull requests (PRs) or bugfixes:
+#### 🔧 List of changes taken from pull requests (PRs) or bugfixes:
 
+- Fixed error `cvitai_subfolders.json does not exist` _(It's not a bug, it's a feature...)_ [Issues #349](https://github.com/BlafKing/sd-civitai-browser-plus/issues/349)
 - Added a way to search for a model by its `hash`. [Issues #309](https://github.com/BlafKing/sd-civitai-browser-plus/issues/309)
 - Models are now saved using their original file names, without any extra or random IDs. [Issues #361](https://github.com/BlafKing/sd-civitai-browser-plus/issues/361)
 - Complete removal of HyperNetwork support – this type is deprecated and its removal should resolve launch issues in [Forge-Classic](https://github.com/Haoming02/sd-webui-forge-classic) ([Issue #390](https://github.com/BlafKing/sd-civitai-browser-plus/issues/390))
 - Added a clarifying message about Early Access to avoid confusion~ [Issues #383](https://github.com/BlafKing/sd-civitai-browser-plus/issues/383)</br>
   _(see `download_file` in [scripts/civitai_download.py](./scripts/civitai_download.py#L380))_
 - HTML description cleanup fix taken from [PR #384](https://github.com/BlafKing/sd-civitai-browser-plus/pull/384)</br>
-  _(see `clean_description` in [scripts/civitai_file_manage.py](./scripts/civitai_file_manage.py#L639))_
+  _(see `clean_description` in [scripts/civitai_file_manage.py](./scripts/civitai_file_manage.py#L651))_
 
 ### ToDo:
 - [X] Add the ability to search for models by hash. (Only SHA256)
 - [X] Implement an option to compress preview images, both in the browser and for downloaded files (optionally toggleable in settings).
 - [ ] Fix the issue with displaying local model HTML files (should open the local file instead of the online page).
 - [ ] Fix the model update buttons (if they are broken).
-- [ ] Fix model deletion to ensure complete cleanup: including preview images, JSON, and HTML files.
+- [X] Fix model deletion to ensure complete cleanup: including preview images, JSON, and HTML files.
 - [X] Become terrified at the thought of a complete refactor of the extension.
 - [X] Add a cat to the code 🐱
 
 <h1></h1>
 
-### Preview Cards (new style):
+### 🖼️ Preview Cards (new style):
 
 <img src=".github/preview.png" alt="Extension Preview" width="100%"/>
 
 <div align="center">
-    <h6>For better UI experience, I recommend using my theme - <a href="https://github.com/anxety-solo/anxety-theme">Anxety-Theme</a> :3</h6>
+    <h6>🎨 For better UI experience, I recommend using my theme - <a href="https://github.com/anxety-solo/anxety-theme">Anxety-Theme</a> :3</h6>
 </div>
 
 <h1></h1>
