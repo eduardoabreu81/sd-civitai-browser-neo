@@ -96,6 +96,7 @@ function addOrUpdateRule(styleSheet, selector, newRules) {
     styleSheet.insertRule(`${selector} { ${newRules} }`, styleSheet.cssRules.length);
 }
 
+// === ANXETY EDITs ===
 // Updates card border
 function updateCard(modelNameWithSuffix) {
     const lastDotIndex = modelNameWithSuffix.lastIndexOf('.');
@@ -121,7 +122,12 @@ function updateCard(modelNameWithSuffix) {
         cards.forEach((card) => {
             const onclickAttr = card.getAttribute('onclick');
             if (onclickAttr && onclickAttr.includes(`select_model('${modelName}', event)`)) {
-                card.className = `civmodelcard  ${additionalClassName}`;
+                // Preserve important classes that should not be lost
+                const hasEarlyAccess = card.classList.contains('early-access');
+                const hasNsfw = card.classList.contains('civcardnsfw');
+                const earlyAccessClass = hasEarlyAccess ? ' early-access' : '';
+                const nsfwClass = hasNsfw ? ' civcardnsfw' : '';
+                card.className = `civmodelcard${earlyAccessClass}${nsfwClass} ${additionalClassName}`;
             }
         });
     }

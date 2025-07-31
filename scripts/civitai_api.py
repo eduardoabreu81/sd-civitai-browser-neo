@@ -44,8 +44,7 @@ def get_display_type(type_name):
 def is_early_access(model_data):
     """Check if the model is an early access model"""
     avail = model_data.get('availability')
-    early_end = model_data.get('earlyAccessEndsAt')
-    return (isinstance(avail, str) and avail == 'EarlyAccess') or bool(early_end)
+    return isinstance(avail, str) and avail == 'EarlyAccess'
 
 def contenttype_folder(content_type, desc=None, fromCheck=False, custom_folder=None):
     """
@@ -112,17 +111,13 @@ def contenttype_folder(content_type, desc=None, fromCheck=False, custom_folder=N
 ## === ANXETY EDITs ===
 def model_list_html(json_data):
     def filter_versions(item, hide_early_access, current_time):
-        """Filter model versions based on file presence and early access deadline."""
+        """Filter model versions based on file presence and early access status."""
         versions = []
         for version in item.get('modelVersions', []):
             if not version.get('files'):
                 continue
-            if hide_early_access:
-                deadline_str = version.get('earlyAccessDeadline')
-                if deadline_str:
-                    deadline = datetime.strptime(deadline_str, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
-                    if current_time <= deadline:
-                        continue
+            if hide_early_access and is_early_access(version):
+                continue
             versions.append(version)
         return versions
 

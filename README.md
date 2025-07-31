@@ -43,7 +43,7 @@
 <img src=".github/preview.png" alt="Extension Preview" width="100%"/>
 
 <div align="center">
-    <h6>🎨 For better UI experience, I recommend using my theme - <a href="https://github.com/anxety-solo/anxety-theme">Anxety-Theme</a> :3</h6>
+    <h6>🎨 For better WebUI experience, I recommend using my theme - <a href="https://github.com/anxety-solo/anxety-theme">Anxety-Theme</a> :3</h6>
 </div>
 
 <h1></h1>

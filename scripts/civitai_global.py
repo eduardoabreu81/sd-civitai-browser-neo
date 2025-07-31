@@ -7,6 +7,25 @@ from datetime import datetime
 from modules.shared import opts
 
 
+class Colors:
+    """ANSI color codes for terminal output"""
+    BLACK   = '\033[30m'
+    RED     = '\033[31m'
+    GREEN   = '\033[32m'
+    YELLOW  = '\033[33m'
+    BLUE    = '\033[34m'
+    MAGENTA = '\033[35m'
+    CYAN    = '\033[36m'
+    BRIGHT_BLACK   = '\033[90m'
+    BRIGHT_RED     = '\033[91m'
+    BRIGHT_GREEN   = '\033[92m'
+    BRIGHT_YELLOW  = '\033[93m'
+    BRIGHT_BLUE    = '\033[94m'
+    BRIGHT_MAGENTA = '\033[95m'
+    BRIGHT_CYAN    = '\033[96m'
+    RESET = '\033[0m'
+
+
 do_debug_print = getattr(opts, "civitai_debug_prints", False)
 def init():
     warnings.simplefilter('ignore', InsecureRequestWarning)
@@ -42,8 +61,8 @@ def init():
 
 _print = print
 def print(print_message):
-    _print(f'\033[96mCivitAI Browser+\033[0m: {print_message}')
+    _print(f'{Colors.BLUE}[CivitAI-Browser+]{Colors.RESET} - {print_message}')
 
 def debug_print(print_message):
     if do_debug_print:
-        _print(f'\033[96m[DEBUG] CivitAI Browser+\033[0m: {print_message}')
+        _print(f'{Colors.MAGENTA}[DEBUG] {Colors.BLUE}[CivitAI-Browser+]{Colors.RESET} - {print_message}')

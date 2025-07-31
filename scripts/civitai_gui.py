@@ -1201,7 +1201,7 @@ def on_ui_settings():
     shared.opts.add_option(
         'hide_early_access',
         shared.OptionInfo(
-            default=True,
+            default=False,
             label='Hide early access models',
             section=browser,
             category_id=cat_id
@@ -1314,7 +1314,7 @@ def on_ui_settings():
     shared.opts.add_option(
         'model_desc_to_json',
         shared.OptionInfo(
-            default=True,
+            default=False,
             label='Save model description to json',
             section=browser,
             category_id=cat_id
@@ -1431,17 +1431,22 @@ def on_ui_settings():
     for folder in folders:
         if folder is None:
             continue
-        desc = None
+
+        # Handle tuple folders (e.g., ('Upscaler', 'SWINIR'))
         if isinstance(folder, tuple):
-            folder_name = ' - '.join(folder)
+            folder_name = f"{folder[0]} - {folder[1]}"
             setting_name = f"{folder[1]}_upscale"
-            folder = folder[0]
+            folder_key = folder[0]
             desc = folder[1]
         else:
             folder_name = folder
             setting_name = folder
+            folder_key = folder
+            desc = None
+
+        # Special case for LORA, LoCon, DoRA
         if folder == 'LORA, LoCon, DoRA':
-            folder = 'LORA'
+            folder_key = 'LORA'
             setting_name = 'LORA_LoCon'
 
         shared.opts.add_option(
@@ -1450,7 +1455,7 @@ def on_ui_settings():
                 default='None',
                 label=folder_name,
                 component=gr.Dropdown,
-                component_args=make_lambda(folder, desc),
+                component_args=make_lambda(folder_key, desc),
                 section=download,
                 category_id=cat_id
             )

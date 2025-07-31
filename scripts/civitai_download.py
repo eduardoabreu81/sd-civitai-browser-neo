@@ -26,6 +26,7 @@ try:
 except ImportError:
     print("Python module 'ZipUnicode' has not been imported correctly, please try to restart or install it manually.")
 
+
 total_count = 0
 current_count = 0
 dl_manager_count = 0
@@ -45,6 +46,12 @@ except AttributeError:
     queue = not cmd_opts.disable_queue
 except:
     queue = True
+
+
+def is_early_access(model_data):
+    """Check if the model is an early access model"""
+    avail = model_data.get('availability')
+    return isinstance(avail, str) and avail == 'EarlyAccess'
 
 def start_aria2_rpc():
     start_file = os.path.join(aria2path, '_')
@@ -392,14 +399,11 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
         early_access = False
         for item in gl.download_queue:
             if int(item.get('model_id', -1)) == int(model_id):
-                # Try to get early access status from model_json
                 model_json = item.get('model_json', {})
                 items = model_json.get('items', [])
                 if items and 'modelVersions' in items[0]:
                     version = items[0]['modelVersions'][0]
-                    avail = version.get('availability')
-                    early_end = version.get('earlyAccessEndsAt')
-                    if (isinstance(avail, str) and avail == 'EarlyAccess') or bool(early_end):
+                    if is_early_access(version):
                         early_access = True
                 break
 
