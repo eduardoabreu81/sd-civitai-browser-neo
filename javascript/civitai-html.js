@@ -64,26 +64,6 @@ function updateCardSize(width, height) {
     addOrUpdateRule(styleSheet, '.nsfw-badge', `display: ${badgeDisplay}`);
 }
 
-// Toggles NSFW display
-function toggleNSFWContent(hideAndBlur) {
-    const nsfwCards = document.querySelectorAll('.civcardnsfw');
-    nsfwCards.forEach((card) => {
-        card.style.display = hideAndBlur ? 'block' : 'none';
-    });
-
-    const nsfwImages = document.querySelectorAll('.civnsfw img');
-    nsfwImages.forEach((img) => {
-        img.style.filter = hideAndBlur ? 'none' : 'blur(10px)';
-    });
-
-    const dateSections = document.querySelectorAll('.date-section');
-    dateSections.forEach((section) => {
-        const cards = section.querySelectorAll('.civmodelcard');
-        const nsfwCards = section.querySelectorAll('.civmodelcard.civcardnsfw');
-        section.style.display = !hideAndBlur && cards.length === nsfwCards.length ? 'none' : 'block';
-    });
-}
-
 // Updates site with css insertions
 function addOrUpdateRule(styleSheet, selector, newRules) {
     for (let i = 0; i < styleSheet.cssRules.length; i++) {

@@ -2,7 +2,7 @@
 
 **_All changes in this fork are marked in the code as `=== ANXETY EDITs ===`_**</br>
 **_Treat this fork as an author's vision – it's not a fork that will fix absolutely every problem...</br>
-(The codebase really is bullsh*t)_**
+(The codebase really is bullsh*t - My subjective opinion)_**
 
 <h1></h1>
 
@@ -21,18 +21,17 @@
 - Fixed error `cvitai_subfolders.json does not exist` _(It's not a bug, it's a feature...)_ [Issues #349](https://github.com/BlafKing/sd-civitai-browser-plus/issues/349)
 - Added a way to search for a model by its `hash`. [Issues #309](https://github.com/BlafKing/sd-civitai-browser-plus/issues/309)
 - Models are now saved using their original file names, without any extra or random IDs. [Issues #361](https://github.com/BlafKing/sd-civitai-browser-plus/issues/361)
-- Complete removal of HyperNetwork support – this type is deprecated and its removal should resolve launch issues in [Forge-Classic](https://github.com/Haoming02/sd-webui-forge-classic) ([Issue #390](https://github.com/BlafKing/sd-civitai-browser-plus/issues/390))
+- Complete removal of HyperNetwork support - should fix problems with launching in [Forge-Classic](https://github.com/Haoming02/sd-webui-forge-classic) ([Issue #390](https://github.com/BlafKing/sd-civitai-browser-plus/issues/390))
 - Added a clarifying message about Early Access to avoid confusion~ [Issues #383](https://github.com/BlafKing/sd-civitai-browser-plus/issues/383)</br>
-  _(see `download_file` in [scripts/civitai_download.py](./scripts/civitai_download.py#L380))_
+  _(see `download_file` in [scripts/civitai_download.py](./scripts/civitai_download.py))_
 - HTML description cleanup fix taken from [PR #384](https://github.com/BlafKing/sd-civitai-browser-plus/pull/384)</br>
-  _(see `clean_description` in [scripts/civitai_file_manage.py](./scripts/civitai_file_manage.py#L651))_
+  _(see `clean_description` in [scripts/civitai_file_manage.py](./scripts/civitai_file_manage.py))_
 
 ### ToDo:
 - [X] Add the ability to search for models by hash. (Only SHA256)
 - [X] Implement an option to compress preview images, both in the browser and for downloaded files (optionally toggleable in settings).
 - [ ] Fix the issue with displaying local model HTML files (should open the local file instead of the online page).
 - [ ] Fix the model update buttons (if they are broken).
-- [X] Fix model deletion to ensure complete cleanup: including preview images, JSON, and HTML files.
 - [X] Become terrified at the thought of a complete refactor of the extension.
 - [X] Add a cat to the code 🐱
 
@@ -48,7 +47,7 @@
 
 <h1></h1>
 
-![CivitAI Browser-05+](https://github.com/BlafKing/sd-civitai-browser-plus/assets/9644716/95afcc41-56f0-4398-8779-51cb2a9e2f55)
+![CivitAI Browser+](https://github.com/BlafKing/sd-civitai-browser-plus/assets/9644716/95afcc41-56f0-4398-8779-51cb2a9e2f55)
 
 ---
 

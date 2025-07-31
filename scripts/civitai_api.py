@@ -861,8 +861,6 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                         index = f"preview_{index}"
 
                     class_name = 'class="model-block"'
-                    if pic.get('nsfwLevel') >= 4:
-                        class_name = 'class="civnsfw model-block"'
 
                     img_html += f'''
                     <div {class_name} style="display:flex;align-items:flex-start;">
