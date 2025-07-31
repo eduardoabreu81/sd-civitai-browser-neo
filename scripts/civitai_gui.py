@@ -1372,6 +1372,16 @@ def on_ui_settings():
     )
 
     shared.opts.add_option(
+        'show_nsfw_badge',
+        shared.OptionInfo(
+            default=True,
+            label='Show NSFW badge on model cards',
+            section=browser,
+            category_id=cat_id
+        ).info('Display NSFW badge on model cards that are marked as NSFW content')
+    )
+
+    shared.opts.add_option(
         'custom_civitai_proxy',
         shared.OptionInfo(
             default=r'',

@@ -20,7 +20,6 @@ import scripts.civitai_file_manage as _file
 import scripts.civitai_global as gl
 import scripts.civitai_api as _api
 
-
 try:
     from zip_unicode import ZipHandler
 except ImportError:
@@ -38,7 +37,10 @@ def random_number(prev=None):
 
     return number
 
+
 gl.init()
+
+
 rpc_secret = "R7T5P2Q9K6"
 try:
     queue = not cmd_opts.no_gradio_queue
@@ -48,10 +50,12 @@ except:
     queue = True
 
 
-def is_early_access(model_data):
-    """Check if the model is an early access model"""
-    avail = model_data.get('availability')
+## === ANXETY EDITs ===
+def is_early_access(version_data):
+    """Check if the model is an early access."""
+    avail = version_data.get('availability')
     return isinstance(avail, str) and avail == 'EarlyAccess'
+
 
 def start_aria2_rpc():
     start_file = os.path.join(aria2path, '_')
@@ -195,7 +199,7 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
 
         default_subfolder = _api.sub_folder_value(content_type, desc)
         if default_subfolder != "None":
-            default_subfolder = _file.convertCustomFolder(default_subfolder, output_basemodel, nsfw, model_uploader, model_name, model_id, version_name, version_id)
+            default_subfolder = _file.convertCustomFolder(default_subfolder, output_basemodel, is_nsfw, model_uploader, model_name, model_id, version_name, version_id)
 
         if subfolder and subfolder != "None" and subfolder != "Only available if the selected files are of the same model type":
             from_batch = False

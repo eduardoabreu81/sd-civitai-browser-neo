@@ -24,7 +24,9 @@ import scripts.civitai_download as _download
 import scripts.civitai_file_manage as _file
 import scripts.civitai_global as gl
 
+
 gl.init()
+
 
 ## === ANXETY EDITs ===
 # Mapping for short/clear display names for model types
@@ -41,10 +43,23 @@ def get_display_type(type_name):
     """Return short/clear display name for model type."""
     return MODEL_TYPE_DISPLAY_NAMES.get(type_name, type_name)
 
-def is_early_access(model_data):
-    """Check if the model is an early access model"""
-    avail = model_data.get('availability')
+def is_early_access(version_data):
+    """Check if the model is an early access."""
+    avail = version_data.get('availability')
     return isinstance(avail, str) and avail == 'EarlyAccess'
+
+# This nsfwlevel system is not accurate....
+def is_model_nsfw(model, nsfw_level=8):
+    """Determine if a model is NSFW based on its metadata and first image."""
+    if model.get('nsfw'):
+        return True
+    model_versions = model.get('modelVersions')
+    if model_versions and model_versions[0].get('images'):
+        first_image = model_versions[0]['images'][0]
+        if first_image.get('nsfwLevel', 0) >= nsfw_level:
+            return True
+    return False
+
 
 def contenttype_folder(content_type, desc=None, fromCheck=False, custom_folder=None):
     """
@@ -149,7 +164,8 @@ def model_list_html(json_data):
         """Build HTML for a single model card."""
         model_id = item.get('id')
         model_name = item.get('name', '')
-        nsfw_class = 'civcardnsfw' if item.get('nsfw') else ''
+        is_nsfw = is_model_nsfw(item)
+        nsfw_class = 'civcardnsfw' if is_nsfw else ''
         base_model = item['modelVersions'][0].get('baseModel', 'Not Found') if item['modelVersions'] else 'Not Found'
         date = item['modelVersions'][0].get('publishedAt', 'Not Found').split('T')[0] if item['modelVersions'] and 'publishedAt' in item['modelVersions'][0] else 'Not Found'
 
@@ -222,9 +238,9 @@ def model_list_html(json_data):
         else:
             model_type_badge = f'<div class="model-type-badge {item["type"].lower()}">{get_display_type(item["type"])}</div>'
 
-        # NSFW Badge
-        # nsfw_badge = '<div class="nsfw-badge">NSFW</div>' if item.get('nsfw') else '' # OLD
-        if item.get('nsfw'):
+        # NSFW Badge - only show for nsfw cards and if setting is enabled
+        show_nsfw_badge = getattr(opts, 'show_nsfw_badge', True)
+        if is_nsfw and show_nsfw_badge:
             nsfw_badge = (
                 '<div class="nsfw-badge">'
                 '<svg class="nsfw-badge-icon" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" fill="currentColor">'
@@ -742,7 +758,10 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                 model_folder = os.path.join(contenttype_folder(content_type, desc))
                 model_uploader = None
                 uploader_avatar = None
-                nsfw = item['nsfw']
+
+                # Use a dedicated function to check if the model is NSFW
+                is_nsfw = is_model_nsfw(item)
+
                 creator = item.get('creator', None)
                 if creator:
                     model_uploader = creator.get('username', None)
@@ -994,7 +1013,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
 
         folder_location = "None"
         default_subfolder = "None"
-        sub_folders = _file.getSubfolders(model_folder, output_basemodel, nsfw, model_uploader, model_name, model_id, version_name, version_id)
+        sub_folders = _file.getSubfolders(model_folder, output_basemodel, is_nsfw, model_uploader, model_name, model_id, version_name, version_id)
 
         for root, dirs, files in os.walk(model_folder, followlinks=True):
             for filename in files:
@@ -1028,7 +1047,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
 
         default_subfolder = sub_folder_value(content_type, desc)
         if default_subfolder != "None":
-            default_subfolder = _file.convertCustomFolder(default_subfolder, output_basemodel, nsfw, model_uploader, model_name, model_id, version_name, version_id)
+            default_subfolder = _file.convertCustomFolder(default_subfolder, output_basemodel, is_nsfw, model_uploader, model_name, model_id, version_name, version_id)
         if folder_location == "None":
             folder_location = model_folder
             if default_subfolder != "None":
