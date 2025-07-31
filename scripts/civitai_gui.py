@@ -1412,6 +1412,16 @@ def on_ui_settings():
         ).info('Not recommended for security, may be required if you do not have the correct CA Bundle available')
     )
 
+    shared.opts.add_option(
+        'civitai_debug_prints',
+        shared.OptionInfo(
+            default=False,
+            label='Enable debug prints',
+            section=browser,
+            category_id=cat_id
+        ).info('Shows debug information in console for API calls and file operations. Requires UI reload')
+    )
+
     # Default sub folders
     use_LORA = getattr(opts, 'use_LORA', False)
     folders = [

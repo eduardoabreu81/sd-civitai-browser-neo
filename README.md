@@ -1,8 +1,8 @@
 ## ✨ Key features and changes in this fork:
 
 **_All changes in this fork are marked in the code as `=== ANXETY EDITs ===`_**</br>
-**_Treat this fork as an author's vision – it's not a fork that will fix absolutely every problem...</br>
-(The codebase really is bullsh*t - My subjective opinion)_**
+**_Treat this fork as an author's vision – it's not a fork that will fix absolutely every problem..._**</br>
+_(The codebase really is bullsh*t - My subjective opinion)_
 
 <h1></h1>
 
