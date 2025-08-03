@@ -15,10 +15,10 @@ from pathlib import Path
 from modules.shared import opts, cmd_opts
 
 # === Extension imports ===
-from scripts.civitai_global import print
 import scripts.civitai_file_manage as _file
 import scripts.civitai_global as gl
 import scripts.civitai_api as _api
+from scripts.civitai_global import print
 
 try:
     from zip_unicode import ZipHandler
@@ -56,6 +56,17 @@ def is_early_access(version_data):
     avail = version_data.get('availability')
     return isinstance(avail, str) and avail == 'EarlyAccess'
 
+# This nsfwlevel system is not accurate...
+def is_model_nsfw(model_data, nsfw_level=8):
+    """Determine if a model is NSFW based on its metadata and first image."""
+    if model_data.get('nsfw'):
+        return True
+    model_versions = model_data.get('modelVersions')
+    if model_versions and model_versions[0].get('images'):
+        first_image = model_versions[0]['images'][0]
+        if first_image.get('nsfwLevel', 0) >= nsfw_level:
+            return True
+    return False
 
 def start_aria2_rpc():
     start_file = os.path.join(aria2path, '_')
@@ -176,15 +187,23 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
 
     model_list = json.loads(model_list)
 
+    ## === ANXETY EDITs ===
     for model_string in model_list:
         model_name, model_id = _api.extract_model_info(model_string)
         for item in gl.json_data['items']:
             if int(item['id']) == int(model_id):
-                model_id, desc, content_type = item['id'], item['description'], item['type']
+                desc = item['description']
+                content_type = item['type']
                 version = item.get('modelVersions', [])[0]
                 version_name = version.get('name')
+                version_id = version.get('id')
+                output_basemodel = version.get('baseModel')
+                is_nsfw = is_model_nsfw(item)
+                model_uploader = creator.get('username', 'Unknown')
+                creator = item.get('creator', {})
                 files = version.get('files', [])
                 primary_file = next((file for file in files if file.get('primary', False)), None)
+
                 if primary_file:
                     model_filename = _api.cleaned_name(primary_file.get('name'))
                     model_sha256 = primary_file.get('hashes', {}).get('SHA256')

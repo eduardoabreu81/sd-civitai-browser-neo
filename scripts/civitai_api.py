@@ -5,13 +5,13 @@ import platform
 import json
 import os
 import re
+import gradio as gr
 from datetime import datetime, timezone
 from collections import defaultdict
 from pathlib import Path
 from html import escape
 from io import BytesIO
 from PIL import Image
-import gradio as gr
 
 # ===  WebUI imports ===
 from modules.paths import models_path, extensions_dir, data_path
@@ -19,10 +19,10 @@ from modules.images import read_info_from_image
 from modules.shared import cmd_opts, opts
 
 # === Extension imports ===
-from scripts.civitai_global import print, debug_print
 import scripts.civitai_download as _download
 import scripts.civitai_file_manage as _file
 import scripts.civitai_global as gl
+from scripts.civitai_global import print, debug_print
 
 
 gl.init()
@@ -48,12 +48,12 @@ def is_early_access(version_data):
     avail = version_data.get('availability')
     return isinstance(avail, str) and avail == 'EarlyAccess'
 
-# This nsfwlevel system is not accurate....
-def is_model_nsfw(model, nsfw_level=8):
+# This nsfwlevel system is not accurate...
+def is_model_nsfw(model_data, nsfw_level=8):
     """Determine if a model is NSFW based on its metadata and first image."""
-    if model.get('nsfw'):
+    if model_data.get('nsfw'):
         return True
-    model_versions = model.get('modelVersions')
+    model_versions = model_data.get('modelVersions')
     if model_versions and model_versions[0].get('images'):
         first_image = model_versions[0]['images'][0]
         if first_image.get('nsfwLevel', 0) >= nsfw_level:

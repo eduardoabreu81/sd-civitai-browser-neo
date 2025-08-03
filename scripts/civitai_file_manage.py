@@ -18,11 +18,11 @@ from PIL import Image
 from modules.shared import cmd_opts, opts
 
 # === Extension imports ===
-from scripts.civitai_global import print, debug_print
+import scripts.civitai_download as _download
+import scripts.civitai_file_manage as _file
 import scripts.civitai_global as gl
 import scripts.civitai_api as _api
-import scripts.civitai_file_manage as _file
-import scripts.civitai_download as _download
+from scripts.civitai_global import print, debug_print
 
 
 IS_KAGGLE = 'KAGGLE_URL_BASE' in os.environ

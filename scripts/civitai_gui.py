@@ -1,4 +1,3 @@
-import subprocess
 import fnmatch
 import json
 import os
@@ -12,11 +11,11 @@ from modules.paths import extensions_dir
 from modules.options import categories
 
 # === Extension imports ===
-from scripts.civitai_global import print
 import scripts.civitai_download as _download
 import scripts.civitai_file_manage as _file
 import scripts.civitai_global as gl
 import scripts.civitai_api as _api
+from scripts.civitai_global import print
 
 
 gl.init()
@@ -1258,7 +1257,7 @@ def on_ui_settings():
     shared.opts.add_option(
         'video_playback',
         shared.OptionInfo(
-            default=False,
+            default=True,
             label='Gif/video playback in the browser',
             section=browser,
             category_id=cat_id
@@ -1275,7 +1274,6 @@ def on_ui_settings():
         ).info('Turns individual prompts from an example image into a button to send it to txt2img')
     )
 
-    # === ANXETY EDITs ===
     shared.opts.add_option(
         'resize_preview_cards',
         shared.OptionInfo(
@@ -1287,7 +1285,7 @@ def on_ui_settings():
     )
 
     shared.opts.add_option(
-        'preview_resize_size',
+        'resize_preview_size',
         shared.OptionInfo(
             default=512,
             label='Preview resize size (pixels)',
@@ -1299,7 +1297,7 @@ def on_ui_settings():
     )
 
     shared.opts.add_option(
-        'resize_saved_previews',
+        'resize_preview_on_save',
         shared.OptionInfo(
             default=True,
             label='Resize saved preview images',

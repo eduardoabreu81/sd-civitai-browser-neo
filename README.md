@@ -1,8 +1,7 @@
 ## ✨ Key features and changes in this fork:
 
 **_All changes in this fork are marked in the code as `=== ANXETY EDITs ===`_**</br>
-**_Treat this fork as an author's vision – it's not a fork that will fix absolutely every problem..._**</br>
-_(The codebase really is bullsh*t - My subjective opinion)_
+**_Treat this fork as an author's vision – it's not a fork that will fix absolutely every problem..._**
 
 <h1></h1>
 
@@ -28,10 +27,7 @@ _(The codebase really is bullsh*t - My subjective opinion)_
   _(see `clean_description` in [scripts/civitai_file_manage.py](./scripts/civitai_file_manage.py))_
 
 ### ToDo:
-- [X] Add the ability to search for models by hash. (Only SHA256)
-- [X] Implement an option to compress preview images, both in the browser and for downloaded files (optionally toggleable in settings).
-- [ ] Fix the issue with displaying local model HTML files (should open the local file instead of the online page).
-- [ ] Fix the model update buttons (if they are broken).
+- [ ] ...
 - [X] Become terrified at the thought of a complete refactor of the extension.
 - [X] Add a cat to the code 🐱
 

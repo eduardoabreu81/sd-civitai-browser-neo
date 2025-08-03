@@ -1,11 +1,12 @@
+/* === ANXETY EDITS === */
 body {
-    background-color: #0b0f19;
+    background-color: var(--body-background-fill);
 }
 
 .model-block {
-    box-shadow: 0px 0px 1px 3px #3339ff30;
-    border-radius: 10px;
-    padding: 1px 20px 10px;
+    box-shadow: 0 0 1px 3px color-mix(in srgb, var(--block-border-color), transparent);
+    border-radius: 16px;
+    padding: 2px 20px 10px;
     margin-bottom: 20px;
 }
 
@@ -295,6 +296,5 @@ a:hover {
     max-height: 100vh;
     padding: 1em;
 }
-
 /*-----------------------------------------*/
 /*End CSS accordion for toggling extra metadata*/
