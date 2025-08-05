@@ -26,11 +26,11 @@ class Colors:
     RESET = '\033[0m'
 
 
-do_debug_print = getattr(opts, "civitai_debug_prints", False)
+do_debug_print = getattr(opts, 'civitai_debug_prints', False)
 def init():
     warnings.simplefilter('ignore', InsecureRequestWarning)
 
-    config_folder = os.path.join(os.getcwd(), "config_states")
+    config_folder = os.path.join(os.getcwd(), 'config_states')
     if not os.path.exists(config_folder):
         os.mkdir(config_folder)
 
@@ -46,11 +46,11 @@ def init():
     url_list = {}
     download_queue = []
 
-    subfolder_json = os.path.join(config_folder, "civitai_subfolders.json")
+    subfolder_json = os.path.join(config_folder, 'civitai_subfolders.json')
     if not os.path.exists(subfolder_json):
         with open(subfolder_json, 'w') as json_file:
             #json.dump({}, json_file)
-            json.dump({"created_at": datetime.now().timestamp()}, json_file)
+            json.dump({'created_at': datetime.now().timestamp()}, json_file)
 
     from_update_tab = False
     scan_files = False
@@ -61,8 +61,8 @@ def init():
 
 _print = print
 def print(print_message):
-    _print(f'{Colors.BLUE}[CivitAI-Browser+]{Colors.RESET} - {print_message}')
+    _print(f"{Colors.BLUE}[CivitAI-Browser+]{Colors.RESET} - {print_message}")
 
 def debug_print(print_message):
     if do_debug_print:
-        _print(f'{Colors.MAGENTA}[DEBUG] {Colors.BLUE}[CivitAI-Browser+]{Colors.RESET} - {print_message}')
+        _print(f"{Colors.MAGENTA}[DEBUG] {Colors.BLUE}[CivitAI-Browser+]{Colors.RESET} - {print_message}")
