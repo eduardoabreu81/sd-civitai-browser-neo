@@ -17,6 +17,7 @@
 
 #### 🔧 List of changes taken from pull requests (PRs) or bugfixes:
 
+- Fixed some issues with `sub_folder` [Issues #356](https://github.com/BlafKing/sd-civitai-browser-plus/issues/356)
 - Fixed error `cvitai_subfolders.json does not exist` _(It's not a bug, it's a feature...)_ [Issues #349](https://github.com/BlafKing/sd-civitai-browser-plus/issues/349)
 - Added a way to search for a model by its `hash`. [Issues #309](https://github.com/BlafKing/sd-civitai-browser-plus/issues/309)
 - Models are now saved using their original file names, without any extra or random IDs. [Issues #361](https://github.com/BlafKing/sd-civitai-browser-plus/issues/361)

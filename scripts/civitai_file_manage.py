@@ -282,7 +282,7 @@ def save_images(preview_html, model_filename, install_path, sub_folder, api_resp
             with urllib.request.urlopen(img_url) as url:
                 with open(os.path.join(image_path, filename), 'wb') as f:
                     f.write(url.read())
-                    print(f"Downloaded {filename}")
+                    print(f"Downloaded image: {filename}")
 
         except urllib.error.URLError as e:
             print(f"Error: {e.reason}")
@@ -617,10 +617,10 @@ def getSubfolders(model_folder, basemodel=None, nsfw=None, author=None, modelNam
                 except Exception as e:
                     print(f"Error: Failed to process custom subfolder: {e}")
             else:
-                upper_value = value.upper()
-                if not upper_value.startswith(os.sep):
-                    upper_value = os.sep + upper_value
-                sub_folders.append(upper_value)
+                display_value = value
+                if not display_value.startswith(os.sep):
+                    display_value = os.sep + display_value
+                sub_folders.append(display_value)
 
         sub_folders.remove('None')
         sub_folders = sorted(sub_folders, key=lambda x: (x.lower(), x))

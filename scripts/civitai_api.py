@@ -984,7 +984,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                     uploader = (
                         '<h3 class="model-uploader">'
                         'Uploaded by '
-                        f'<a href="https://civitai.com/user/{escape(str(model_uploader))}" target="_blank" style="text-decoration: underline;>{escape(str(model_uploader))}</a>'
+                        f'<a href="https://civitai.com/user/{escape(str(model_uploader))}" target="_blank" style="text-decoration: underline;">{escape(str(model_uploader))}</a>'
                         f'{uploader_avatar}'
                         '</h3>'
                     )

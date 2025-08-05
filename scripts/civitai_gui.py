@@ -595,6 +595,12 @@ def on_ui_tabs():
             outputs=[install_path]
         )
 
+        subfolder_selected.select(
+            fn=select_subfolder,
+            inputs=[subfolder_selected],
+            outputs=[install_path]
+        )
+
         list_versions.select(
             fn=_api.update_model_info,
             inputs=[
