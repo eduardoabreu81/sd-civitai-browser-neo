@@ -35,8 +35,7 @@ MODEL_TYPE_DISPLAY_NAMES = {
     'AestheticGradient': 'Aesthetic',
     'MotionModule': 'Motion',
     'Workflows': 'Workflow',
-    'Wildcards': 'Wildcard',
-    'modelFolder': 'Model',
+    'Wildcards': 'Wildcard'
 }
 
 def get_display_type(type_name):
@@ -261,7 +260,7 @@ def model_list_html(json_data):
         if installstatus != 'civmodelcardinstalled':
             card_html += (
                 f'<input type="checkbox" class="model-checkbox" id="checkbox-{model_string}" '
-                f'onchange="multi_model_select(\'{model_string}\', \'{item["type"]}\', this.checked)">'\
+                f'onchange="multi_model_select(\'{model_string}\', \'{item["type"]}\', this.checked)">'
                 f'<label for="checkbox-{model_string}" class="custom-checkbox">'
                 f'<span class="checkbox-checkmark"></span>'
                 f'</label>'
@@ -322,7 +321,7 @@ def model_list_html(json_data):
     HTML += '</div>'
     return HTML
 
-def search_by_sha256(sha256_hash):
+def _search_by_sha256(sha256_hash):
     """
     Search for a model by SHA256 hash.
     Returns the model data if found, or an error message if not.
@@ -330,7 +329,7 @@ def search_by_sha256(sha256_hash):
     if not re.match(r'^[A-F0-9]{64}$', sha256_hash.upper()):
         return 'invalid_hash'
 
-    api_url = f"https://civitai.com/api/v1/model-versions/by-hash/{sha256_hash.upper()}"
+    api_url = f"https://civitai.com/api/v1/model-versions/by-hash/{sha256_hash}"
     headers = get_headers()
     proxies, ssl = get_proxies()
 
@@ -339,7 +338,7 @@ def search_by_sha256(sha256_hash):
         if response.status_code == 200:
             data = response.json()
             if 'error' in data:
-                return 'not_found'
+                return 'sha256_not_found'
             else:
                 # Get the model ID and fetch the full model data
                 model_id = data.get('modelId')
@@ -453,23 +452,22 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
             # Handle SHA256 search specially
             if use_search_term == 'SHA256' and search_term:
                 sha256_hash = search_term.strip().upper()
-                gl.json_data = search_by_sha256(sha256_hash)
+                debug_print(f"Performing SHA256 search for hash: {sha256_hash}")
+
+                gl.json_data = _search_by_sha256(sha256_hash)
+
                 if isinstance(gl.json_data, dict):
                     gl.url_list = {1: f"sha256_search_{sha256_hash}"}
                 else:
                     # Handle error cases
                     gl.url_list = {1: 'error'}
+                    debug_print(f"SHA256 search failed: {gl.json_data}")
             else:
                 api_url = create_api_url(content_type, sort_type, period_type, use_search_term, base_filter, only_liked, tile_count, search_term, nsfw)
                 gl.url_list = {1: api_url}
                 gl.json_data = request_civit_api(api_url)
         else:
             api_url = gl.url_list.get(current_page)
-            if api_url and api_url.startswith('sha256_search_'):
-                # For SHA256 search, we don't support pagination, so return to page 1
-                return initial_model_page(content_type, sort_type, period_type, use_search_term, search_term, 1, base_filter, only_liked, nsfw, tile_count, from_update_tab)
-            else:
-                gl.json_data = request_civit_api(api_url)
     else:
         api_url = gl.url_list.get(current_page)
         gl.from_update_tab = True
@@ -479,18 +477,9 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
     max_page = 1
     model_list = []
     hasPrev, hasNext = False, False
+    
     if not isinstance(gl.json_data, dict):
-        # Handle SHA256 specific errors
-        if use_search_term == 'SHA256' and gl.json_data == 'not_found':
-            print(f"No model found with SHA256 hash: {search_term}")
-            print('The model might not exist on CivitAI or the hash might be incorrect.')
-            HTML = api_error_msg('sha256_not_found')
-        elif use_search_term == 'SHA256' and gl.json_data == 'invalid_hash':
-            print(f"Invalid SHA256 hash format: {search_term}")
-            print('Please enter a valid 64-character hexadecimal hash.')
-            HTML = api_error_msg('invalid_hash')
-        else:
-            HTML = api_error_msg(gl.json_data)
+        HTML = api_error_msg(gl.json_data)
     else:
         gl.json_data = insert_metadata(1)
 
@@ -498,12 +487,16 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
         hasNext = 'nextPage' in metadata
         hasPrev = 'prevPage' in metadata
 
-        for item in gl.json_data['items']:
-            if len(item['modelVersions']) > 0:
-                model_list.append(f"{item['name']} ({item['id']})")
+        # Check for empty results when searching by User Name
+        if use_search_term == 'User name' and (not gl.json_data.get('items') or len(gl.json_data['items']) == 0):
+            HTML = api_error_msg('user_not_found')
+        else:
+            for item in gl.json_data['items']:
+                if len(item['modelVersions']) > 0:
+                    model_list.append(f"{item['name']} ({item['id']})")
 
-        max_page = max(gl.url_list.keys())
-        HTML = model_list_html(gl.json_data)
+            max_page = max(gl.url_list.keys())
+            HTML = model_list_html(gl.json_data)
 
     return (
         gr.Dropdown.update(choices=model_list, value='', interactive=True),  # Model List
@@ -1339,5 +1332,7 @@ def api_error_msg(input_string):
         return div + 'Invalid SHA256 hash format.<br>Please enter a valid 64-character hexadecimal hash.</div>'
     elif input_string == 'sha256_not_found':
         return div + 'No model found with this SHA256 hash.<br>The model might not exist on CivitAI or the hash might be incorrect.</div>'
+    elif input_string == 'user_not_found':
+        return div + 'No models found for this user on CivitAI.<br>Please check the correctness of the user name.'
     else:
         return div + 'The CivitAI-API failed to respond due to an error.<br>Check the logs for more details.'
