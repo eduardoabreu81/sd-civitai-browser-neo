@@ -1079,9 +1079,9 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
         if folder_location == 'None':
             folder_location = model_folder
             if default_subfolder != 'None':
-                folder_path = folder_location + default_subfolder
+                folder_path = str(folder_location) + default_subfolder
             else:
-                folder_path = folder_location
+                folder_path = str(folder_location)
         else:
             folder_path = folder_location
 
@@ -1222,9 +1222,9 @@ def update_file_info(model_string, model_version, file_metadata):
                                 if folder_location == 'None':
                                     folder_location = model_folder
                                     if default_sub != 'None':
-                                        folder_path = folder_location + default_sub
+                                        folder_path = str(folder_location) + default_sub
                                     else:
-                                        folder_path = folder_location
+                                        folder_path = str(folder_location)
                                 else:
                                     folder_path = folder_location
                                 relative_path = os.path.relpath(folder_location, model_folder)

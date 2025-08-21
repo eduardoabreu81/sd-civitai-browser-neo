@@ -403,7 +403,7 @@ def on_ui_tabs():
             if sub_folder == 'None' or sub_folder == 'Only available if the selected files are of the same model type':
                 newpath = gl.main_folder
             else:
-                newpath = gl.main_folder + sub_folder
+                newpath = str(gl.main_folder) + sub_folder
             return gr.Textbox.update(value=newpath)
 
         # Javascript Functions #

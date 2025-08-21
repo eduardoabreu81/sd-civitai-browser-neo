@@ -227,13 +227,13 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
 
             if not subfolder.startswith(os.sep):
                 subfolder = os.sep + subfolder
-            install_path = model_folder + subfolder
+            install_path = str(model_folder) + subfolder
         else:
             from_batch = True
             if default_subfolder != 'None':
-                install_path = model_folder + default_subfolder
+                install_path = str(model_folder) + default_subfolder
             else:
-                install_path = model_folder
+                install_path = str(model_folder)
 
         model_item = create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch)
         if model_item:
