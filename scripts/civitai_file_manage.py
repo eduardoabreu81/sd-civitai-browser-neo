@@ -283,23 +283,49 @@ def save_images(preview_html, model_filename, install_path, sub_folder, api_resp
     image_path = get_image_path(install_path, api_response, sub_folder)
     img_urls = re.findall(r'data-sampleimg="true" src=[\'"]?([^\'" >]+)', preview_html)
 
+    if not img_urls:
+        print("No images found to download.")
+        return
+
+    # Limit number of images to download
+    img_count = getattr(opts, 'save_img_count', 16)
+    img_count = max(4, min(64, img_count))
+    img_urls = img_urls[:img_count]
+
     name = os.path.splitext(model_filename)[0]
 
+    # Setup download
     opener = urllib.request.build_opener()
     opener.addheaders = [('User-agent', 'Mozilla/5.0')]
     urllib.request.install_opener(opener)
 
+    # Download images
+    downloaded_count = 0
     for i, img_url in enumerate(img_urls):
-        filename = f"{name}_{i}.jpg"
+        filename = f"{name}_{i}.png"
         img_url = urllib.parse.quote(img_url, safe=':/=')
         try:
             with urllib.request.urlopen(img_url) as url:
-                with open(os.path.join(image_path, filename), 'wb') as f:
-                    f.write(url.read())
-                    print(f"Downloaded image: {filename}")
+                img_data = url.read()
+                img = Image.open(io.BytesIO(img_data))
+                if img.mode in ('RGBA', 'LA', 'P'):
+                    # Keep transparency for PNG
+                    pass
+                elif img.mode != 'RGB':
+                    img = img.convert('RGB')
+                img.save(os.path.join(image_path, filename), 'PNG')
+                print(f"Downloaded image: {filename}")
+                downloaded_count += 1
 
         except urllib.error.URLError as e:
-            print(f"Error: {e.reason}")
+            print(f"Error downloading {filename}: {e.reason}")
+        except Exception as e:
+            print(f"Error processing image {filename}: {e}")
+    
+    if downloaded_count > 0:
+        print(f"Successfully downloaded {downloaded_count} images to: {image_path}")
+    else:
+        print("No images were downloaded.")
 
 def card_update(gr_components, model_name, list_versions, is_install):
     if gr_components:

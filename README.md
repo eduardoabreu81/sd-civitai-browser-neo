@@ -18,6 +18,8 @@
 
 #### 🔧 List of bugfixes and changes taken from Issues:
 
+- Added an option to specify the number of model images to download (default: 16) [Issues #319](https://github.com/BlafKing/sd-civitai-browser-plus/issues/319)
+  _The number of images to save can be configured in settings - `Downloads`_
 - Fixed the display logic for the "Select All" button – now it only appears when there are models to select :3
 - Fixed some issues with `sub_folder`. [Issues #356](https://github.com/BlafKing/sd-civitai-browser-plus/issues/356)
 - Fixed error `cvitai_subfolders.json does not exist` _(It's not a bug, it's a feature...)_ [Issues #349](https://github.com/BlafKing/sd-civitai-browser-plus/issues/349)
