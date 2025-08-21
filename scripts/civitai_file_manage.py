@@ -156,21 +156,35 @@ def delete_model(delete_finish=None, model_filename=None, model_string=None, lis
 
 ## === ANXETY EDITs ===
 def delete_associated_files(directory, base_name):
+    """Deletes related model files in the save directory."""
+    # Patterns for associated files
+    associated_suffixes = ['', '.preview', '.api_info', '.html']
+    image_exts = {'.png', '.jpg', '.jpeg'}
+
     for file in os.listdir(directory):
-        current_base_name, ext = os.path.splitext(file)
-        if (
-            current_base_name == base_name
-            or current_base_name == f"{base_name}.preview"
-            or current_base_name == f"{base_name}.api_info"
-            or current_base_name == f"{base_name}.html"
-        ):
-            path_to_delete = os.path.join(directory, file)
+        file_path = os.path.join(directory, file)
+        name, ext = os.path.splitext(file)
+
+        # Delete associated files by suffix
+        if name in [f'{base_name}{sfx}' for sfx in associated_suffixes]:
             try:
-                send2trash(path_to_delete)
-                print(f"Associated file moved to trash: {path_to_delete}")
-            except:
-                os.remove(path_to_delete)
-                print(f"Associated file deleted: {path_to_delete}")
+                send2trash(file_path)
+                print(f'Associated file moved to trash: {file_path}')
+            except Exception:
+                os.remove(file_path)
+                print(f'Associated file deleted: {file_path}')
+            continue
+
+        # Delete images matching pattern: base_name_<number>.<ext>
+        if name.startswith(f'{base_name}_') and ext.lower() in image_exts:
+            suffix = name[len(f'{base_name}_'):]
+            if suffix.isdigit():
+                try:
+                    send2trash(file_path)
+                    print(f'Image moved to trash: {file_path}')
+                except Exception:
+                    os.remove(file_path)
+                    print(f'Image deleted: {file_path}')
 
 
 def _resize_image_bytes(image_bytes, target_size=512):
