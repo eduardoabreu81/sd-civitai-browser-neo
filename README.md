@@ -8,7 +8,7 @@
 
 - Redesigned the model cards in the browser to give them a modern look :3
 - Added badges to model cards to display model type and NSFW status (if applicable)</br>
-  _Note: Badges are only visible when `Tile Size` is set to 10 or higher._
+  _Note: Badges are only visible when `Tile Size` is set to 11 or higher._
 - Model cards that require purchase are marked in gold.</br>
   _Note: The model type badge turns gold and displays a lightning icon :3_
 - Implemented optional setting to change the resolution of model previews (Customize to your liking in settings - `Browser`)
@@ -19,7 +19,7 @@
 #### 🔧 List of bugfixes and changes taken from Issues:
 
 - Fixed the display logic for the "Select All" button – now it only appears when there are models to select :3
-- Fixed some issues with `sub_folder` [Issues #356](https://github.com/BlafKing/sd-civitai-browser-plus/issues/356)
+- Fixed some issues with `sub_folder`. [Issues #356](https://github.com/BlafKing/sd-civitai-browser-plus/issues/356)
 - Fixed error `cvitai_subfolders.json does not exist` _(It's not a bug, it's a feature...)_ [Issues #349](https://github.com/BlafKing/sd-civitai-browser-plus/issues/349)
 - Added a way to search for a model by its `hash`. [Issues #309](https://github.com/BlafKing/sd-civitai-browser-plus/issues/309)
 - Models are now saved using their original file names, without any extra or random IDs. [Issues #361](https://github.com/BlafKing/sd-civitai-browser-plus/issues/361)

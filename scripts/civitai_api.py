@@ -158,7 +158,7 @@ def model_list_html(json_data):
 
     ## === ANXETY EDITs ===
     def get_model_card(item, existing_files, existing_files_sha256, playback):
-        """Build HTML for a single model card."""
+        """Build HTML for a single model card (civmodelcard - Browser Card)"""
         model_id = item.get('id')
         model_name = item.get('name', '')
         is_nsfw = is_model_nsfw(item)
@@ -250,23 +250,28 @@ def model_list_html(json_data):
         else:
             nsfw_badge = ''
 
-        # Card HTML
+        # ModelCard HTML (Header)
         card_html = (
             f'<figure class="civmodelcard {nsfw_class} {early_access_class} {installstatus}" base-model="{base_model}" date="{date}" '
             f'onclick="select_model(\'{model_string}\', event)">'
-            f'{model_type_badge}{nsfw_badge}'
+            f'<div class="card-header">'
+            f'<div class="badges-container">{model_type_badge}{nsfw_badge}</div>'
         )
 
         if installstatus != 'civmodelcardinstalled':
             card_html += (
+                f'<div class="checkbox-container">'
                 f'<input type="checkbox" class="model-checkbox" id="checkbox-{model_string}" '
                 f'onchange="multi_model_select(\'{model_string}\', \'{item["type"]}\', this.checked)">'
                 f'<label for="checkbox-{model_string}" class="custom-checkbox">'
                 f'<span class="checkbox-checkmark"></span>'
                 f'</label>'
+                f'</div>'
             )
 
+        # ModelCard HTML (Footer)
         card_html += (
+            f'</div>'
             f'{imgtag}'
             f'<figcaption title="{full_name}">{display_name}</figcaption></figure>'
         )
