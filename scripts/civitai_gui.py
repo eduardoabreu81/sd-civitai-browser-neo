@@ -15,7 +15,7 @@ import scripts.civitai_download as _download
 import scripts.civitai_file_manage as _file
 import scripts.civitai_global as gl
 import scripts.civitai_api as _api
-from scripts.civitai_global import print
+from scripts.civitai_global import print, debug_print
 
 
 gl.init()
@@ -773,13 +773,64 @@ def on_ui_tabs():
             outputs=[]
         )
 
+        def save_images_wrapper(preview_html, model_filename, install_path, sub_folder, model_id):
+            """Wrapper function to save images with API response data"""
+            print(f"[CivitAI-Browser+] Save Images Debug: model_id={model_id}, preview_html_length={len(preview_html) if preview_html else 0}")
+            
+            # Generate proper HTML with images if preview_html is empty or doesn't contain images
+            if not preview_html or 'data-sampleimg="true"' not in preview_html:
+                debug_print(f"[CivitAI-Browser+] Generating HTML with images for model {model_id}")
+                if model_id:
+                    try:
+                        # Get model versions for the current model
+                        model_versions = _api.update_model_versions(model_id)
+                        if model_versions and model_versions.get('value'):
+                            # Generate HTML with images using the same function as automatic version
+                            result = _api.update_model_info(None, model_versions.get('value'), False, model_id)
+                            if isinstance(result, tuple) and len(result) >= 1:
+                                preview_html = result[0]  # First element is the HTML
+                            else:
+                                preview_html = str(result) if result else ""
+                            debug_print(f"[CivitAI-Browser+] Generated HTML length: {len(preview_html) if preview_html else 0}")
+                    except Exception as e:
+                        debug_print(f"[CivitAI-Browser+] Error generating HTML: {e}")
+            
+            if model_id and gl.json_data:
+                # Find the current model in the API data
+                for item in gl.json_data.get('items', []):
+                    if int(item.get('id', 0)) == int(model_id):
+                        debug_print(f"[CivitAI-Browser+] Using existing API data for model {model_id}")
+                        # Ensure preview_html is a string
+                        if not isinstance(preview_html, str):
+                            preview_html = str(preview_html) if preview_html else ""
+                        _file.save_images(preview_html, model_filename, install_path, sub_folder, api_response=gl.json_data)
+                        return
+                # If model not found in current data, try to fetch it
+                try:
+                    debug_print(f"[CivitAI-Browser+] Fetching API data for model {model_id}")
+                    api_response = _api.request_civit_api(f"https://civitai.com/api/v1/models/{model_id}")
+                    # Ensure preview_html is a string
+                    if not isinstance(preview_html, str):
+                        preview_html = str(preview_html) if preview_html else ""
+                    _file.save_images(preview_html, model_filename, install_path, sub_folder, api_response=api_response)
+                    return
+                except Exception as e:
+                    debug_print(f"[CivitAI-Browser+] Error fetching API data: {e}")
+            # Fallback to save without API response
+            debug_print(f"[CivitAI-Browser+] Using fallback save method")
+            # Ensure preview_html is a string
+            if not isinstance(preview_html, str):
+                preview_html = str(preview_html) if preview_html else ""
+            _file.save_images(preview_html, model_filename, install_path, sub_folder)
+
         save_images.click(
-            fn=_file.save_images,
+            fn=save_images_wrapper,
             inputs=[
                 preview_html_input,
                 model_filename,
                 install_path,
-                sub_folder
+                sub_folder,
+                model_id
             ],
             outputs=[]
         )

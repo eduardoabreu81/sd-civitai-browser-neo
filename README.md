@@ -18,6 +18,7 @@
 
 #### 🔧 List of bugfixes and changes taken from Issues:
 
+- Fixed the "Save Images" button – now it correctly saves model images [Issues #374](https://github.com/BlafKing/sd-civitai-browser-plus/issues/374)
 - Added an option to specify the number of model images to download (default: 16) [Issues #319](https://github.com/BlafKing/sd-civitai-browser-plus/issues/319)
   _The number of images to save can be configured in settings - `Downloads`_
 - Fixed the display logic for the "Select All" button – now it only appears when there are models to select :3
