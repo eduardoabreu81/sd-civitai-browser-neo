@@ -59,6 +59,12 @@ def is_model_nsfw(model_data, nsfw_level=8):
             return True
     return False
 
+def normalize_sha256(sha256_hash):
+    """Normalize SHA256 hash to uppercase and validate format."""
+    if not sha256_hash:
+        return None
+    return sha256_hash.strip().upper()
+
 
 def contenttype_folder(content_type, desc=None, fromCheck=False, custom_folder=None):
     """
@@ -147,9 +153,9 @@ def model_list_html(json_data):
                             with open(json_path, 'r', encoding='utf-8') as f:
                                 json_file = json.load(f)
                                 if isinstance(json_file, dict):
-                                    sha256 = json_file.get('sha256')
+                                    sha256 = normalize_sha256(json_file.get('sha256'))
                                     if sha256:
-                                        sha256_set.add(sha256.upper())
+                                        sha256_set.add(sha256)
                                 else:
                                     print(f'Invalid JSON data in {json_path}. Expected a dictionary.')
                         except Exception as e:
@@ -205,9 +211,9 @@ def model_list_html(json_data):
             for file in version.get('files', []):
                 file_name, file_extension = os.path.splitext(file['name'])
                 file_name_full = f'{file_name}_{file["id"]}{file_extension}'
-                file_sha256 = file.get('hashes', {}).get('SHA256', '').upper()
+                file_sha256 = normalize_sha256(file.get('hashes', {}).get('SHA256', ''))
                 name_match = file_name_full.lower() in existing_files
-                sha256_match = file_sha256 in existing_files_sha256
+                sha256_match = file_sha256 and file_sha256 in existing_files_sha256
                 if name_match or sha256_match:
                     if version == item['modelVersions'][0]:
                         installstatus = 'civmodelcardinstalled'
@@ -327,53 +333,56 @@ def model_list_html(json_data):
     return HTML
 
 def _search_by_sha256(sha256_hash):
-    """
-    Search for a model by SHA256 hash.
-    Returns the model data if found, or an error message if not.
-    """
-    if not re.match(r'^[A-F0-9]{64}$', sha256_hash.upper()):
+    """Search for a model by SHA256 hash."""
+    # Normalize and validate hash format
+    normalized_hash = normalize_sha256(sha256_hash)
+    if not normalized_hash or not re.match(r'^[A-F0-9]{64}$', normalized_hash):
         return 'invalid_hash'
 
-    api_url = f"https://civitai.com/api/v1/model-versions/by-hash/{sha256_hash}"
+    # Search for model version by hash
+    api_url = f"https://civitai.com/api/v1/model-versions/by-hash/{normalized_hash}"
     headers = get_headers()
     proxies, ssl = get_proxies()
 
     try:
         response = requests.get(api_url, headers=headers, timeout=(60, 30), proxies=proxies, verify=ssl)
+        
         if response.status_code == 200:
             data = response.json()
             if 'error' in data:
                 return 'sha256_not_found'
-            else:
-                # Get the model ID and fetch the full model data
-                model_id = data.get('modelId')
-                if model_id:
-                    model_url = f"https://civitai.com/api/v1/models/{model_id}"
-                    model_response = requests.get(model_url, headers=headers, timeout=(60, 30), proxies=proxies, verify=ssl)
-                    if model_response.status_code == 200:
-                        model_data = model_response.json()
-                        # Create a response format similar to the regular search
-                        return {
-                            'items': [model_data],
-                            'metadata': {
-                                'totalItems': 1,
-                                'currentPage': 1,
-                                'pageSize': 1,
-                                'totalPages': 1
-                            }
-                        }
+            
+            # Get model ID and fetch full model data
+            model_id = data.get('modelId')
+            if not model_id:
                 return 'not_found'
-        elif response.status_code == 404:
+                
+            model_url = f"https://civitai.com/api/v1/models/{model_id}"
+            model_response = requests.get(model_url, headers=headers, timeout=(60, 30), proxies=proxies, verify=ssl)
+            
+            if model_response.status_code == 200:
+                model_data = model_response.json()
+                return {
+                    'items': [model_data],
+                    'metadata': {
+                        'totalItems': 1,
+                        'currentPage': 1,
+                        'pageSize': 1,
+                        'totalPages': 1
+                    }
+                }
             return 'not_found'
+            
+        elif response.status_code == 404:
+            return 'sha256_not_found'
         elif response.status_code == 503:
             return 'offline'
         else:
             return 'error'
+            
     except requests.exceptions.Timeout:
         return 'timeout'
-    except requests.exceptions.RequestException:
-        return 'error'
-    except Exception:
+    except (requests.exceptions.RequestException, Exception):
         return 'error'
 
 def create_api_url(content_type=None, sort_type=None, period_type=None, use_search_term=None, base_filter=None, only_liked=None, tile_count=None, search_term=None, nsfw=None, isNext=None):
@@ -394,13 +403,25 @@ def create_api_url(content_type=None, sort_type=None, period_type=None, use_sear
     if use_search_term != 'None' and search_term:
         search_term = search_term.replace('\\', '\\\\').lower()
         if 'civitai.com' in search_term:
-            model_match = re.search(r'models/(\d+)', search_term)
-            if model_match:
-                model_number = model_match.group(1)
-                params = {'ids': model_number}
+            if '/api/download/models' in search_term:
+                # Extract version ID from download URL
+                version_match = re.search(r'models/(\d+)', search_term)
+                if version_match:
+                    version_id = version_match.group(1)
+                    # Make API request to get model version information
+                    version_api_url = f'https://civitai.com/api/v1/model-versions/{version_id}'
+                    version_data = request_civit_api(version_api_url, skip_error_check=True)
+                    
+                    if isinstance(version_data, dict) and 'modelId' in version_data:
+                        model_id = version_data['modelId']
+                        params = {'ids': str(model_id)}
+            else:
+                model_match = re.search(r'models/(\d+)', search_term)
+                if model_match:
+                    model_number = model_match.group(1)
+                    params = {'ids': model_number}
         elif use_search_term == 'SHA256':
             # SHA256 search is handled separately in initial_model_page
-            # This function is not used for SHA256 search
             pass
         else:
             key_map = {'User name': 'username', 'Tag': 'tag'}
@@ -456,17 +477,9 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
         if current_page == 1:
             # Handle SHA256 search specially
             if use_search_term == 'SHA256' and search_term:
-                sha256_hash = search_term.strip().upper()
-                debug_print(f"Performing SHA256 search for hash: {sha256_hash}")
-
-                gl.json_data = _search_by_sha256(sha256_hash)
-
-                if isinstance(gl.json_data, dict):
-                    gl.url_list = {1: f"sha256_search_{sha256_hash}"}
-                else:
-                    # Handle error cases
-                    gl.url_list = {1: 'error'}
-                    debug_print(f"SHA256 search failed: {gl.json_data}")
+                debug_print(f"Performing SHA256 search for hash: {search_term}")
+                gl.json_data = _search_by_sha256(search_term)
+                gl.url_list = {1: f"sha256_search_{search_term.strip().upper()}" if isinstance(gl.json_data, dict) else 'error'}
             else:
                 api_url = create_api_url(content_type, sort_type, period_type, use_search_term, base_filter, only_liked, tile_count, search_term, nsfw)
                 gl.url_list = {1: api_url}
@@ -594,6 +607,7 @@ def insert_metadata(page_nr, api_url=None):
 
     return gl.json_data
 
+## === ANXETY EDITs ===
 def update_model_versions(model_id, json_input=None):
     if json_input:
         api_json = json_input
@@ -616,12 +630,8 @@ def update_model_versions(model_id, json_input=None):
             for version in versions:
                 versions_dict[version['name']].append(item['name'])
                 for version_file in version['files']:
-                    file_sha256 = version_file.get('hashes', {}).get('SHA256', '').upper()
-                    # === ANXETY EDITs ===
+                    file_sha256 = normalize_sha256(version_file.get('hashes', {}).get('SHA256', ''))
                     version_filename = version_file['name']
-                    # version_filename = os.path.splitext(version_file['name'])[0]
-                    # version_extension = os.path.splitext(version_file['name'])[1]
-                    # version_filename = f"{version_filename}_{version_file['id']}{version_extension}"
                     version_files.add((version['name'], version_filename, file_sha256))
 
             for root, _, files in os.walk(model_folder, followlinks=True):
@@ -632,8 +642,8 @@ def update_model_versions(model_id, json_input=None):
                             with open(json_path, 'r', encoding='utf-8') as f:
                                 json_data = json.load(f)
                                 if isinstance(json_data, dict):
-                                    if 'sha256' in json_data and json_data['sha256']:
-                                        sha256 = json_data.get('sha256', '').upper()
+                                    sha256 = normalize_sha256(json_data.get('sha256'))
+                                    if sha256:
                                         for version_name, _, file_sha256 in version_files:
                                             if sha256 == file_sha256:
                                                 installed_versions.add(version_name)
@@ -647,7 +657,6 @@ def update_model_versions(model_id, json_input=None):
                             installed_versions.add(version_name)
                             break
 
-            ## === ANXETY EDITs ===
             version_names = list(versions_dict.keys())
             # Build display names with [Installed] and (Early Access) if applicable
             display_version_names = []
@@ -802,7 +811,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                         model_filename = f"{model_filename}_{file['id']}{model_extension}"
                         dl_url = file['downloadUrl']
                         gl.json_info = item
-                        sha256_value = file['hashes'].get('SHA256', 'Unknown')
+                        sha256_value = normalize_sha256(file['hashes'].get('SHA256')) or 'Unknown'
 
                     size = file['metadata'].get('size', 'Unknown')
                     format = file['metadata'].get('format', 'Unknown')
@@ -819,14 +828,10 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                     })
                     if is_primary:
                         default_file = unique_file_name
-                        ## === ANXETY EDITs ===
                         model_filename = file['name']
-                        # model_filename = os.path.splitext(file['name'])[0]
-                        # model_extension = os.path.splitext(file['name'])[1]
-                        # model_filename = f"{model_filename}_{file['id']}{model_extension}"
                         dl_url = file['downloadUrl']
                         gl.json_info = item
-                        sha256_value = file['hashes'].get('SHA256', 'Unknown')
+                        sha256_value = normalize_sha256(file['hashes'].get('SHA256')) or 'Unknown'
 
                 safe_tensor_found = False
                 pickle_tensor_found = False
@@ -1051,10 +1056,8 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                     with open(json_file_path, 'r', encoding='utf-8') as f:
                         try:
                             data = json.load(f)
-                            sha256 = data.get('sha256')
-                            if sha256:
-                                sha256 = sha256.upper()
-                            if sha256 == sha256_value:
+                            sha256 = normalize_sha256(data.get('sha256'))
+                            if sha256 and sha256 == sha256_value:
                                 folder_location = root
                                 BtnDownInt = False
                                 BtnDel = True
@@ -1180,7 +1183,7 @@ def update_file_info(model_string, model_version, file_metadata):
                         for file in model['files']:
                             model_id = item['id']
                             file_name = file.get('name', 'Unknown')
-                            sha256 = file['hashes'].get('SHA256', 'Unknown')
+                            sha256 = normalize_sha256(file['hashes'].get('SHA256')) or 'Unknown'
                             metadata = file.get('metadata', {})
                             file_size = metadata.get('size', 'Unknown')
                             file_format = metadata.get('format', 'Unknown')
@@ -1211,8 +1214,8 @@ def update_file_info(model_string, model_version, file_metadata):
                                                 with open(os.path.join(root, filename), 'r', encoding='utf-8') as f:
                                                     try:
                                                         data = json.load(f)
-                                                        sha256_value = data.get('sha256')
-                                                        if sha256_value != None and sha256_value.upper() == sha256:
+                                                        sha256_value = normalize_sha256(data.get('sha256'))
+                                                        if sha256_value and sha256_value == sha256:
                                                             folder_location = root
                                                             installed = True
                                                             break
