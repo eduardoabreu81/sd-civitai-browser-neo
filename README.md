@@ -6,6 +6,7 @@
 ## ✨ Key features and changes in this fork:
 
 - Redesigned the model cards in the browser to give them a modern look :3
+- Redesign the sorting by date, make it neat in the form of bricks~
 - Added badges to model cards to display model type and NSFW status (if applicable)</br>
   _Note: Badges are only visible when `Tile Size` is set to 11 or higher._
 - Model cards that require purchase are marked in gold.</br>
@@ -21,18 +22,21 @@
 - Complete removal of HyperNetwork support - should fix problems with launching in [Forge-Classic](https://github.com/Haoming02/sd-webui-forge-classic) ([Issue #390](https://github.com/BlafKing/sd-civitai-browser-plus/issues/390))
 - Added a clarifying message about Early Access to avoid confusion~ [Issue #383](https://github.com/BlafKing/sd-civitai-browser-plus/issues/383)
 - Fixed the "Save Images" button – now it correctly saves model images [Issue #374](https://github.com/BlafKing/sd-civitai-browser-plus/issues/374)
-- Models are now saved using their original file names, without any extra or random IDs. [Issue #361](https://github.com/BlafKing/sd-civitai-browser-plus/issues/361)
-- Fixed some issues with `sub_folder`. [Issue #356](https://github.com/BlafKing/sd-civitai-browser-plus/issues/356)
+- Models are now saved using their original file names, without any extra or random IDs [Issue #361](https://github.com/BlafKing/sd-civitai-browser-plus/issues/361)
+- Fixed some issues with `sub_folder` [Issue #356](https://github.com/BlafKing/sd-civitai-browser-plus/issues/356)
 - Fixed error `cvitai_subfolders.json does not exist` _(It's not a bug, it's a feature...)_ [Issue #349](https://github.com/BlafKing/sd-civitai-browser-plus/issues/349)
 - Added an option to specify the number of model images to download (default: 16) [Issue #319](https://github.com/BlafKing/sd-civitai-browser-plus/issues/319)</br>
   _The number of images to save can be configured in settings - `Downloads`_
-- Added a way to search for a model by its `hash`. [Issue #309](https://github.com/BlafKing/sd-civitai-browser-plus/issues/309)
+- Added a way to search for a model by its `hash` [Issue #309](https://github.com/BlafKing/sd-civitai-browser-plus/issues/309)
 - HTML description cleanup fix taken from [PR #384](https://github.com/BlafKing/sd-civitai-browser-plus/pull/384)</br>
   _(see `clean_description` in [scripts/civitai_file_manage.py](./scripts/civitai_file_manage.py))_
 
-### 🖼️ Preview Cards (new style):
+### 🖼️ Preview Browser (New Style):
 
-<img src=".github/preview.png" alt="Extension Preview" width="100%"/>
+<h6>> Browser Cards</h6>
+<img src=".github/preview_browser_cards.png" alt="Extension: Preview Browser Cards" width="100%"/>
+<h6>> Sorting Card Bricks <i>(when date sorting is enabled)</i></h6>
+<img src=".github/preview_sort_by_date.png" alt="Extension: Preview Sorting Cards" width="100%"/>
 
 <div align="center">
     <h6>🎨 For better WebUI experience, I recommend using my theme - <a href="https://github.com/anxety-solo/anxety-theme">Anxety-Theme</a> :3</h6>

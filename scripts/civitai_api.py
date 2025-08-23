@@ -319,15 +319,32 @@ def model_list_html(json_data):
             HTML += model_card
 
     if gl.sortNewest:
+        HTML += '<div class="date-sections-container">'
         for date, cards in sorted(sorted_models.items(), reverse=True):
+            if not cards:
+                continue
+
+            if date == 'Not Found':
+                formatted_date = 'Unknown Date'
+            else:
+                try:
+                    date_obj = datetime.strptime(date, '%Y-%m-%d')
+                    formatted_date = date_obj.strftime('%B %d, %Y')
+                except:
+                    formatted_date = date  # Fallback to original format
+            
+            # Add card counter (only show if more than 1 card)
+            card_count = len(cards)
+            counter_html = f' <span class="card-counter">{card_count}</span>' if card_count > 1 else ''
             HTML += (
-                f'<div class="date-section"><h4>{date}</h4>'
-                '<hr style="margin-bottom: 5px; margin-top: 5px;">'
+                f'<div class="date-section">'
+                f'<h4>{formatted_date}{counter_html}</h4>'
                 '<div class="card-row">'
             )
             for card in cards:
                 HTML += card
             HTML += '</div></div>'
+        HTML += '</div>'
 
     HTML += '</div>'
     return HTML

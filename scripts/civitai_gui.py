@@ -21,7 +21,7 @@ from scripts.civitai_global import print, debug_print
 gl.init()
 
 
-def saveSettings(ust, ct, pt, st, bf, cj, td, ol, hi, sn, ss, ts):
+def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, sn, ss, ts):
     config = cmd_opts.ui_config_file
 
     # Create a dictionary to map the settings to their respective variables
@@ -32,7 +32,7 @@ def saveSettings(ust, ct, pt, st, bf, cj, td, ol, hi, sn, ss, ts):
         'civitai_interface/Sort by:/value': st,
         'civitai_interface/Base model:/value': bf,
         'civitai_interface/Save info after download/value': cj,
-        'civitai_interface/Divide cards by date/value': td,
+        'civitai_interface/Divide cards by date/value': False,  # This is a toggle, so its state does not matter here
         'civitai_interface/Liked models only/value': ol,
         'civitai_interface/Hide installed models/value': hi,
         'civitai_interface/NSFW content/value': sn,
@@ -470,7 +470,6 @@ def on_ui_tabs():
                 sort_type,
                 base_filter,
                 create_json,
-                toggle_date,
                 only_liked,
                 hide_installed,
                 show_nsfw,

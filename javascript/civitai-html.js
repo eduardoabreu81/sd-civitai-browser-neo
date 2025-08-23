@@ -935,8 +935,8 @@ function genInfo_to_txt2img(genInfo, do_slice = true) {
     let pasteButton = gradioApp().querySelector('#paste');
     if (genInfo) {
         insert.value = do_slice ? genInfo.slice(5) : genInfo;
-        insert.dispatchEvent(new Event('input', {bubbles: true}));
-        pasteButton.dispatchEvent(new Event('click', {bubbles: true}));
+        insert.dispatchEvent(new Event('input', { bubbles: true }));
+        pasteButton.dispatchEvent(new Event('click', { bubbles: true }));
     }
 }
 
@@ -1193,7 +1193,7 @@ function onPageLoad() {
     createCivitAICardButtons();
     adjustFilterBoxAndButtons();
     setupClickOutsideListener();
-    updateBackToTopVisibility([{isIntersecting: false}]);
+    updateBackToTopVisibility([{ isIntersecting: false }]);
 }
 
 onUiLoaded(onPageLoad);

@@ -398,17 +398,78 @@
     margin-bottom: auto !important;
 }
 
-.date-section {
-    display: block;
-    width: 100%;
-    margin-bottom: 5px;
-    text-align: center;
-}
-
-.card-row {
+/* === Modern Date-Filtered Layout === */
+/* Container for date sections masonry layout */
+.date-sections-container {
     display: flex;
     flex-wrap: wrap;
+    gap: 16px;
+    align-items: flex-start;
+    justify-content: flex-start;
+    padding: 16px;
+}
+
+/* Date section styling */
+.date-section {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 300px;
+    text-align: left;
+    background: var(--background-fill-secondary);
+    border-radius: 8px;
+    padding: 16px;
+    border: 1px solid var(--border-color-primary);
+    align-self: stretch;
+}
+
+.date-section h4 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #495057;
+    margin: 0 0 16px 0;
+    padding: 8px 0;
+    text-align: center;
+    display: flex;
+    align-items: center;
     justify-content: center;
+    gap: 8px;
+}
+
+.card-counter {
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--body-text-color);
+    background: var(--background-fill-primary);
+    padding: 2px 8px;
+    border-radius: 12px;
+    margin-left: 8px;
+    border: 1px solid var(--border-color-primary);
+}
+.date-section h4::before {
+    content: '';
+    width: 20px;
+    height: 20px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23495057'%3E%3Cpath d='M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z'/%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+}
+.date-section h4::after {
+    display: none;
+}
+
+.date-section hr {
+    display: none;
+}
+
+/* Horizontal layout for cards within date sections */
+.date-section .card-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-start;
+    justify-content: space-around;
 }
 
 #selected_tags {
