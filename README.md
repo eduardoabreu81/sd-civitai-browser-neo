@@ -1,10 +1,9 @@
+> [!Note]
+> **All changes in this fork are marked in the code as `=== ANXETY EDITs ===`**</br>
+> _Treat this fork as an author's vision – it's not a fork that will fix absolutely every problem..._</br>
+> You can report bugs to me and I'll try to fix them! :33
+
 ## ✨ Key features and changes in this fork:
-
-**_All changes in this fork are marked in the code as `=== ANXETY EDITs ===`_**</br>
-**_Treat this fork as an author's vision – it's not a fork that will fix absolutely every problem..._**</br>
-**_But you can report bugs to me and I'll try to fix them! :33_**
-
-<h1></h1>
 
 - Redesigned the model cards in the browser to give them a modern look :3
 - Added badges to model cards to display model type and NSFW status (if applicable)</br>
@@ -18,16 +17,16 @@
 
 #### 🔧 List of bugfixes and changes taken from Issues:
 
-- Fixed the "Save Images" button – now it correctly saves model images [Issues #374](https://github.com/BlafKing/sd-civitai-browser-plus/issues/374)
-- Added an option to specify the number of model images to download (default: 16) [Issues #319](https://github.com/BlafKing/sd-civitai-browser-plus/issues/319)
-  _The number of images to save can be configured in settings - `Downloads`_
 - Fixed the display logic for the "Select All" button – now it only appears when there are models to select :3
-- Fixed some issues with `sub_folder`. [Issues #356](https://github.com/BlafKing/sd-civitai-browser-plus/issues/356)
-- Fixed error `cvitai_subfolders.json does not exist` _(It's not a bug, it's a feature...)_ [Issues #349](https://github.com/BlafKing/sd-civitai-browser-plus/issues/349)
-- Added a way to search for a model by its `hash`. [Issues #309](https://github.com/BlafKing/sd-civitai-browser-plus/issues/309)
-- Models are now saved using their original file names, without any extra or random IDs. [Issues #361](https://github.com/BlafKing/sd-civitai-browser-plus/issues/361)
 - Complete removal of HyperNetwork support - should fix problems with launching in [Forge-Classic](https://github.com/Haoming02/sd-webui-forge-classic) ([Issue #390](https://github.com/BlafKing/sd-civitai-browser-plus/issues/390))
-- Added a clarifying message about Early Access to avoid confusion~ [Issues #383](https://github.com/BlafKing/sd-civitai-browser-plus/issues/383)
+- Added a clarifying message about Early Access to avoid confusion~ [Issue #383](https://github.com/BlafKing/sd-civitai-browser-plus/issues/383)
+- Fixed the "Save Images" button – now it correctly saves model images [Issue #374](https://github.com/BlafKing/sd-civitai-browser-plus/issues/374)
+- Models are now saved using their original file names, without any extra or random IDs. [Issue #361](https://github.com/BlafKing/sd-civitai-browser-plus/issues/361)
+- Fixed some issues with `sub_folder`. [Issue #356](https://github.com/BlafKing/sd-civitai-browser-plus/issues/356)
+- Fixed error `cvitai_subfolders.json does not exist` _(It's not a bug, it's a feature...)_ [Issue #349](https://github.com/BlafKing/sd-civitai-browser-plus/issues/349)
+- Added an option to specify the number of model images to download (default: 16) [Issue #319](https://github.com/BlafKing/sd-civitai-browser-plus/issues/319)</br>
+  _The number of images to save can be configured in settings - `Downloads`_
+- Added a way to search for a model by its `hash`. [Issue #309](https://github.com/BlafKing/sd-civitai-browser-plus/issues/309)
 - HTML description cleanup fix taken from [PR #384](https://github.com/BlafKing/sd-civitai-browser-plus/pull/384)</br>
   _(see `clean_description` in [scripts/civitai_file_manage.py](./scripts/civitai_file_manage.py))_
 
@@ -85,34 +84,9 @@
 
 <h1></h1>
 
-
 # How to install 📘
 
-<h3>Automatic Installation:</h3>
-
-![HowTo](https://github.com/BlafKing/sd-civitai-browser-plus/assets/9644716/91a8f636-0fd5-4964-8fb4-830a5c22254a)
-
-<h3>Manual Installation:</h3>
-
-1. Download the latest version from this site and unpack the .zip
-![2023-09-25 13_06_31](https://github.com/BlafKing/sd-civitai-browser-plus/assets/9644716/12e46c6b-74b5-4ed5-bf55-cb76c5f75c62)
-
-2. Navigate to your extensions folder (Your SD folder/webui/extensions)
-3. Place the unpacked folder inside the extensions folder
-4. Restart SD-WebUI
-
-
-# Preview 👀
-
-https://github.com/BlafKing/sd-civitai-browser-plus/assets/9644716/44c5c7a0-4854-4043-bfbb-f32fa9df5a74
-
-
-# Star History 🌟
-
-<a href="https://star-history.com/#BlafKing/sd-civitai-browser-plus&Date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=BlafKing/sd-civitai-browser-plus&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=BlafKing/sd-civitai-browser-plus&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=BlafKing/sd-civitai-browser-plus&type=Date" />
-  </picture>
-</a>
+1. Open WebUI
+2. Navigate to "Extensions" → "Install from URL"
+3. Paste `https://github.com/anxety-solo/sd-civitai-browser-plus`
+4. Click "Install" and reload WebUI
