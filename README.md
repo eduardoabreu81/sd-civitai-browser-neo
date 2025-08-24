@@ -6,7 +6,7 @@
 ## ✨ Key features and changes in this fork:
 
 - Redesigned the model cards in the browser to give them a modern look :3
-- Redesign the sorting by date, make it neat in the form of bricks~
+- Redesigned the sorting by date, make it neat in the form of bricks~
 - Added badges to model cards to display model type and NSFW status (if applicable)</br>
   _Note: Badges are only visible when `Tile Size` is set to 11 or higher._
 - Model cards that require purchase are marked in gold.</br>

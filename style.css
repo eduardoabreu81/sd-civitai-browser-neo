@@ -394,19 +394,13 @@
     flex-wrap: nowrap;
 }
 
-.gradio-container-3-32-0 .prose :last-child {
-    margin-bottom: auto !important;
-}
-
 /* === Modern Date-Filtered Layout === */
 /* Container for date sections masonry layout */
 .date-sections-container {
     display: flex;
     flex-wrap: wrap;
-    gap: 16px;
-    align-items: flex-start;
-    justify-content: flex-start;
     padding: 16px;
+    gap: 16px;
 }
 
 /* Date section styling */
@@ -414,37 +408,24 @@
     display: flex;
     flex-direction: column;
     flex: 1 1 auto;
-    min-width: 300px;
-    text-align: left;
-    background: var(--background-fill-secondary);
-    border-radius: 8px;
     padding: 16px;
+    /* min-width: 300px; */
+    background: var(--background-fill-secondary);
     border: 1px solid var(--border-color-primary);
+    border-radius: 8px;
     align-self: stretch;
 }
-
 .date-section h4 {
+    display: flex;
+    color: #495057;
     font-size: 16px;
     font-weight: 600;
-    color: #495057;
     margin: 0 0 16px 0;
     padding: 8px 0;
     text-align: center;
-    display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
-}
-
-.card-counter {
-    font-size: 14px;
-    font-weight: 400;
-    color: var(--body-text-color);
-    background: var(--background-fill-primary);
-    padding: 2px 8px;
-    border-radius: 12px;
-    margin-left: 8px;
-    border: 1px solid var(--border-color-primary);
 }
 .date-section h4::before {
     content: '';
@@ -455,22 +436,28 @@
     background-repeat: no-repeat;
     background-position: center;
 }
-.date-section h4::after {
-    display: none;
-}
 
-.date-section hr {
-    display: none;
+.card-counter {
+    color: var(--body-text-color);
+    font-size: 14px;
+    font-weight: 400;
+    margin-left: 8px;
+    padding: 2px 8px;
+    background: var(--background-fill-primary);
+    border: 1px solid var(--border-color-primary);
+    border-radius: 12px;
 }
 
 /* Horizontal layout for cards within date sections */
 .date-section .card-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 12px;
     align-items: flex-start;
     justify-content: space-around;
+    /* gap: 12px; */
 }
+
+/* End of Date-Filtered Layout */
 
 #selected_tags {
     text-align: center;

@@ -1362,7 +1362,7 @@ def on_ui_settings():
         'resize_preview_size',
         shared.OptionInfo(
             default=512,
-            label='Preview resize size (pixels)',
+            label='Preview resize size',
             component=gr.Slider,
             component_args=lambda: {'maximum': '1024', 'minimum': '128', 'step': '32'},
             section=browser,
@@ -1388,16 +1388,6 @@ def on_ui_settings():
             section=browser,
             category_id=cat_id
         ).info('This saves the models description to the description field on model cards')
-    )
-
-    shared.opts.add_option(
-        'civitai_not_found_print',
-        shared.OptionInfo(
-            default=True,
-            label='Show "Model not found" print during update scanning',
-            section=browser,
-            category_id=cat_id
-        )
     )
 
     shared.opts.add_option(

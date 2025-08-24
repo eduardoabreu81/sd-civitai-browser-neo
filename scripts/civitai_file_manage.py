@@ -1122,8 +1122,6 @@ def file_scan(folders, ver_finish, tag_finish, installed_finish, preview_finish,
     file_paths = []
     all_ids = []
 
-    not_found_print = getattr(opts, 'civitai_not_found_print', True)
-
     for file_path in files:
         if gl.cancel_status:
             if progress != None:
@@ -1143,8 +1141,7 @@ def file_scan(folders, ver_finish, tag_finish, installed_finish, preview_finish,
         if model_id == 'offline':
             print('The CivitAI servers did not respond, unable to retrieve Model ID')
         elif model_id == 'Model not found':
-            if not_found_print:
-                print(f"model: '{file_name}' not found on CivitAI servers.")
+            debug_print(f"model: '{file_name}' not found on CivitAI servers.")
         elif model_id != None:
             all_model_ids.append(f"&ids={model_id}")
             all_ids.append(model_id)
