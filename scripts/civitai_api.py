@@ -867,20 +867,20 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
 
                 model_url = selected_version.get('downloadUrl', '')
                 model_main_url = f"https://civitai.com/models/{item['id']}"
-                img_html = '<div class="sampleimgs"><input type="radio" name="zoomRadio" id="resetZoom" class="zoom-radio" checked>'
 
                 url = f"https://civitai.com/api/v1/model-versions/{selected_version['id']}"
                 api_version = request_civit_api(url)
 
-                for index, pic in enumerate(api_version['images']):
+                ## === ANXETY EDITs ===
+                # --- HTML Generation ---
+                img_html = '<div class="sampleimgs"><input type="radio" name="zoomRadio" id="resetZoom" class="zoom-radio" checked>'
 
+                for index, pic in enumerate(api_version['images']):
                     if from_preview:
                         index = f"preview_{index}"
 
-                    class_name = 'class="model-block"'
-
                     img_html += (
-                        f'<div {class_name} style="display:flex;align-items:flex-start;">'
+                        f'<div class="model-block" style="display:flex;align-items:flex-start;">'
                         f'<div class="civitai-image-container">'
                         f'<input type="radio" name="zoomRadio" id="zoomRadio{index}" class="zoom-radio">'
                         f'<label for="zoomRadio{index}" class="zoom-img-container">'
@@ -925,21 +925,21 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                             '<dl style="gap:10px; display:grid;">'
                         )
                         # Define the preferred order of keys
-                        preferred_order = ["prompt", "negativePrompt", "seed", "Size", "Model", "Clip skip", "sampler", "steps", "cfgScale"]
+                        preferred_order = ["prompt", "negativePrompt", "Model", "sampler", "steps", "cfgScale", "Clip skip", "seed", "Size"]
                         # Loop through the keys in the preferred order and add them to the HTML
                         for key in preferred_order:
                             if key in prompt_dict:
                                 value = prompt_dict[key]
                                 key_map = {
                                     'prompt': 'Prompt',
-                                    'negativePrompt': 'Negative prompt',
-                                    'seed': 'Seed',
-                                    'Size': 'Size',
+                                    'negativePrompt': 'Negative Prompt',
                                     'Model': 'Model',
-                                    'Clip skip': 'Clip skip',
                                     'sampler': 'Sampler',
                                     'steps': 'Steps',
-                                    'cfgScale': 'CFG scale'
+                                    'cfgScale': 'CFG Scale',
+                                    'clipSkip': 'Clip Skip',
+                                    'seed': 'Seed',
+                                    'Size': 'Size',
                                 }
                                 key_disp = key_map.get(key, key)
 
@@ -1120,35 +1120,35 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                     break
 
         return (
-            gr.HTML.update(value=output_html),  # Preview HTML
-            gr.Textbox.update(value=output_training, interactive=True),  # Trained Tags
-            gr.Textbox.update(value=output_basemodel),  # Base Model Number
+            gr.HTML.update(value=output_html),                                                      # Preview HTML
+            gr.Textbox.update(value=output_training, interactive=True),                             # Trained Tags
+            gr.Textbox.update(value=output_basemodel),                                              # Base Model Number
             gr.Button.update(visible=False if BtnDel else True, interactive=BtnDownInt, value=BtnDownTxt),  # Download Button
-            gr.Button.update(interactive=BtnImage),  # Images Button
-            gr.Button.update(visible=BtnDel, interactive=BtnDel),  # Delete Button
-            gr.Dropdown.update(choices=file_list, value=default_file, interactive=True),  # File List
-            gr.Textbox.update(value=cleaned_name(model_filename), interactive=True),  # Model File Name
-            gr.Textbox.update(value=dl_url),  # Download URL
-            gr.Textbox.update(value=model_id),  # Model ID
-            gr.Textbox.update(value=sha256_value),  # SHA256
-            gr.Textbox.update(interactive=True, value=folder_path if model_name else None),  # Install Path
-            gr.Dropdown.update(choices=sub_folders, value=default_subfolder, interactive=True)  # Sub Folder List
+            gr.Button.update(interactive=BtnImage),                                                 # Images Button
+            gr.Button.update(visible=BtnDel, interactive=BtnDel),                                   # Delete Button
+            gr.Dropdown.update(choices=file_list, value=default_file, interactive=True),            # File List
+            gr.Textbox.update(value=cleaned_name(model_filename), interactive=True),                # Model File Name
+            gr.Textbox.update(value=dl_url),                                                        # Download URL
+            gr.Textbox.update(value=model_id),                                                      # Model ID
+            gr.Textbox.update(value=sha256_value),                                                  # SHA256
+            gr.Textbox.update(interactive=True, value=folder_path if model_name else None),         # Install Path
+            gr.Dropdown.update(choices=sub_folders, value=default_subfolder, interactive=True)      # Sub Folder List
         )
     else:
         return (
-            gr.HTML.update(value=None),  # Preview HTML
-            gr.Textbox.update(value=None, interactive=False),  # Trained Tags
-            gr.Textbox.update(value=''),  # Base Model Number
+            gr.HTML.update(value=None),                                         # Preview HTML
+            gr.Textbox.update(value=None, interactive=False),                   # Trained Tags
+            gr.Textbox.update(value=''),                                        # Base Model Number
             gr.Button.update(visible=False if BtnDel else True, value='Download model'),  # Download Button
-            gr.Button.update(interactive=False),  # Images Button
-            gr.Button.update(visible=BtnDel, interactive=BtnDel),  # Delete Button
-            gr.Dropdown.update(choices=None, value=None, interactive=False),  # File List
-            gr.Textbox.update(value=None, interactive=False),  # Model File Name
-            gr.Textbox.update(value=None),  # Download URL
-            gr.Textbox.update(value=None),  # Model ID
-            gr.Textbox.update(value=None),  # SHA256
-            gr.Textbox.update(interactive=False, value=None),  # Install Path
-            gr.Dropdown.update(choices=None, value=None, interactive=False)  # Sub Folder List
+            gr.Button.update(interactive=False),                                # Images Button
+            gr.Button.update(visible=BtnDel, interactive=BtnDel),               # Delete Button
+            gr.Dropdown.update(choices=None, value=None, interactive=False),    # File List
+            gr.Textbox.update(value=None, interactive=False),                   # Model File Name
+            gr.Textbox.update(value=None),                                      # Download URL
+            gr.Textbox.update(value=None),                                      # Model ID
+            gr.Textbox.update(value=None),                                      # SHA256
+            gr.Textbox.update(interactive=False, value=None),                   # Install Path
+            gr.Dropdown.update(choices=None, value=None, interactive=False)     # Sub Folder List
         )
 
 def sub_folder_value(content_type, desc=None):
