@@ -506,79 +506,37 @@ function modelInfoPopUp(modelName = null, content_type = null, no_message = fals
             return el;
         };
 
-        const overlay = createElementWithStyle('div', {
-            position: 'fixed',
-            top: '0',
-            left: '0',
-            width: '100%',
-            height: '100%',
-            backgroundColor: 'rgba(20, 20, 20, 0.95)',
-            zIndex: '1001',
-            overflowY: 'auto',
-        });
+        const overlay = document.createElement('div');
         overlay.classList.add('civitai-overlay');
-        overlay.addEventListener('keydown', handleKeyPress);
         overlay.addEventListener('click', (event) => {
             if (event.target === overlay) hidePopup();
         });
+        
+        // Add ESC key listener to document
+        document.addEventListener('keydown', handleKeyPress);
 
-        const closeButton = createElementWithStyle('div', {
-            zIndex: '1011',
-            position: 'fixed',
-            right: '22px',
-            top: '0',
-            cursor: 'pointer',
-            color: 'white',
-            fontSize: '32pt',
-        });
-        closeButton.classList.add('civitai-overlay-close');
-        closeButton.textContent = '×';
-        closeButton.addEventListener('click', hidePopup);
+        // Removed creation of closeButton
 
-        const inner = createElementWithStyle('div', {
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            width: 'auto',
-            transform: 'translate(-50%, -50%)',
-            background: 'var(--neutral-950)',
-            padding: '2em',
-            borderRadius: 'var(--block-radius)',
-            borderStyle: 'solid',
-            borderWidth: 'var(--block-border-width)',
-            borderColor: 'var(--block-border-color)',
-            zIndex: '1001',
-        });
+        const inner = document.createElement('div');
         inner.classList.add('civitai-overlay-inner');
 
         var modelInfo;
         if (!no_message) {
-            modelInfo = createElementWithStyle('div', {
-                fontSize: '24px',
-                color: 'white',
-                fontFamily: 'var(--font)',
-            });
+            modelInfo = document.createElement('div');
             modelInfo.classList.add('civitai-overlay-text');
             modelInfo.textContent = 'Loading model info, please wait!';
         }
 
         document.body.style.overflow = 'hidden';
         document.body.appendChild(overlay);
-        overlay.append(closeButton, inner);
+        overlay.append(inner);
         if (!no_message) {
             inner.appendChild(modelInfo);
         }
 
-        setDynamicWidth(inner);
-        window.addEventListener('resize', () => setDynamicWidth(inner));
     }
 }
 
-function setDynamicWidth(inner) {
-    var windowWidth = window.innerWidth;
-    var dynamicWidth = Math.min(Math.max(windowWidth - 150, 350), 900);
-    inner.style.width = dynamicWidth + 'px';
-}
 
 // Function to hide the popup
 function hidePopup() {
@@ -586,7 +544,8 @@ function hidePopup() {
     if (overlay) {
         document.body.removeChild(overlay);
         document.body.style.overflow = 'auto';
-        window.removeEventListener('resize', setDynamicWidth);
+        // Remove ESC key listener
+        document.removeEventListener('keydown', handleKeyPress);
     }
 }
 
@@ -619,18 +578,19 @@ function inputHTMLPreviewContent(html_input) {
             var overlayText = document.querySelector('.civitai-overlay-text');
             var modelInfo = document.createElement('div');
 
-            overlayText.parentNode.removeChild(overlayText);
-            if (!modelIdNotFound) {
-                inner.style.top = 0;
-                inner.style.transform = 'translate(-50%, 0)';
+            // Hide loading text instead of removing it
+            if (overlayText) {
+                overlayText.style.display = 'none';
             }
+            
             modelInfo.innerHTML = extractedText;
             inner.appendChild(modelInfo);
 
-            inner.style.top = 'unset';
-            inner.style.transform = 'translate(-50%, 0%)';
+            // Allow inner container to expand to content height and remove top margin
+            inner.style.height = 'auto';
 
-            setDescriptionToggle();
+            // Initialize description toggle after content is loaded
+            setTimeout(() => initDescriptionToggle('preview-'), 100);
         }
     }
 }
@@ -948,23 +908,58 @@ function hideInstalled(toggleValue) {
     });
 }
 
-function setDescriptionToggle() {
-    const popUp = document.querySelector('.civitai-overlay-inner');
-    let toggleButton = null;
-    let descriptionDiv = null;
+// Toggle description visibility
+function toggleDescription(prefix = '') {
+    const content = document.getElementById(prefix + 'description-content');
+    const overlay = document.getElementById(prefix + 'description-overlay');
+    const button = document.getElementById(prefix + 'description-toggle-btn');
 
-    if (popUp) {
-        descriptionDiv = popUp.querySelector('.model-description');
-        toggleButton = popUp.querySelector('.description-toggle-label');
+    if (!content || !overlay || !button) return;
+
+    const isExpanded = content.classList.contains('expanded');
+
+    if (isExpanded) {
+        // Collapse - animate back to 400px
+        content.style.maxHeight = '400px';
+        content.classList.remove('expanded');
+        overlay.classList.remove('hidden');
+        button.textContent = 'Show More';
     } else {
-        descriptionDiv = document.querySelector('.model-description');
-        toggleButton = document.querySelector('.description-toggle-label');
+        // Expand - calculate full height and animate to it
+        const scrollHeight = content.scrollHeight;
+        content.style.maxHeight = scrollHeight + 'px';
+        content.classList.add('expanded');
+        overlay.classList.add('hidden');
+        button.textContent = 'Show Less';
     }
+}
 
-    if (descriptionDiv && descriptionDiv.scrollHeight <= 400) {
-        toggleButton.style.visibility = 'hidden';
-        toggleButton.style.height = '0';
-        descriptionDiv.style.position = 'unset';
+// Initialize description toggle functionality
+function initDescriptionToggle(prefix = '') {
+    const content = document.getElementById(prefix + 'description-content');
+    const overlay = document.getElementById(prefix + 'description-overlay');
+    const button = document.getElementById(prefix + 'description-toggle-btn');
+
+    if (!content || !overlay || !button) return;
+
+    // Reset styles first
+    content.style.maxHeight = '';
+    content.classList.remove('expanded');
+    overlay.classList.remove('hidden');
+    button.classList.remove('hidden');
+
+    // Check if content height exceeds 400px
+    const scrollHeight = content.scrollHeight;
+
+    // If content is less than or equal to 400px, hide toggle elements
+    if (scrollHeight <= 400) {
+        overlay.classList.add('hidden');
+        button.classList.add('hidden');
+        content.style.maxHeight = 'none';
+    } else {
+        // Set initial collapsed state
+        content.style.maxHeight = '400px';
+        button.textContent = 'Show More';
     }
 }
 
@@ -1208,3 +1203,90 @@ function checkSettingsLoad() {
     createLink(infoElement);
 }
 let settingsLoadInterval = setInterval(checkSettingsLoad, 1000);
+
+// === Simple Image Viewer ===
+// Open image viewer overlay
+function openImageViewer(mediaUrl, mediaType) {
+    const overlay = document.getElementById('image-viewer-overlay');
+    const viewerImage = document.getElementById('viewer-image');
+    const viewerVideo = document.getElementById('viewer-video');
+    
+    if (!overlay) return;
+    
+    // Setup media element
+    if (mediaType === 'video') {
+        viewerImage.style.display = 'none';
+        viewerVideo.style.display = 'block';
+        const source = viewerVideo.querySelector('source');
+        if (source) {
+            source.src = mediaUrl;
+            viewerVideo.load();
+        }
+    } else {
+        viewerVideo.style.display = 'none';
+        viewerImage.style.display = 'block';
+        viewerImage.src = mediaUrl;
+    }
+    
+    // Show overlay with animation
+    overlay.style.display = 'flex';
+    overlay.classList.remove('closing');
+    requestAnimationFrame(() => {
+        overlay.classList.add('active');
+    });
+    
+    // Prevent body scroll
+    document.body.style.overflow = 'hidden';
+    
+    // Setup event listeners
+    document.addEventListener('keydown', handleViewerKeyDown);
+    overlay.addEventListener('click', handleOverlayClick);
+    viewerImage.addEventListener('click', handleMediaClick);
+    viewerVideo.addEventListener('click', handleMediaClick);
+}
+
+// Close image viewer overlay
+function closeImageViewer() {
+    const overlay = document.getElementById('image-viewer-overlay');
+    if (!overlay || !overlay.classList.contains('active')) return;
+    
+    // Add closing animation
+    overlay.classList.add('closing');
+    overlay.classList.remove('active');
+    
+    setTimeout(() => {
+        overlay.style.display = 'none';
+        overlay.classList.remove('closing');
+        
+        // Restore body scroll
+        document.body.style.overflow = 'auto';
+        
+        // Remove event listeners
+        document.removeEventListener('keydown', handleViewerKeyDown);
+        overlay.removeEventListener('click', handleOverlayClick);
+        
+        const viewerImage = document.getElementById('viewer-image');
+        const viewerVideo = document.getElementById('viewer-video');
+        if (viewerImage) viewerImage.removeEventListener('click', handleMediaClick);
+        if (viewerVideo) viewerVideo.removeEventListener('click', handleMediaClick);
+    }, 300);
+}
+
+// Handle clicks on overlay
+function handleOverlayClick(e) {
+    // Close if clicked on overlay or viewer-content, but not on media
+    if (e.target.classList.contains('viewer-overlay') || 
+        e.target.classList.contains('viewer-content')) {
+        closeImageViewer();
+    }
+}
+// Prevent clicks on media from closing overlay
+function handleMediaClick(e) {
+    e.stopPropagation();
+}
+// Handle keyboard input for viewer
+function handleViewerKeyDown(e) {
+    if (e.key === 'Escape') {
+        closeImageViewer();
+    }
+}

@@ -1,12 +1,17 @@
-> [!Note]
+> [!Tip]
 > **All changes in this fork are marked in the code as `=== ANXETY EDITs ===`**</br>
 > _Treat this fork as an author's vision – it's not a fork that will fix absolutely every problem..._</br>
 > You can report bugs to me and I'll try to fix them! :33
+
+> [!Note]
+> **Important**: The extension has been significantly rewritten, so it may not process your existing models correctly.</br>
+> _Be sure to update your HTML/JSON files..._
 
 ## ✨ Key features and changes in this fork:
 
 - Redesigned the model cards in the browser to give them a modern look :3
 - Redesigned the sorting by date, make it neat in the form of bricks~
+- Completely redesigned the model's HTML page, making it more compact and appealing :33
 - Added badges to model cards to display model type and NSFW status (if applicable)</br>
   _Note: Badges are only visible when `Tile Size` is set to 11 or higher._
 - Model cards that require purchase are marked in gold.</br>
@@ -34,9 +39,11 @@
 ### 🖼️ Preview Browser (New Style):
 
 <h6>> Browser Cards</h6>
-<img src=".github/preview_browser_cards.png" alt="Extension: Preview Browser Cards" width="100%"/>
+<img src=".github/preview_browser_cards.png" alt="Preview Browser Cards" width="100%"/>
 <h6>> Sorting Card Bricks <i>(when date sorting is enabled)</i></h6>
-<img src=".github/preview_sort_by_date.png" alt="Extension: Preview Sorting Cards" width="100%"/>
+<img src=".github/preview_sort_by_date.png" alt="Preview Sorting Cards" width="100%"/>
+<h6>> HTML Model Page</h6>
+<img src=".github/preview_html.png" alt="Preview Model HTML Page" width="100%"/>
 
 <div align="center">
     <h6>🎨 For better WebUI experience, I recommend using my theme - <a href="https://github.com/anxety-solo/anxety-theme">Anxety-Theme</a> :3</h6>

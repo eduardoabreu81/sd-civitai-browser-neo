@@ -231,9 +231,9 @@ def save_preview(file_path, api_response, overwrite_toggle=False, sha256=None):
 
                             if response.status_code == 200:
                                 # Check if resize is enabled for saved previews
-                                resize_saved = getattr(opts, 'resize_saved_previews', True)
+                                resize_saved = getattr(opts, 'resize_preview_on_save', True)
                                 if resize_saved:
-                                    resize_size = getattr(opts, 'preview_resize_size', 512)
+                                    resize_size = getattr(opts, 'resize_preview_size', 512)
                                     resized_image = _resize_image_bytes(response.content, resize_size)
                                 else:
                                     # Save original size
@@ -307,7 +307,16 @@ def save_images(preview_html, model_filename, install_path, sub_folder, api_resp
         try:
             with urllib.request.urlopen(img_url) as url:
                 img_data = url.read()
-                img = Image.open(io.BytesIO(img_data))
+                
+                # Check if resize is enabled for saved images
+                resize_saved = getattr(opts, 'resize_preview_on_save', True)
+                if resize_saved:
+                    resize_size = getattr(opts, 'resize_preview_size', 512)
+                    resized_image = _resize_image_bytes(img_data, resize_size)
+                    img = Image.open(resized_image)
+                else:
+                    img = Image.open(io.BytesIO(img_data))
+                
                 if img.mode in ('RGBA', 'LA', 'P'):
                     # Keep transparency for PNG
                     pass
@@ -513,34 +522,10 @@ def model_from_sent(model_name, content_type):
     css_path = Path(__file__).resolve().parents[1] / 'style_html.css'
     with open(css_path, 'r', encoding='utf-8') as css_file:
         css = css_file.read()
-    replacements = {
-        '#0b0f19': 'var(--neutral-950)',
-        '#F3F4F6': 'var(--body-text-color)',
-        'white': 'var(--body-text-color)',
-        '#80a6c8': 'var(--secondary-300)',
-        '#60A5FA': 'var(--link-text-color-hover)',
-        '#1F2937': 'var(--neutral-700)',
-        '#1F2937': 'var(--button-secondary-background-fill-hover)',
-        '#374151': 'var(--input-border-color)',
-        '#111827': 'var(--neutral-800)',
-        '#111827': 'var(--button-secondary-background-fill)',
-        'top: 50%;': '',
-        'padding-top: 0px;': 'padding-top: 475px;',
-        '.civitai_txt2img': '.civitai_placeholder'
-    }
-
-    for old, new in replacements.items():
-        css = css.replace(old, new)
 
     style_tag = f'<style>{css}</style>'
     head_section = f'<head>{style_tag}</head>'
-
-    output_html = output_html.replace('display:flex;align-items:flex-start;', 'display:flex;align-items:flex-start;flex-wrap:wrap;justify-content:center;')
     output_html = str(head_section + output_html)
-    output_html = output_html.replace('zoom-radio', 'zoom-preview-radio')
-    output_html = output_html.replace('zoomRadio', 'zoomPreviewRadio')
-    output_html = output_html.replace('zoom-overlay', 'zoom-preview-overlay')
-    output_html = output_html.replace('resetZoom', 'resetPreviewZoom')
 
     debug_print(output_html)
 
@@ -777,10 +762,10 @@ def save_model_info(install_path, file_name, sub_folder, sha256=None, preview_ht
         if use_local:
             img_urls = re.findall(r"data-sampleimg='true' src=[\'\"]?([^\'\" >]+)", preview_html)
             for i, img_url in enumerate(img_urls):
-                img_name = f'{filename}_{i}.jpg'
+                img_name = f'{filename}_{i}.png'
                 preview_html = preview_html.replace(img_url, f"{os.path.join(image_path, img_name)}")
 
-        match = re.search(r'(\s*)<div class="model-block">', preview_html)
+        match = re.search(r'(\s*)<div class="main-container">', preview_html)
         if match:
             indentation = match.group(1)
         else:

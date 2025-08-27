@@ -534,23 +534,23 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
             HTML = model_list_html(gl.json_data)
 
     return (
-        gr.Dropdown.update(choices=model_list, value='', interactive=True),  # Model List
-        gr.Dropdown.update(choices=[], value=''),  # Version List
-        gr.HTML.update(value=HTML),  # HTML Tiles
-        gr.Button.update(interactive=hasPrev),  # Prev Page Button
-        gr.Button.update(interactive=hasNext),  # Next Page Button
-        gr.Slider.update(value=current_page, maximum=max_page),  # Page Slider
-        gr.Button.update(interactive=False),  # Save Tags
-        gr.Button.update(interactive=False),  # Save Images
+        gr.Dropdown.update(choices=model_list, value='', interactive=True),     # Model List
+        gr.Dropdown.update(choices=[], value=''),                               # Version List
+        gr.HTML.update(value=HTML),                                             # HTML Tiles
+        gr.Button.update(interactive=hasPrev),                                  # Prev Page Button
+        gr.Button.update(interactive=hasNext),                                  # Next Page Button
+        gr.Slider.update(value=current_page, maximum=max_page),                 # Page Slider
+        gr.Button.update(interactive=False),                                    # Save Tags
+        gr.Button.update(interactive=False),                                    # Save Images
         gr.Button.update(interactive=False, visible=False if gl.isDownloading else True),  # Download Button
-        gr.Button.update(interactive=False, visible=False),  # Delete Button
-        gr.Textbox.update(interactive=False, value=None, visible=True),  # Install Path
-        gr.Dropdown.update(choices=[], value='', interactive=False),  # Sub Folder List
-        gr.Dropdown.update(choices=[], value='', interactive=False),  # File List
-        gr.HTML.update(value='<div style="min-height: 0px;"></div>'),  # Preview HTML
-        gr.Textbox.update(value=None),  # Trained Tags
-        gr.Textbox.update(value=None),  # Base Model
-        gr.Textbox.update(value=None)  # Model Filename
+        gr.Button.update(interactive=False, visible=False),                     # Delete Button
+        gr.Textbox.update(interactive=False, value=None, visible=True),         # Install Path
+        gr.Dropdown.update(choices=[], value='', interactive=False),            # Sub Folder List
+        gr.Dropdown.update(choices=[], value='', interactive=False),            # File List
+        gr.HTML.update(value='<div style="min-height: 0px;"></div>'),           # Preview HTML
+        gr.Textbox.update(value=None),                                          # Trained Tags
+        gr.Textbox.update(value=None),                                          # Base Model
+        gr.Textbox.update(value=None)                                           # Model Filename
     )
 
 def prev_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, tile_count):
@@ -873,84 +873,75 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
 
                 ## === ANXETY EDITs ===
                 # --- HTML Generation ---
-                img_html = '<div class="sampleimgs"><input type="radio" name="zoomRadio" id="resetZoom" class="zoom-radio" checked>'
+                BtnImage = True
+                # Build image block
+                img_html = '<div class="sampleimgs">'
 
-                for index, pic in enumerate(api_version['images']):
-                    if from_preview:
-                        index = f"preview_{index}"
+                key_map = {
+                    'prompt': 'Prompt',
+                    'negativePrompt': 'Negative Prompt',
+                    'Model': 'Model',
+                    'sampler': 'Sampler',
+                    'steps': 'Steps',
+                    'cfgScale': 'CFG Scale',
+                    'clipSkip': 'Clip Skip',
+                    'seed': 'Seed',
+                    'Size': 'Size',
+                }
+                preferred_order = ["prompt", "negativePrompt", "Model", "sampler", "steps", "cfgScale", "Clip skip", "seed", "Size"]
+
+                for idx, pic in enumerate(api_version['images']):
+                    index = f"preview_{idx}" if from_preview else idx
+                    prompt_dict = pic.get('meta', {}) or {}
+                    image_url = re.sub(r'/width=\d+', f'/width={pic.get("width", "")}', pic['url'])
+                    is_video = pic.get('type') == 'video'
 
                     img_html += (
-                        f'<div class="model-block" style="display:flex;align-items:flex-start;">'
+                        f'<div class="image-block">'
                         f'<div class="civitai-image-container">'
-                        f'<input type="radio" name="zoomRadio" id="zoomRadio{index}" class="zoom-radio">'
-                        f'<label for="zoomRadio{index}" class="zoom-img-container">'
                     )
 
-                    prompt_dict = pic.get('meta', {})
-
-                    meta_button = False
-                    if prompt_dict and prompt_dict.get('prompt'):
-                        meta_button = True
-                    BtnImage = True
-
-                    image_url = re.sub(r'/width=\d+', f'/width={pic["width"]}', pic['url'])
-                    if pic['type'] == 'video':
-                        image_url = image_url.replace('width=', 'transcode=true,width=')
+                    if is_video:
+                        video_url = image_url.replace('width=', 'transcode=true,width=')
                         img_html += (
-                            f'<video data-sampleimg="true" {playback} muted playsinline>'
-                            f'<source src="{image_url}" type="video/mp4"></video>'
+                            f'<video class="preview-media" data-sampleimg="true" {playback} muted playsinline onclick="openImageViewer(\'{escape(video_url)}\', \'video\')">'
+                            f'<source src="{video_url}" type="video/mp4"></video>'
                         )
                         meta_button = False
                         prompt_dict = {}
                     else:
-                        img_html += f'<img data-sampleimg="true" src="{image_url}">'
+                        img_html += (
+                            f'<img class="preview-media" data-sampleimg="true" src="{image_url}" alt="Model preview" onclick="openImageViewer(\'{escape(image_url)}\', \'image\')">'
+                        )
+                        meta_button = bool(prompt_dict.get('prompt'))
 
-                    img_html += (
-                        '</label>'
-                        '<label for="resetZoom" class="zoom-overlay"></label>'
-                    )
+
 
                     if meta_button:
                         img_html += (
-                            '<div class="civitai_txt2img" style="margin-top:30px;margin-bottom:30px;">'
-                            f'<label onclick="sendImgUrl(\'{escape(image_url)}\')" class="civitai-txt2img-btn" style="max-width:fit-content;cursor:pointer;">Send to txt2img</label>'
-                            '</div></div>'
+                            '<div class="civitai_txt2img">'
+                            f'<label onclick="sendImgUrl(\'{escape(image_url)}\')" class="civitai-txt2img-btn">Send to txt2img</label>'
+                            '</div>'
                         )
-                    else:
-                        img_html += '</div>'
+                    img_html += '</div>'  # close .civitai-image-container
 
                     if prompt_dict:
                         img_html += (
-                            '<div style="margin:1em 0em 1em 1em;text-align:left;line-height:1.5em;" id="image_info">'
-                            '<dl style="gap:10px; display:grid;">'
+                            '<div id="image_info">'
+                            '<dl>'
                         )
-                        # Define the preferred order of keys
-                        preferred_order = ["prompt", "negativePrompt", "Model", "sampler", "steps", "cfgScale", "Clip skip", "seed", "Size"]
-                        # Loop through the keys in the preferred order and add them to the HTML
                         for key in preferred_order:
                             if key in prompt_dict:
                                 value = prompt_dict[key]
-                                key_map = {
-                                    'prompt': 'Prompt',
-                                    'negativePrompt': 'Negative Prompt',
-                                    'Model': 'Model',
-                                    'sampler': 'Sampler',
-                                    'steps': 'Steps',
-                                    'cfgScale': 'CFG Scale',
-                                    'clipSkip': 'Clip Skip',
-                                    'seed': 'Seed',
-                                    'Size': 'Size',
-                                }
                                 key_disp = key_map.get(key, key)
-
                                 if meta_btn:
                                     img_html += (
-                                        f'<div class="civitai-meta-btn" onclick="metaToTxt2Img(\'{escape(str(key_disp))}\', this)">'
+                                        f'<div class="civitai-meta-btn" data-key="{key}" onclick="metaToTxt2Img(\'{escape(str(key_disp))}\', this)">'
                                         f'<dt>{escape(str(key_disp))}</dt><dd>{escape(str(value))}</dd></div>'
                                     )
                                 else:
                                     img_html += (
-                                        f'<div class="civitai-meta"><dt>{escape(str(key_disp))}</dt><dd>{escape(str(value))}</dd></div>'
+                                        f'<div class="civitai-meta" data-key="{key}"><dt>{escape(str(key_disp))}</dt><dd>{escape(str(value))}</dd></div>'
                                     )
                         # Check if there are remaining keys in meta
                         remaining_keys = [k for k in prompt_dict if k not in preferred_order]
@@ -962,92 +953,172 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                                 '<div class="tab">'
                                 f'<input type="checkbox" class="accordionCheckbox" id="chck{index}">'
                                 f'<label class="tab-label" for="chck{index}">More details...</label>'
-                                '<div class="tab-content" style="gap:10px;display:grid;margin-left:1px;">'
+                                '<div class="tab-content">'
                             )
                             for key in remaining_keys:
                                 value = prompt_dict[key]
                                 img_html += (
-                                    f'<div class="civitai-meta"><dt>{escape(str(key).capitalize())}</dt><dd>{escape(str(value))}</dd></div>'
+                                    f'<div class="civitai-meta" data-key="{key}"><dt>{escape(str(key).capitalize())}</dt><dd>{escape(str(value))}</dd></div>'
                                 )
                             img_html += '</div></div></div>'
-
                         img_html += '</dl></div>'
-                    img_html += '</div>'
+                    else:
+                        # Show beautiful empty state when no metadata is available
+                        if is_video:
+                            no_meta_type = "video"
+                            icon_svg = (
+                                '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
+                                '<rect x="3" y="5" width="18" height="14" rx="2" ry="2"></rect>'
+                                '<polygon points="10,9 16,12 10,15"></polygon>'
+                                '</svg>'
+                            )
+                        else:
+                            no_meta_type = "image"
+                            icon_svg = (
+                                '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
+                                '<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>'
+                                '<polyline points="14,2 14,8 20,8"></polyline>'
+                                '<path d="M12 18v-4"></path>'
+                                '<path d="M12 10h.01"></path>'
+                                '</svg>'
+                            )
+                        img_html += (
+                            '<div class="image-metadata-empty">'
+                            '<div class="empty-state-icon">'
+                            f'{icon_svg}'
+                            '</div>'
+                            '<div class="empty-state-text">'
+                            f'<h4>No metadata available</h4>'
+                            f'<p>No generation settings are available for this {no_meta_type}.</p>'
+                            '</div>'
+                            '</div>'
+                        )
+                    img_html += '</div>'  # close .image-block
                 img_html += '</div>'
+                
+                # Add simple image viewer overlay
+                img_html += (
+                    '<div id="image-viewer-overlay" class="viewer-overlay">'
+                    '<div class="viewer-content">'
+                    '<img id="viewer-image" class="viewer-media" src="" alt="">'
+                    '<video id="viewer-video" class="viewer-media" style="display: none;" controls muted>'
+                    '<source src="" type="video/mp4">'
+                    '</video>'
+                    '</div>'
+                    '</div>'
+                )
 
                 tags_html = ''.join([f'<span class="civitai-tag">{escape(str(tag))}</span>' for tag in tags])
-                def perms_svg(color):
-                    return (
-                        '<span style="display:inline-block;vertical-align:middle;">'
-                        f'<svg width="15" height="15" viewBox="0 1.5 24 24" stroke-width="4" stroke-linecap="round" stroke="{color}">'
-                    )
-                allow_svg = (f"{perms_svg('lime')}"'<path d="M5 12l5 5l10 -10"></path></svg></span>')
-                deny_svg = (f"{perms_svg('red')}"'<path d="M18 6l-12 12"></path><path d="M6 6l12 12"></path></svg></span>')
+
+                # Build permissions block
+                allow_svg = '<svg width="16" height="16" viewBox="0 1.5 24 24" stroke-width="4" stroke-linecap="round" stroke="lime"><path d="M5 12l5 5l10 -10"></path></svg>'
+                deny_svg = '<svg width="16" height="16" viewBox="0 1.5 24 24" stroke-width="4" stroke-linecap="round" stroke="red"><path d="M18 6l-12 12"></path><path d="M6 6l12 12"></path></svg>'
                 allowCommercialUse = item.get('allowCommercialUse', [])
 
                 perms_html = (
-                    '<p style="line-height: 2; font-weight: bold;">'
-                    f'{allow_svg if item.get("allowNoCredit") else deny_svg} Use the model without crediting the creator<br/>'
-                    f'{allow_svg if "Image" in allowCommercialUse else deny_svg} Sell images they generate<br/>'
-                    f'{allow_svg if "Rent" in allowCommercialUse else deny_svg} Run on services that generate images for money<br/>'
-                    f'{allow_svg if "RentCivit" in allowCommercialUse else deny_svg} Run on Civitai<br/>'
-                    f'{allow_svg if item.get("allowDerivatives") else deny_svg} Share merges using this model<br/>'
-                    f'{allow_svg if "Sell" in allowCommercialUse else deny_svg} Sell this model or merges using this model<br/>'
-                    f'{allow_svg if item.get("allowDifferentLicense") else deny_svg} Have different permissions when sharing merges'
+                    '<p>'
+                        f'{allow_svg if item.get("allowNoCredit") else deny_svg} Use the model without crediting the creator<br/>'
+                        f'{allow_svg if "Image" in allowCommercialUse else deny_svg} Sell images they generate<br/>'
+                        f'{allow_svg if "Rent" in allowCommercialUse else deny_svg} Run on services that generate images for money<br/>'
+                        f'{allow_svg if "RentCivit" in allowCommercialUse else deny_svg} Run on Civitai<br/>'
+                        f'{allow_svg if item.get("allowDerivatives") else deny_svg} Share merges using this model<br/>'
+                        f'{allow_svg if "Sell" in allowCommercialUse else deny_svg} Sell this model or merges using this model<br/>'
+                        f'{allow_svg if item.get("allowDifferentLicense") else deny_svg} Have different permissions when sharing merges'
                     '</p>'
                 )
 
-                ## === ANXETY EDITs ===
+                # Build header block
+                model_page = (
+                    '<div class="model-page-line">'
+                        '<span class="page-label">Model Page:</span>'
+                        f'<a href={model_main_url} target="_blank">{escape(str(model_name))}</a>'
+                    '</div>'
+                )
+
                 if not creator or model_uploader == 'User not found':
-                    uploader = f'<h3 class="model-uploader"><span>{escape(str(model_uploader))}</span>{uploader_avatar}</h3>'
+                    uploader_page = (
+                        '<div class="model-uploader-line">'
+                            '<span class="uploader-label">Uploaded Unknown:</span>'
+                            f'<span>{escape(str(model_uploader))}</span>'
+                            f'{uploader_avatar}'
+                        '</div>'
+                    )
                 else:
-                    uploader = (
-                        '<h3 class="model-uploader">'
-                        'Uploaded by '
-                        f'<a href="https://civitai.com/user/{escape(str(model_uploader))}" target="_blank" style="text-decoration: underline;">{escape(str(model_uploader))}</a>'
-                        f'{uploader_avatar}'
-                        '</h3>'
+                    uploader_page = (
+                        '<div class="model-uploader-line">'
+                            '<span class="uploader-label">Uploaded by:</span>'
+                            f'<a href="https://civitai.com/user/{escape(str(model_uploader))}" target="_blank">{escape(str(model_uploader))}</a>'
+                            f'{uploader_avatar}'
+                        '</div>'
                     )
 
-                output_html = (
-                    '<div class="model-block">'
-                        '<h2>Model Page: '
-                            f'<a href={model_main_url} target="_blank" id="model_header" style="text-decoration: underline;">{escape(str(model_name))}</a>'
-                        '</h2>'
-                        f'{uploader}'
-                        '<div class="civitai-version-info" style="display:flex; flex-wrap:wrap; justify-content:space-between;">'
-                            '<dl id="info_block">'
-                                '<dt>Version</dt>'
-                                f'<dd>{escape(str(model_version))}</dd>'
-                                '<dt>Base Model</dt>'
-                                f'<dd>{escape(str(output_basemodel))}</dd>'
-                                '<dt>Published</dt>'
-                                f'<dd>{model_date_published}</dd>'
-                                '<dt>Availability</dt>'
-                                f'<dd>{model_availability}</dd>'
-                                '<dt>CivitAI Tags</dt>'
-                                '<dd>'
-                                    '<div class="civitai-tags-container">'
-                                        f'{tags_html}'
-                                    '</div>'
-                                '</dd>'
-                                f'{"<dt>Download Link</dt>" if model_url else ""}'
-                                f'{f"<dd><a href={model_url} target=_blank>{model_url}</a></dd>" if model_url else ""}'
-                            '</dl>'
-                            '<div style="align-self:center; min-width:320px;">'
-                                '<div>'
-                                    f'{perms_html}'
+                # Build version info block
+                version_info = (
+                    '<div class="version-info-block">'
+                        '<h3 class="block-header">Version Information</h3>'
+                        '<dl>'
+                            '<dt>Version</dt>'
+                            f'<dd>{escape(str(model_version))}</dd>'
+                            '<dt>Base Model</dt>'
+                            f'<dd>{escape(str(output_basemodel))}</dd>'
+                            '<dt>Published</dt>'
+                            f'<dd>{model_date_published}</dd>'
+                            '<dt>Availability</dt>'
+                            f'<dd>{model_availability}</dd>'
+                            '<dt>CivitAI Tags</dt>'
+                            '<dd>'
+                                '<div class="civitai-tags-container">'
+                                    f'{tags_html}'
                                 '</div>'
-                            '</div>'
-                        '</div>'
-                        f'<input type="checkbox" id={"preview-" if from_preview else ""}civitai-description class="description-toggle-checkbox">'
-                        '<div class="model-description">'
-                            '<h2>Description</h2>'
-                            f'{model_desc}'
-                        '</div>'
-                        f'<label for={"preview-" if from_preview else ""}civitai-description class="description-toggle-label"></label>'
+                            '</dd>'
+                            f'{"<dt>Download Link</dt>" if model_url else ""}'
+                            f'{f"<dd><a href={model_url} target=_blank>{model_url}</a></dd>" if model_url else ""}'
+                        '</dl>'
                     '</div>'
-                    f'<div align=center>{img_html}</div>'
+                )
+                
+                # Build permissions block
+                version_permissions = (
+                    '<div class="permissions-block">'
+                        '<h3 class="block-header">Permissions</h3>'
+                        f'{perms_html}'
+                    '</div>'
+                )
+
+                # Build description section
+                prefix = "preview-" if from_preview else ""
+                description_section = (
+                    '<div class="description-block">'
+                        '<h2 class="block-header">Model Description</h2>'
+                        '<div class="description-wrapper">'
+                            f'<div class="description-content" id="{prefix}description-content">'
+                                f'{model_desc}'
+                            '</div>'
+                            f'<div class="description-overlay" id="{prefix}description-overlay"></div>'
+                            f'<button class="description-toggle-btn" id="{prefix}description-toggle-btn" onclick="toggleDescription(\'{prefix}\')">Show More</button>'
+                        '</div>'
+                    '</div>'
+                )
+
+                # Build main HTML structure
+                output_html = (
+                    '<div class="main-container">'
+                        '<div class="info-section">'
+                            '<div class="header-block">'
+                                f'{model_page}'
+                                '<div class="uploader-divider"></div>'
+                                f'{uploader_page}'
+                            '</div>'
+                            '<div class="info-permissions-container">'
+                                f'{version_info}'
+                                f'{version_permissions}'
+                            '</div>'
+                            f'{description_section}'
+                        '</div>'
+                        '<div class="images-section">'
+                            f'{img_html}'
+                        '</div>'
+                    '</div>'
                 )
 
         if only_html:
