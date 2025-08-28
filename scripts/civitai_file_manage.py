@@ -762,6 +762,7 @@ def save_model_info(install_path, file_name, sub_folder, sha256=None, preview_ht
         if use_local:
             img_urls = re.findall(r"data-sampleimg='true' src=[\'\"]?([^\'\" >]+)", preview_html)
             for i, img_url in enumerate(img_urls):
+                debug_print(img_url)
                 img_name = f'{filename}_{i}.png'
                 preview_html = preview_html.replace(img_url, f"{os.path.join(image_path, img_name)}")
 

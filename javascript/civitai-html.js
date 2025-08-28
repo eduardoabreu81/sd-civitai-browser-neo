@@ -1,5 +1,3 @@
-'use strict';
-
 // Selects a model by pressing on card
 function select_model(model_name, event, bool = false, content_type = null, sendToBrowser = false) {
     if (event) {
@@ -552,6 +550,11 @@ function hidePopup() {
 // Function to handle key presses
 function handleKeyPress(event) {
     if (event.key === 'Escape') {
+        // Check if image viewer is open - if so, don't close page overlay
+        const imageViewer = document.getElementById('image-viewer-overlay');
+        if (imageViewer && imageViewer.classList.contains('active')) {
+            return; // Let image viewer handle ESC
+        }
         hidePopup();
     }
 }
@@ -1287,6 +1290,9 @@ function handleMediaClick(e) {
 // Handle keyboard input for viewer
 function handleViewerKeyDown(e) {
     if (e.key === 'Escape') {
+        // Only close image viewer, not the page overlay
         closeImageViewer();
+        e.stopPropagation();
+        e.preventDefault();
     }
 }

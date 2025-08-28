@@ -915,8 +915,6 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                         )
                         meta_button = bool(prompt_dict.get('prompt'))
 
-
-
                     if meta_button:
                         img_html += (
                             '<div class="civitai_txt2img">'

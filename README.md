@@ -11,11 +11,12 @@
 
 - Redesigned the model cards in the browser to give them a modern look :3
 - Redesigned the sorting by date, make it neat in the form of bricks~
-- Completely redesigned the model's HTML page, making it more compact and appealing :33
+- Completely redesigned the model's HTML page, making it more compact and appealing.
 - Added badges to model cards to display model type and NSFW status (if applicable)</br>
   _Note: Badges are only visible when `Tile Size` is set to 11 or higher._
 - Model cards that require purchase are marked in gold.</br>
   _Note: The model type badge turns gold and displays a lightning icon :3_
+- Fixed the display logic for the "Select All" button – now it only appears when there are models to select :3
 - Implemented optional setting to change the resolution of model previews (Customize to your liking in settings - `Browser`)
 - All CSS and JS files have been formatted using Prettier for consistent code style.
 - Implemented encryption of image previews when images are saved (For Kaggle Only!)</br>
@@ -23,7 +24,6 @@
 
 #### 🔧 List of bugfixes and changes taken from Issues:
 
-- Fixed the display logic for the "Select All" button – now it only appears when there are models to select :3
 - Complete removal of HyperNetwork support - should fix problems with launching in [Forge-Classic](https://github.com/Haoming02/sd-webui-forge-classic) ([Issue #390](https://github.com/BlafKing/sd-civitai-browser-plus/issues/390))
 - Added a clarifying message about Early Access to avoid confusion~ [Issue #383](https://github.com/BlafKing/sd-civitai-browser-plus/issues/383)
 - Fixed the "Save Images" button – now it correctly saves model images [Issue #374](https://github.com/BlafKing/sd-civitai-browser-plus/issues/374)

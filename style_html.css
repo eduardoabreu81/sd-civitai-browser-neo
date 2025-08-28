@@ -193,7 +193,7 @@ body {
     bottom: 40px;
     left: 0;
     right: 0;
-    height: 100px;
+    height: 150px;
     background: linear-gradient(to bottom, transparent 0%, var(--background-fill-secondary) 80%);
     pointer-events: none;
     opacity: 1;
@@ -265,7 +265,7 @@ a:hover::after {
 .sampleimgs {
     display: grid;
     grid-template-columns: repeat(2, 1fr); /* Default: 2 columns */
-    gap: 20px;
+    gap: 16px;
 }
 /* Switch to 1 column if there is not enough space */
 @media (max-width: 1500px) {
@@ -281,7 +281,7 @@ a:hover::after {
     margin: 0;
     padding: 16px;
     border: 1px solid var(--border-color-primary);
-    border-radius: 8px;
+    border-radius: 16px;
     align-items: start;
     gap: 16px;
 }
