@@ -307,7 +307,7 @@ def save_images(preview_html, model_filename, install_path, sub_folder, api_resp
         try:
             with urllib.request.urlopen(img_url) as url:
                 img_data = url.read()
-                
+
                 # Check if resize is enabled for saved images
                 resize_saved = getattr(opts, 'resize_preview_on_save', True)
                 if resize_saved:
@@ -316,7 +316,7 @@ def save_images(preview_html, model_filename, install_path, sub_folder, api_resp
                     img = Image.open(resized_image)
                 else:
                     img = Image.open(io.BytesIO(img_data))
-                
+
                 if img.mode in ('RGBA', 'LA', 'P'):
                     # Keep transparency for PNG
                     pass
@@ -330,7 +330,7 @@ def save_images(preview_html, model_filename, install_path, sub_folder, api_resp
             print(f"Error downloading {filename}: {e.reason}")
         except Exception as e:
             print(f"Error processing image {filename}: {e}")
-    
+
     if downloaded_count > 0:
         print(f"Successfully downloaded {downloaded_count} images to: {image_path}")
     else:

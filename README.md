@@ -16,7 +16,7 @@
   _Note: Badges are only visible when `Tile Size` is set to 11 or higher._
 - Model cards that require purchase are marked in gold.</br>
   _Note: The model type badge turns gold and displays a lightning icon :3_
-- Fixed the display logic for the "Select All" button – now it only appears when there are models to select :3
+- Fixed the display logic for the "Select All" button – now it only appears when there are models to select.
 - Implemented optional setting to change the resolution of model previews (Customize to your liking in settings - `Browser`)
 - All CSS and JS files have been formatted using Prettier for consistent code style.
 - Implemented encryption of image previews when images are saved (For Kaggle Only!)</br>

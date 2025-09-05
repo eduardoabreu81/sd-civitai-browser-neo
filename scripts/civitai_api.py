@@ -332,7 +332,7 @@ def model_list_html(json_data):
                     formatted_date = date_obj.strftime('%B %d, %Y')
                 except:
                     formatted_date = date  # Fallback to original format
-            
+
             # Add card counter (only show if more than 1 card)
             card_count = len(cards)
             counter_html = f' <span class="card-counter">{card_count}</span>' if card_count > 1 else ''
@@ -363,20 +363,20 @@ def _search_by_sha256(sha256_hash):
 
     try:
         response = requests.get(api_url, headers=headers, timeout=(60, 30), proxies=proxies, verify=ssl)
-        
+
         if response.status_code == 200:
             data = response.json()
             if 'error' in data:
                 return 'sha256_not_found'
-            
+
             # Get model ID and fetch full model data
             model_id = data.get('modelId')
             if not model_id:
                 return 'not_found'
-                
+
             model_url = f"https://civitai.com/api/v1/models/{model_id}"
             model_response = requests.get(model_url, headers=headers, timeout=(60, 30), proxies=proxies, verify=ssl)
-            
+
             if model_response.status_code == 200:
                 model_data = model_response.json()
                 return {
@@ -389,14 +389,14 @@ def _search_by_sha256(sha256_hash):
                     }
                 }
             return 'not_found'
-            
+
         elif response.status_code == 404:
             return 'sha256_not_found'
         elif response.status_code == 503:
             return 'offline'
         else:
             return 'error'
-            
+
     except requests.exceptions.Timeout:
         return 'timeout'
     except (requests.exceptions.RequestException, Exception):
@@ -428,7 +428,7 @@ def create_api_url(content_type=None, sort_type=None, period_type=None, use_sear
                     # Make API request to get model version information
                     version_api_url = f'https://civitai.com/api/v1/model-versions/{version_id}'
                     version_data = request_civit_api(version_api_url, skip_error_check=True)
-                    
+
                     if isinstance(version_data, dict) and 'modelId' in version_data:
                         model_id = version_data['modelId']
                         params = {'ids': str(model_id)}
@@ -993,7 +993,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                         )
                     img_html += '</div>'  # close .image-block
                 img_html += '</div>'
-                
+
                 # Add simple image viewer overlay
                 img_html += (
                     '<div id="image-viewer-overlay" class="viewer-overlay">'
@@ -1074,7 +1074,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                         '</dl>'
                     '</div>'
                 )
-                
+
                 # Build permissions block
                 version_permissions = (
                     '<div class="permissions-block">'

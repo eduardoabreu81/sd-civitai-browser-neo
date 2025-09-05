@@ -482,7 +482,7 @@ a:hover::after {
 }
 .accordionCheckbox:checked ~ .tab-content {
     padding: 16px;
-    max-height: 2500px; /* BullShit */
+    max-height: 4000px; /* BullShit */
     border-top: 1px solid var(--border-color-primary);
     opacity: 1;
 }

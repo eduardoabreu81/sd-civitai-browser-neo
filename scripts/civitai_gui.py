@@ -324,7 +324,7 @@ def on_ui_tabs():
                 organize_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
 
         # Queue Tab
-        with gr.Tab(label='Download Queue', ielem_id='queueTab'):
+        with gr.Tab(label='Download Queue', elem_id='queueTab'):
 
             def get_style(size, left_border):
                 return f"flex-grow: {size};" + ('border-left: 1px solid var(--border-color-primary);' if left_border else '') + 'border-bottom: 1px solid var(--border-color-primary);padding: 5px 10px 5px 10px;width: 0;'
@@ -775,7 +775,7 @@ def on_ui_tabs():
         def save_images_wrapper(preview_html, model_filename, install_path, sub_folder, model_id):
             """Wrapper function to save images with API response data"""
             print(f"Save Images Debug: model_id={model_id}, preview_html_length={len(preview_html) if preview_html else 0}")
-            
+
             # Generate proper HTML with images if preview_html is empty or doesn't contain images
             if not preview_html or 'data-sampleimg="true"' not in preview_html:
                 debug_print(f"Generating HTML with images for model {model_id}")
@@ -793,7 +793,7 @@ def on_ui_tabs():
                             debug_print(f"Generated HTML length: {len(preview_html) if preview_html else 0}")
                     except Exception as e:
                         debug_print(f"Error generating HTML: {e}")
-            
+
             if model_id and gl.json_data:
                 # Find the current model in the API data
                 for item in gl.json_data.get('items', []):

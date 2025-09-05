@@ -509,7 +509,7 @@ function modelInfoPopUp(modelName = null, content_type = null, no_message = fals
         overlay.addEventListener('click', (event) => {
             if (event.target === overlay) hidePopup();
         });
-        
+
         // Add ESC key listener to document
         document.addEventListener('keydown', handleKeyPress);
 
@@ -585,7 +585,7 @@ function inputHTMLPreviewContent(html_input) {
             if (overlayText) {
                 overlayText.style.display = 'none';
             }
-            
+
             modelInfo.innerHTML = extractedText;
             inner.appendChild(modelInfo);
 
@@ -911,6 +911,7 @@ function hideInstalled(toggleValue) {
     });
 }
 
+// === ANXETY EDIRs ===
 // Toggle description visibility
 function toggleDescription(prefix = '') {
     const content = document.getElementById(prefix + 'description-content');
@@ -1213,9 +1214,9 @@ function openImageViewer(mediaUrl, mediaType) {
     const overlay = document.getElementById('image-viewer-overlay');
     const viewerImage = document.getElementById('viewer-image');
     const viewerVideo = document.getElementById('viewer-video');
-    
+
     if (!overlay) return;
-    
+
     // Setup media element
     if (mediaType === 'video') {
         viewerImage.style.display = 'none';
@@ -1230,17 +1231,17 @@ function openImageViewer(mediaUrl, mediaType) {
         viewerImage.style.display = 'block';
         viewerImage.src = mediaUrl;
     }
-    
+
     // Show overlay with animation
     overlay.style.display = 'flex';
     overlay.classList.remove('closing');
     requestAnimationFrame(() => {
         overlay.classList.add('active');
     });
-    
+
     // Prevent body scroll
     document.body.style.overflow = 'hidden';
-    
+
     // Setup event listeners
     document.addEventListener('keydown', handleViewerKeyDown);
     overlay.addEventListener('click', handleOverlayClick);
@@ -1252,22 +1253,22 @@ function openImageViewer(mediaUrl, mediaType) {
 function closeImageViewer() {
     const overlay = document.getElementById('image-viewer-overlay');
     if (!overlay || !overlay.classList.contains('active')) return;
-    
+
     // Add closing animation
     overlay.classList.add('closing');
     overlay.classList.remove('active');
-    
+
     setTimeout(() => {
         overlay.style.display = 'none';
         overlay.classList.remove('closing');
-        
+
         // Restore body scroll
         document.body.style.overflow = 'auto';
-        
+
         // Remove event listeners
         document.removeEventListener('keydown', handleViewerKeyDown);
         overlay.removeEventListener('click', handleOverlayClick);
-        
+
         const viewerImage = document.getElementById('viewer-image');
         const viewerVideo = document.getElementById('viewer-video');
         if (viewerImage) viewerImage.removeEventListener('click', handleMediaClick);
@@ -1278,7 +1279,7 @@ function closeImageViewer() {
 // Handle clicks on overlay
 function handleOverlayClick(e) {
     // Close if clicked on overlay or viewer-content, but not on media
-    if (e.target.classList.contains('viewer-overlay') || 
+    if (e.target.classList.contains('viewer-overlay') ||
         e.target.classList.contains('viewer-content')) {
         closeImageViewer();
     }
