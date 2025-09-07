@@ -18,6 +18,7 @@
   _Note: The model type badge turns gold and displays a lightning icon :3_
 - Fixed the display logic for the "Select All" button – now it only appears when there are models to select.
 - Implemented optional setting to change the resolution of model previews (Customize to your liking in settings - `Browser`)
+- Removed Outdated Model logic (It does not correspond to reality).
 - All CSS and JS files have been formatted using Prettier for consistent code style.
 - Implemented encryption of image previews when images are saved (For Kaggle Only!)</br>
   _Note: The [Encrypt-Image](https://github.com/anxety-solo/sd-encrypt-image) extension must be installed to enable this feature._
@@ -33,8 +34,6 @@
 - Added an option to specify the number of model images to download (default: 16) [Issue #319](https://github.com/BlafKing/sd-civitai-browser-plus/issues/319)</br>
   _The number of images to save can be configured in settings - `Downloads`_
 - Added a way to search for a model by its `hash` [Issue #309](https://github.com/BlafKing/sd-civitai-browser-plus/issues/309)
-- HTML description cleanup fix taken from [PR #384](https://github.com/BlafKing/sd-civitai-browser-plus/pull/384)</br>
-  _(see `clean_description` in [scripts/civitai_file_manage.py](./scripts/civitai_file_manage.py))_
 
 ### 🖼️ Preview Browser (New Style):
 

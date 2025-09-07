@@ -169,14 +169,34 @@ def model_list_html(json_data):
         model_name = item.get('name', '')
         is_nsfw = is_model_nsfw(item)
         nsfw_class = 'civcardnsfw' if is_nsfw else ''
-        base_model = item['modelVersions'][0].get('baseModel', 'Not Found') if item['modelVersions'] else 'Not Found'
-        date = item['modelVersions'][0].get('publishedAt', 'Not Found').split('T')[0] if item['modelVersions'] and 'publishedAt' in item['modelVersions'][0] else 'Not Found'
+        
+        # Find the first installed version or fallback to the first version
+        display_version = None
+        for version in item.get('modelVersions', []):
+            for file in version.get('files', []):
+                file_name, file_extension = os.path.splitext(file['name'])
+                file_name_full = f'{file_name}_{file["id"]}{file_extension}'
+                file_sha256 = normalize_sha256(file.get('hashes', {}).get('SHA256', ''))
+                name_match = file_name_full.lower() in existing_files
+                sha256_match = file_sha256 and file_sha256 in existing_files_sha256
+                if name_match or sha256_match:
+                    display_version = version
+                    break
+            if display_version:
+                break
+        
+        # Fallback to first version if no installed version found
+        if not display_version and item['modelVersions']:
+            display_version = item['modelVersions'][0]
+        
+        base_model = display_version.get('baseModel', 'Not Found') if display_version else 'Not Found'
+        date = display_version.get('publishedAt', 'Not Found').split('T')[0] if display_version and 'publishedAt' in display_version else 'Not Found'
 
-        early_access = is_early_access(item['modelVersions'][0]) if item['modelVersions'] else False
+        early_access = is_early_access(display_version) if display_version else False
         early_access_class = 'early-access' if early_access else ''
 
         # Image or video preview
-        images = item['modelVersions'][0].get('images', []) if item['modelVersions'] else []
+        images = display_version.get('images', []) if display_version else []
         if images:
             media_type = images[0].get('type')
             image_url = images[0].get('url')
