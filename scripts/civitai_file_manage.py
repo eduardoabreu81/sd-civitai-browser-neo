@@ -682,10 +682,7 @@ def is_image_url(url):
 
 ## === ANXETY EDITs ===
 def clean_description(desc):
-    """
-    This function cleans up HTML descriptions for better readability.
-    Fix taken from PR #384.
-    """
+    """This function cleans up HTML descriptions for better readability"""
     try:
         # Add whitespace for headers and line breaks (<br>)
         for element in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6'):
@@ -787,7 +784,6 @@ def save_model_info(install_path, file_name, sub_folder, sha256=None, preview_ht
             with open(path_to_new_file, mode='w', encoding='utf-8') as f:
                 json.dump(gl.json_info, f, indent=4, ensure_ascii=False)
 
-
 def find_and_save(api_response, sha256=None, file_name=None, json_file=None, no_hash=None, overwrite_toggle=None):
     save_desc = getattr(opts, 'model_desc_to_json', True)
     for item in api_response.get('items', []):
@@ -843,11 +839,25 @@ def find_and_save(api_response, sha256=None, file_name=None, json_file=None, no_
                         if 'sd version' not in content:
                             content['sd version'] = base_model
                             changed = True
+                        # Add new fields for model and version information
+                        if 'modelId' not in content:
+                            content['modelId'] = item.get('id')
+                            changed = True
+                        if 'modelVersionId' not in content:
+                            content['modelVersionId'] = model_version.get('id')
+                            changed = True
+                        if 'modelPageURL' not in content:
+                            content['modelPageURL'] = f"https://civitai.com/models/{item.get('id')}"
+                            changed = True
                     else:
                         content['activation text'] = trained_tags
                         if save_desc:
                             content['description'] = description
                         content['sd version'] = base_model
+                        # Always update these fields when overwrite is enabled
+                        content['modelId'] = item.get('id')
+                        content['modelVersionId'] = model_version.get('id')
+                        content['modelPageURL'] = f"https://civitai.com/models/{item.get('id')}"
                         changed = True
 
                     with open(json_file, 'w', encoding='utf-8') as f:
@@ -912,6 +922,7 @@ def get_models(file_path, gen_hash=None):
 
                     data['modelId'] = modelId
                     data['modelVersionId'] = modelVersionId
+                    data['modelPageURL'] = f"https://civitai.com/models/{modelId}"
                     data['sha256'] = sha256.upper()
 
                     with open(json_file, 'w', encoding='utf-8') as f:
@@ -922,6 +933,7 @@ def get_models(file_path, gen_hash=None):
                 data = {
                     'modelId': modelId,
                     'modelVersionId': modelVersionId,
+                    'modelPageUrl': f"https://civitai.com/models/{modelId}",
                     'sha256': sha256.upper()
                 }
                 with open(json_file, 'w', encoding='utf-8') as f:
