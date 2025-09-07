@@ -675,44 +675,54 @@ def updateSubfolder(subfolderInput):
         json.dump(data, f, indent=4)
 
 def is_image_url(url):
-    image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp']
+    image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
     parsed = urlparse(url)
-    path = parsed.path
-    return any(path.endswith(ext) for ext in image_extensions)
+    return any(parsed.path.endswith(ext) for ext in image_extensions)
 
 ## === ANXETY EDITs ===
 def clean_description(desc):
     """This function cleans up HTML descriptions for better readability"""
     try:
-        # Add whitespace for headers and line breaks (<br>)
-        for element in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6'):
-            desc = desc.replace(f'</{element}>', f'</{element}>\n')
-        desc = desc.replace('<br>', '\n\n')
-        desc = desc.replace('</br>', '\n\n')
-
-        soup = BeautifulSoup(desc, 'html.parser')
+        # Flatten to single-line string
+        cleaned_lines = [line.strip() for line in desc.splitlines() if line.strip()]
+        cleaned_text = ''.join(cleaned_lines)
+        cleaned_text = re.sub(r'\s{2,}', ' ', cleaned_text)
+        # Begin html processing
+        soup = BeautifulSoup(cleaned_text, 'html.parser')
         for a in soup.find_all('a', href=True):
             hyperlink_url = a['href']
-
-            # Only add the URL to the text if the hyperlink text is different from its URL
-            # Otherwise, we end up with a duplicate URL in the description
-            if a.text != hyperlink_url and not is_image_url(hyperlink_url):
-                a.replace_with(f"{a.text} ({hyperlink_url})")
-            elif not is_image_url(hyperlink_url):
-                a.replace_with(f"{a.text} {hyperlink_url}")
-
-        # Add whitespace for paragraph blocks
-        for p in soup.find_all('p'):
-            # Some descriptions have empty paragraph blocks with no text (like <p></p>)
-            # usually indicating a double newline.
-            if p.text == '':
-                p.replace_with(p.text + '\n\n')
-            # For all other <p> blocks, use a single newline.
+            if not is_image_url(hyperlink_url):
+                # Add the URL to the text if they are different
+                a.replace_with(a.text + (f' ({hyperlink_url})' if a.text != hyperlink_url else ''))
+        # Apply markdown-like formatting and newlines for various blocks
+        for e in soup.find_all(['br']):
+            e.replace_with('\n')
+        for e in soup.find_all(['hr']):
+            e.replace_with('\n\n')
+        for e in soup.find_all(['li']):
+            if e.text.strip():
+                e.insert_before('- ')
+                e.insert_after('\n')
+                e.unwrap()
             else:
-                p.replace_with(p.text + '\n\n')
-
+                e.replace_with('\n')
+        for e in soup.find_all(['s']):
+            if e.text.strip():
+                e.insert_before('~~')
+                e.insert_after('~~')
+                e.unwrap()
+            else:
+                e.replace_with('')
+        for e in soup.find_all(['p', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
+            if e.text.strip():
+                e.insert_after('\n\n')
+                e.unwrap()
+            else:
+                e.replace_with('\n\n')
+        # Convert back to plaintext
         cleaned_text = soup.get_text()
-        # For 3 or more newlines, replace with only 2
+        # Clean extra characters
+        cleaned_text = re.sub(r'~{3,}', '', cleaned_text)
         cleaned_text = re.sub(r'\n{3,}', '\n\n', cleaned_text)
     except ImportError:
         print('Python module "BeautifulSoup" was not imported correctly, cannot clean description. Please try to restart or install it manually.')
@@ -831,7 +841,11 @@ def find_and_save(api_response, sha256=None, file_name=None, json_file=None, no_
 
         if save_desc:
             description = item.get('description', '')
-            if description != None:
+            if description is not None and description.strip():
+                ver_description = model_version.get('description', '')
+                # Include "About This Version" if available
+                if ver_description is not None and ver_description.strip():
+                    description += '\n<p>About this version:</p>\n' + ver_description
                 description = clean_description(description)
 
         base_model = model_version.get('baseModel', '')
