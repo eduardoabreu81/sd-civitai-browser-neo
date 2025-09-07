@@ -41,7 +41,6 @@ gl.init()
 
 css_path = Path(__file__).resolve().parents[1] / 'style_html.css'
 no_update = False
-from_ver = False
 from_tag = False
 from_installed = False
 try:
@@ -722,6 +721,8 @@ def clean_description(desc):
         print('Python module "BeautifulSoup" was not imported correctly, cannot clean description. Please try to restart or install it manually.')
         cleaned_text = desc
 
+    return cleaned_text.strip()
+
 def make_dir(path):
     try:
         if not os.path.exists(path):
@@ -937,9 +938,9 @@ def get_models(file_path, gen_hash=None):
         print(f"An error occurred for {file_path}: {str(e)}")
         return None
 
+## === ANXETY EDITs ===
 def version_match(file_paths, api_response):
     updated_models = []
-    outdated_models = []
     sha256_hashes = {}
 
     for file_path in file_paths:
@@ -969,7 +970,7 @@ def version_match(file_paths, api_response):
         if not model_versions:
             continue
 
-        for idx, model_version in enumerate(model_versions):
+        for model_version in model_versions:
             files = model_version.get('files', [])
             match_found = False
             for file_entry in files:
@@ -983,13 +984,10 @@ def version_match(file_paths, api_response):
                     break
 
             if match_found:
-                if idx == 0:
-                    updated_models.append((f"&ids={item['id']}", item['name']))
-                else:
-                    outdated_models.append((f"&ids={item['id']}", item['name']))
+                updated_models.append((f"&ids={item['id']}", item['name']))
                 break
 
-    return updated_models, outdated_models
+    return updated_models
 
 def get_content_choices(scan_choices=False):
     use_LORA = getattr(opts, 'use_LORA', False)
@@ -1023,15 +1021,14 @@ def get_save_path_and_name(install_path, file_name, api_response, sub_folder=Non
 
     return save_path, name
 
-def file_scan(folders, ver_finish, tag_finish, installed_finish, preview_finish, overwrite_toggle, tile_count, gen_hash, create_html, progress=gr.Progress() if queue else None):
+## === ANXETY EDITs ===
+def file_scan(folders, tag_finish, installed_finish, preview_finish, overwrite_toggle, tile_count, gen_hash, create_html, progress=gr.Progress() if queue else None):
     global no_update
     proxies, ssl = _api.get_proxies()
     gl.scan_files = True
     no_update = False
 
-    if from_ver:
-        number = _download.random_number(ver_finish)
-    elif from_tag:
+    if from_tag:
         number = _download.random_number(tag_finish)
     elif from_installed:
         number = _download.random_number(installed_finish)
@@ -1208,40 +1205,12 @@ def file_scan(folders, ver_finish, tag_finish, installed_finish, preview_finish,
     if progress != None:
         progress(1, desc='Processing final results...')
 
-    if from_ver:
-        updated_models, outdated_models = version_match(file_paths, api_response)
-
-        updated_set = set(updated_models)
-        outdated_set = set(outdated_models)
-        outdated_set = {model for model in outdated_set if model[0] not in {updated_model[0] for updated_model in updated_set}}
-
-        all_model_ids = [model[0] for model in outdated_set]
-        all_model_names = [model[1] for model in outdated_set]
-
-        for model_name in all_model_names:
-            print(f'"{model_name}" is currently outdated.')
-
-        if len(all_model_ids) == 0:
-            no_update = True
-            gl.scan_files = False
-            return (
-                gr.HTML.update(value='<div style="font-size: 24px; text-align: center; margin: 50px !important;">No updates found for selected models.</div>'),
-                gr.Textbox.update(value=number)
-            )
-
     model_chunks = list(chunks(all_model_ids, tile_count))
 
     base_url = "https://civitai.com/api/v1/models?limit=100&nsfw=true"
     gl.url_list = {i + 1: f"{base_url}{''.join(chunk)}" for i, chunk in enumerate(model_chunks)}
 
-    if from_ver:
-        gl.scan_files = False
-        return (
-            gr.HTML.update(value='<div style="font-size: 24px; text-align: center; margin: 50px !important;">Outdated models have been found.<br>Please press the button above to load the models into the browser tab</div>'),
-            gr.Textbox.update(value=number)
-        )
-
-    elif from_installed:
+    if from_installed:
         gl.scan_files = False
         return (
             gr.HTML.update(value='<div style="font-size: 24px; text-align: center; margin: 50px !important;">Installed models have been loaded.<br>Please press the button above to load the models into the browser tab</div>'),
@@ -1303,7 +1272,6 @@ def finish_returns():
         gr.Button.update(interactive=True, visible=True),
         gr.Button.update(interactive=True, visible=True),
         gr.Button.update(interactive=True, visible=True),
-        gr.Button.update(interactive=True, visible=True),
         gr.Button.update(interactive=True, visible=False),  # Organize models hidden until implemented
         gr.Button.update(interactive=False, visible=False)
     )
@@ -1315,20 +1283,18 @@ def start_returns(number):
         gr.Button.update(interactive=True, visible=True),
         gr.Button.update(interactive=False, visible=True),
         gr.Button.update(interactive=False, visible=True),
-        gr.Button.update(interactive=False, visible=True),
         gr.Button.update(interactive=False, visible=False),  # Organize models hidden until implemented
         gr.HTML.update(value='<div style="min-height: 100px;"></div>')
     )
 
+## === ANXETY EDITs ===
 def set_globals(input_global=None):
-    global from_tag, from_ver, from_installed, from_preview, from_organize
-    from_tag = from_ver = from_installed = from_preview = from_organize = False
+    global from_tag, from_installed, from_preview, from_organize
+    from_tag = from_installed = from_preview = from_organize = False
     if input_global == 'reset':
         return
     elif input_global == 'from_tag':
         from_tag = True
-    elif input_global == 'from_ver':
-        from_ver = True
     elif input_global == 'from_installed':
         from_installed = True
     elif input_global == 'from_preview':
@@ -1351,11 +1317,6 @@ def installed_models_start(installed_start):
     number = _download.random_number(installed_start)
     return start_returns(number)
 
-def ver_search_start(ver_start):
-    set_globals('from_ver')
-    number = _download.random_number(ver_start)
-    return start_returns(number)
-
 def organize_start(organize_start):
     set_globals('from_organize')
     number = _download.random_number(organize_start)
@@ -1375,20 +1336,19 @@ def scan_finish():
         gr.Button.update(interactive=no_update, visible=no_update),
         gr.Button.update(interactive=no_update, visible=no_update),
         gr.Button.update(interactive=no_update, visible=no_update),
-        gr.Button.update(interactive=no_update, visible=no_update),
         gr.Button.update(interactive=no_update, visible=False),
         gr.Button.update(interactive=False, visible=False),
         gr.Button.update(interactive=not no_update, visible=not no_update)
     )
 
+## === ANXETY EDITs ===
 def load_to_browser(content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, nsfw):
-    global from_ver, from_installed
+    global from_installed
 
     model_list_return = _api.initial_model_page(content_type, sort_type, period_type, use_search_term, search_term, 1, base_filter, False, nsfw, tile_count, True)
-    from_ver, from_installed = False, False
+    from_installed = False
     return (
         *model_list_return,
-        gr.Button.update(interactive=True, visible=True),
         gr.Button.update(interactive=True, visible=True),
         gr.Button.update(interactive=True, visible=True),
         gr.Button.update(interactive=True, visible=True),

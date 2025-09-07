@@ -86,7 +86,7 @@ function updateCard(modelNameWithSuffix) {
             additionalClassName = '';
             break;
         case 'Old':
-            additionalClassName = 'civmodelcardoutdated';
+            additionalClassName = '';
             break;
         case 'New':
             additionalClassName = 'civmodelcardinstalled';
