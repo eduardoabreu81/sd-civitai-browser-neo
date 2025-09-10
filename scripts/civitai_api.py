@@ -169,7 +169,7 @@ def model_list_html(json_data):
         model_name = item.get('name', '')
         is_nsfw = is_model_nsfw(item)
         nsfw_class = 'civcardnsfw' if is_nsfw else ''
-        
+
         # Find the first installed version or fallback to the first version
         display_version = None
         for version in item.get('modelVersions', []):
@@ -184,11 +184,11 @@ def model_list_html(json_data):
                     break
             if display_version:
                 break
-        
+
         # Fallback to first version if no installed version found
         if not display_version and item['modelVersions']:
             display_version = item['modelVersions'][0]
-        
+
         base_model = display_version.get('baseModel', 'Not Found') if display_version else 'Not Found'
         date = display_version.get('publishedAt', 'Not Found').split('T')[0] if display_version and 'publishedAt' in display_version else 'Not Found'
 
@@ -365,8 +365,8 @@ def model_list_html(json_data):
                 HTML += card
             HTML += '</div></div>'
         HTML += '</div>'
-
     HTML += '</div>'
+
     return HTML
 
 def _search_by_sha256(sha256_hash):
@@ -1014,17 +1014,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                     img_html += '</div>'  # close .image-block
                 img_html += '</div>'
 
-                # Add simple image viewer overlay
-                img_html += (
-                    '<div id="image-viewer-overlay" class="viewer-overlay">'
-                    '<div class="viewer-content">'
-                    '<img id="viewer-image" class="viewer-media" src="" alt="">'
-                    '<video id="viewer-video" class="viewer-media" style="display: none;" controls muted>'
-                    '<source src="" type="video/mp4">'
-                    '</video>'
-                    '</div>'
-                    '</div>'
-                )
+                # (Image viewer overlay is created dynamically in JavaScript)
 
                 tags_html = ''.join([f'<span class="civitai-tag">{escape(str(tag))}</span>' for tag in tags])
 

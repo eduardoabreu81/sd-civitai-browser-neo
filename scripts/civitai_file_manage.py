@@ -828,13 +828,13 @@ def find_model_version_by_filename(api_response, file_name):
 ## === ANXETY EDITs ===
 def find_and_save(api_response, sha256=None, file_name=None, json_file=None, no_hash=None, overwrite_toggle=None):
     save_desc = getattr(opts, 'model_desc_to_json', True)
-    
+
     # Find the specific model version based on SHA256 or filename
     if no_hash:
         model_version, item = find_model_version_by_filename(api_response, file_name)
     else:
         model_version, item = find_model_version_by_sha256(api_response, sha256)
-    
+
     if model_version and item:
         gl.json_info = item
         trained_words = model_version.get('trainedWords', [])
@@ -1284,7 +1284,7 @@ def file_scan(folders, tag_finish, installed_finish, preview_finish, overwrite_t
         for file_path, id_value in zip(file_paths, all_ids):
             install_path, file_name = os.path.split(file_path)
             save_path, name = get_save_path_and_name(install_path, file_name, api_response)
-            
+
             # Get SHA256 hash for the file to find the specific version
             file_sha256 = None
             json_file = os.path.splitext(file_path)[0] + '.json'
@@ -1295,13 +1295,13 @@ def file_scan(folders, tag_finish, installed_finish, preview_finish, overwrite_t
                         file_sha256 = data.get('sha256')
                 except Exception as e:
                     print(f"Failed to read {json_file}: {e}")
-            
+
             # Find the specific model version based on SHA256 or filename
             if file_sha256:
                 model_version, item = find_model_version_by_sha256(api_response, file_sha256)
             else:
                 model_version, item = find_model_version_by_filename(api_response, file_name)
-            
+
             html_path = os.path.join(save_path, f'{name}.html')
 
             if create_html and not os.path.exists(html_path) or create_html and overwrite_toggle:

@@ -18,7 +18,7 @@
   _Note: The model type badge turns gold and displays a lightning icon :3_
 - Fixed the display logic for the "Select All" button – now it only appears when there are models to select.
 - Implemented optional setting to change the resolution of model previews (Customize to your liking in settings - `Browser`)
-- Removed Outdated Model logic (It does not correspond to reality).
+- Removed "outdated models" logic and scanning for updates (It does not correspond to reality)
 - All CSS and JS files have been formatted using Prettier for consistent code style.
 - Implemented encryption of image previews when images are saved (For Kaggle Only!)</br>
   _Note: The [Encrypt-Image](https://github.com/anxety-solo/sd-encrypt-image) extension must be installed to enable this feature._
@@ -61,11 +61,6 @@
 
 * Explore a wide range of models at your fingertips.
 
-<h3>Check for updates and installed models 🔄</h3>
-
-* Easily spot new updates and identify already installed models while browsing.
-* Ability to scan all installed models for available updates.
-
 <h3>Download any Model, any version, and any file 📥</h3>
 
 * Get the specific model version and file you need hassle-free.
@@ -87,10 +82,6 @@
 <h3>Sleek and Intuitive User Interface 🖌️</h3>
 
 * Enjoy a clutter-free, user-friendly interface, designed to enhance your experience.
-
-<h3>Actively maintained with feature requests welcome 🛠️</h3>
-
-* Feel free to send me your feature requests, and I'll do my best to implement them!
 
 <h1></h1>
 

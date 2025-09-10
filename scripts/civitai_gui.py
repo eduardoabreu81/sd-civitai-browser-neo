@@ -1305,7 +1305,7 @@ def on_ui_settings():
             component_args=lambda: {'maximum': '1024', 'minimum': '128', 'step': '32'},
             section=browser,
             category_id=cat_id
-        ).info('Size in pixels the width of preview images/videos. Images retain the aspect ratio.')
+        ).info('Size in pixels the width of preview images/videos. Images retain the aspect ratio')
     )
 
     shared.opts.add_option(
