@@ -284,8 +284,6 @@ def on_ui_tabs():
                 cancel_model = gr.Button(value='Cancel current download', interactive=False, visible=False)
             with gr.Row():
                 preview_html = gr.HTML(elem_id='civitai_preview_html')
-            with gr.Row(elem_id='backToTopContainer'):
-                back_to_top = gr.Button(value='↑', elem_id='backToTop')
 
         # Update Tab
         with gr.Tab(label='Update Models', elem_id='updateTab'):
@@ -413,8 +411,6 @@ def on_ui_tabs():
 
         preview_html_input.change(fn=None, _js='() => adjustFilterBoxAndButtons()')
         preview_html_input.change(fn=None, _js='() => setDescriptionToggle()')
-
-        back_to_top.click(fn=None, _js='() => BackToTop()')
 
         page_slider.release(fn=None, _js='() => pressRefresh()')
 

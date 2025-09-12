@@ -264,24 +264,7 @@
     gap: 0.5em;
 }
 
-#backToTopContainer {
-    position: fixed;
-    bottom: 0;
-    right: 0;
-    display: flex;
-    justify-content: flex-end;
-    z-index: 150;
-    pointer-events: none;
-    margin: 20px 51px 20px 20px;
-}
 
-#backToTop {
-    margin: 0;
-    max-width: 60px;
-    min-width: unset;
-    z-index: 200;
-    pointer-events: auto;
-}
 
 #browserTab {
     position: relative;

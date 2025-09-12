@@ -138,16 +138,6 @@ function keydownHandler(e) {
 }
 document.addEventListener('keydown', keydownHandler);
 
-// Function for the back to top button
-function BackToTop() {
-    const c = Math.max(document.body.scrollTop, document.documentElement.scrollTop);
-    if (c > 0) {
-        window.requestAnimationFrame(BackToTop);
-        document.body.scrollTop = c - c / 8;
-        document.documentElement.scrollTop = c - c / 8;
-    }
-}
-
 // Function to adjust alignment of Filter Accordion
 function adjustFilterBoxAndButtons() {
     const element = document.querySelector('#filterBox') || document.querySelector('#filterBoxL');
@@ -342,18 +332,6 @@ function createLink(infoElement) {
     infoElement.appendChild(document.createTextNode(textBefore));
     infoElement.appendChild(link);
     infoElement.appendChild(document.createTextNode(textAfter));
-}
-
-// Function to update the visibility of backToTopDiv based on the intersection with civitaiDiv
-function updateBackToTopVisibility(entries) {
-    var backToTopDiv = document.getElementById('backToTopContainer');
-    var civitaiDiv = document.getElementById('civitai_preview_html');
-
-    if (civitaiDiv.clientHeight > 0 && entries[0].isIntersecting && window.scrollY !== 0) {
-        backToTopDiv.style.visibility = 'visible';
-    } else {
-        backToTopDiv.style.visibility = 'hidden';
-    }
 }
 
 // Create the accordion dropdown inside the settings tab
@@ -1210,7 +1188,6 @@ function onPageLoad() {
     createCivitAICardButtons();
     adjustFilterBoxAndButtons();
     setupClickOutsideListener();
-    updateBackToTopVisibility([{isIntersecting: false}]);
 }
 
 onUiLoaded(onPageLoad);
