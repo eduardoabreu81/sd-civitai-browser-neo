@@ -95,4 +95,4 @@
 1. Open WebUI
 2. Navigate to "Extensions" → "Install from URL"
 3. Paste `https://github.com/anxety-solo/sd-civitai-browser-plus`
-4. Click "Install" and reload WebUI
+4. Click "Install" and reload WebUI# sd-civitai-browser-neo
