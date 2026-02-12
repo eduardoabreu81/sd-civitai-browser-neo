@@ -52,8 +52,8 @@ def init():
 
 _print = print
 def print(print_message):
-    _print(f"{Colors.BLUE}[CivitAI-Browser+]{Colors.RESET} - {print_message}")
+    _print(f"{Colors.BLUE}[CivitAI Browser Neo]{Colors.RESET} - {print_message}")
 
 def debug_print(print_message):
     if do_debug_print:
-        _print(f"{Colors.MAGENTA}[DEBUG] {Colors.BLUE}[CivitAI-Browser+]{Colors.RESET} - {print_message}")
+        _print(f"{Colors.MAGENTA}[DEBUG] {Colors.BLUE}[CivitAI Browser Neo]{Colors.RESET} - {print_message}")

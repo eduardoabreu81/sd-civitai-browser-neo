@@ -1113,8 +1113,8 @@ def on_ui_tabs():
             outputs=[]
         )
 
-    tab_name = 'CivitAI Browser+'
-    return (civitai_interface, tab_name, 'civitai_interface'),
+    tab_name = 'CivitAI Browser Neo'
+    return (civitai_interface, tab_name, 'civitai_interface_neo'),
 
 def subfolder_list(folder, desc=None):
     if folder == None:
@@ -1131,8 +1131,8 @@ def on_ui_settings():
     browser = ('civitai_browser', 'Browser')
     download = ('civitai_browser_download', 'Downloads')
 
-    categories.register_category('civitai_browser_plus', 'CivitAI Browser+')
-    cat_id = 'civitai_browser_plus'   # ANXETY: You have to name a variable like - pussy_id 🐱 :3
+    categories.register_category('civitai_browser_neo', 'CivitAI Browser Neo')
+    cat_id = 'civitai_browser_neo'   # Settings category for Neo version
 
     if not (hasattr(shared.OptionInfo, 'info') and callable(getattr(shared.OptionInfo, 'info'))):
         def info(self, info):

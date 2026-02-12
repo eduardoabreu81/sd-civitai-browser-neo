@@ -27,7 +27,7 @@ with open(req_file) as file:
                 package_name = package
 
             if not launch.is_installed(dist2package(package_name)):
-                launch.run_pip(f"install {package}", f"CivitAI-Browser+ requirement: {package}")
+                launch.run_pip(f"install {package}", f"CivitAI Browser Neo requirement: {package}")
         except Exception as e:
             print(e)
             print(f'Warning: Failed to install {package}, something may not work.')
