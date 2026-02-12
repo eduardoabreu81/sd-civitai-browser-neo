@@ -206,24 +206,42 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
 
         model_folder = _api.contenttype_folder(content_type, desc)
 
-        default_subfolder = _api.sub_folder_value(content_type, desc)
-        if default_subfolder != 'None':
-            default_subfolder = _file.convertCustomFolder(default_subfolder, output_basemodel, is_nsfw, model_uploader, model_name, model_id, version_name, version_id)
-
-        if subfolder and subfolder != 'None' and subfolder != 'Only available if the selected files are of the same model type':
-            from_batch = False
-            if platform.system() == 'Windows':
-                subfolder = re.sub(r'[/:*?"<>|]', '', subfolder)
-
-            if not subfolder.startswith(os.sep):
-                subfolder = os.sep + subfolder
-            install_path = str(model_folder) + subfolder
-        else:
-            from_batch = True
-            if default_subfolder != 'None':
-                install_path = str(model_folder) + default_subfolder
+        # Check if auto-organization is enabled
+        auto_organize = getattr(opts, 'civitai_neo_auto_organize', False)
+        
+        if auto_organize and output_basemodel:
+            # Use auto-organization: determine folder from baseModel
+            from scripts.civitai_file_manage import normalize_base_model
+            base_folder = normalize_base_model(output_basemodel)
+            
+            if base_folder:
+                # Create subfolder path for organized download
+                if not base_folder.startswith(os.sep):
+                    base_folder = os.sep + base_folder
+                install_path = str(model_folder) + base_folder
             else:
+                # No folder (user disabled "Other" folder and model is unrecognized)
                 install_path = str(model_folder)
+        else:
+            # Original behavior: use custom subfolders or default
+            default_subfolder = _api.sub_folder_value(content_type, desc)
+            if default_subfolder != 'None':
+                default_subfolder = _file.convertCustomFolder(default_subfolder, output_basemodel, is_nsfw, model_uploader, model_name, model_id, version_name, version_id)
+
+            if subfolder and subfolder != 'None' and subfolder != 'Only available if the selected files are of the same model type':
+                from_batch = False
+                if platform.system() == 'Windows':
+                    subfolder = re.sub(r'[/:*?"<>|]', '', subfolder)
+
+                if not subfolder.startswith(os.sep):
+                    subfolder = os.sep + subfolder
+                install_path = str(model_folder) + subfolder
+            else:
+                from_batch = True
+                if default_subfolder != 'None':
+                    install_path = str(model_folder) + default_subfolder
+                else:
+                    install_path = str(model_folder)
 
         model_item = create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch)
         if model_item:

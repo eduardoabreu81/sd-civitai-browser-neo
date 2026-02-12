@@ -1,98 +1,354 @@
-> [!Tip]
-> **All changes in this fork are marked in the code as `=== ANXETY EDITs ===`**</br>
-> _Treat this fork as an author's vision – it's not a fork that will fix absolutely every problem..._</br>
-> You can report bugs to me and I'll try to fix them! :33
+# 🎨 CivitAI Browser Neo
 
-> [!Important]
-> The extension has been significantly rewritten, so it may not process your existing models correctly.</br>
-> _Be sure to update your HTML/JSON files..._</br>
-> **Don’t forget to visit the extension settings!** _(default settings have been changed)_
+[![Forge Neo](https://img.shields.io/badge/Forge-Neo-blue)](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo)
+[![Gradio](https://img.shields.io/badge/Gradio-4.40.0-orange)](https://gradio.app/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## ✨ Key features and changes in this fork:
+> **Extension for [Stable Diffusion WebUI Forge - Neo](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo)**
 
-- Redesigned the model cards in the browser to give them a modern look :3
-- Redesigned the sorting by date, make it neat in the form of bricks~
-- Completely redesigned the model's HTML page, making it more compact and appealing.
-- Added badges to model cards to display model type and NSFW status (if applicable)</br>
-  _Note: Badges are only visible when `Tile Size` is set to 11 or higher._
-- Model cards that require purchase are marked in gold.</br>
-  _Note: The model type badge turns gold and displays a lightning icon :3_
-- Removed `LoCon` and `DoRA` model types – now only `LORA` is supported~
-- Added an `Exact search` toggle in the search filter for precise results.</br>
-  _Note: This toggle simply adds double quotes `" "` to your search query~_
-- Fixed the display logic for the "Select All" button – now it only appears when there are models to select.
-- Implemented optional setting to change the resolution of model previews (Customize to your liking in settings - `Browser`)
-- ~~Removed "outdated models" logic and scanning for updates (It does not correspond to reality)~~ _([Commit](https://github.com/anxety-solo/sd-civitai-browser-plus/commit/bd9b0bec465eb3803496ff002a330ae101fa2ae5))_</br>
-  _Note: The logic for detecting outdated models has been reintroduced and rewritten using pattern matching for versions such as `vX` or `vX.X`_
-- All CSS and JS files have been formatted using Prettier for consistent code style.
-- Implemented encryption of image previews when images are saved (For Kaggle Only!)</br>
-  _Note: The [Encrypt-Image](https://github.com/anxety-solo/sd-encrypt-image) extension must be installed to enable this feature._
-
-#### 🔧 List of bugfixes and changes taken from Issues:
-
-- Complete removal of HyperNetwork support - should fix problems with launching in [Forge-Classic](https://github.com/Haoming02/sd-webui-forge-classic) ([Issue #390](https://github.com/BlafKing/sd-civitai-browser-plus/issues/390))
-- Added a clarifying message about Early Access to avoid confusion~ [Issue #383](https://github.com/BlafKing/sd-civitai-browser-plus/issues/383)
-- Fixed the "Save Images" button – now it correctly saves model images [Issue #374](https://github.com/BlafKing/sd-civitai-browser-plus/issues/374)
-- Models are now saved using their original file names, without any extra or random IDs [Issue #361](https://github.com/BlafKing/sd-civitai-browser-plus/issues/361)
-- Fixed some issues with `sub_folder` [Issue #356](https://github.com/BlafKing/sd-civitai-browser-plus/issues/356)
-- Fixed error `cvitai_subfolders.json does not exist` _(It's not a bug, it's a feature...)_ [Issue #349](https://github.com/BlafKing/sd-civitai-browser-plus/issues/349)
-- Added an option to specify the number of model images to download (default: 16) [Issue #319](https://github.com/BlafKing/sd-civitai-browser-plus/issues/319)</br>
-  _The number of images to save can be configured in settings - `Downloads`_
-- Added a way to search for a model by its `hash` [Issue #309](https://github.com/BlafKing/sd-civitai-browser-plus/issues/309)
-
-### 🖼️ Preview Browser (New Style):
-
-<h6>> Browser Cards</h6>
-<img src=".github/preview_browser_cards.png" alt="Preview Browser Cards" width="100%"/>
-<h6>> Sorting Card Bricks <i>(when date sorting is enabled)</i></h6>
-<img src=".github/preview_sort_by_date.png" alt="Preview Sorting Cards" width="100%"/>
-<h6>> HTML Model Page</h6>
-<img src=".github/preview_html.png" alt="Preview Model HTML Page" width="100%"/>
-
-<div align="center">
-    <h6>🎨 For better WebUI experience, I recommend using my theme - <a href="https://github.com/anxety-solo/anxety-theme">Anxety-Theme</a> :3</h6>
-</div>
-
-<h1></h1>
-
-![CivitAI Browser+](https://github.com/BlafKing/sd-civitai-browser-plus/assets/9644716/95afcc41-56f0-4398-8779-51cb2a9e2f55)
+Modern fork of sd-civitai-browser-plus optimized for Forge Neo with auto-organization features and support for latest model architectures (FLUX, Pony, Illustrious, Wan, Qwen, Z-Image, and more).
 
 ---
 
-### Extension for [Automatic1111's Stable Diffusion Web UI](https://github.com/AUTOMATIC1111/stable-diffusion-webui) and its forks :3
+## 📋 Table of Contents
 
-<h1>Features 🚀</h1>
-<h3>Browse all models from CivitAI 🧩</h3>
+- [What's New in Neo?](#-whats-new-in-neo)
+- [Features](#-features)
+- [Installation](#-installation)
+- [Auto-Organization System](#-auto-organization-system)
+- [Supported Model Types](#-supported-model-types)
+- [Settings](#%EF%B8%8F-settings)
+- [Credits](#-credits)
 
-* Explore a wide range of models at your fingertips.
+---
 
-<h3>Download any Model, any version, and any file 📥</h3>
+## ✨ What's New in Neo?
 
-* Get the specific model version and file you need hassle-free.
-* Download queue to avoid waiting for finished downloads.
+### 🚀 **Major Features**
 
-<h3>Automatically assign tags to installed models 🏷️</h3>
+#### **1. Smart Auto-Organization** 📁
+Automatically organize your models into subfolders by type (SDXL, Pony, FLUX, etc.):
+- **Auto-organize downloads**: New downloads go directly to organized folders
+- **Organize existing models**: One-click organization of all your models
+- **Backup & Rollback**: Safe organization with automatic backup and undo functionality
+- **Customizable categories**: Define your own folder structure and detection patterns
 
-* Assign tags by scanning all installed models for automatic use in image generation.
+#### **2. Modern Model Support** 🎯
+Full support for all Forge Neo architectures:
+- **SD**: SD1.x and SD2.x (unified)
+- **SDXL**: Including Pony and Illustrious variants
+- **FLUX**: Dev, Krea, Kontext, Klein (4B/9B)
+- **Wan**: Wan 2.2 (T2V, I2V)
+- **Qwen**: Qwen-Image, Qwen-Image-Edit
+- **Z-Image**: Z-Image, Z-Image-Turbo
+- **Lumina**: Neta-Lumina, NetaYume-Lumina
+- **Anima**, **Cascade**, **PixArt**, **Playground**
+- **SVD**, **Hunyuan**, **Kolors**, **AuraFlow**, **Chroma**
 
-<h3>Quick Model Info Access 📊</h3>
+#### **3. Gradio 4.x Migration** 🔄
+- Complete migration to Gradio 4.40.0 (Forge Neo compatible)
+- Modern UI components and improved performance
+- Better error handling and stability
 
-* A button for each model card in txt2img and img2img to load it into the extension.
-* A button under each image in model info to send its generation info to txt2img.
+#### **4. Safety Features** 🛡️
+- **Automatic backups** before any organization
+- **One-click rollback** to undo changes
+- **Backup history** (keeps last 5 operations)
+- **Safe execution** (cancels if backup fails)
 
-<h3>High-speed downloads with Aria2 🚄</h3>
+---
 
-* Maximize your bandwidth for lightning-fast downloads.
+## 🎯 Features
 
-<h3>Sleek and Intuitive User Interface 🖌️</h3>
+### Core Features (from Original)
 
-* Enjoy a clutter-free, user-friendly interface, designed to enhance your experience.
+<details open>
+<summary><b>Browse & Download</b></summary>
 
-<h1></h1>
+- 🧩 **Browse all models** from CivitAI
+- 📥 **Download any model**, version, and file
+- 🚄 **High-speed downloads** with Aria2
+- 📊 **Queue system** for batch downloads
+- 🏷️ **Auto-tag** installed models
+- 🔍 **Search by hash** to identify unknown models
 
-# How to install 📘
+</details>
 
-1. Open WebUI
-2. Navigate to "Extensions" → "Install from URL"
-3. Paste `https://github.com/anxety-solo/sd-civitai-browser-plus`
-4. Click "Install" and reload WebUI# sd-civitai-browser-neo
+<details open>
+<summary><b>Model Management</b></summary>
+
+- 📁 **Auto-organize** by model type (NEW in Neo!)
+- ↶ **Undo organization** with one click
+- 💾 **Automatic backups** before changes
+- 🗂️ **Custom categories** for organization
+- 🔄 **Update model info & tags**
+- 🖼️ **Download preview images**
+- 📋 **Generate model info HTML**
+
+</details>
+
+<details open>
+<summary><b>Integration</b></summary>
+
+- 🎨 **Quick access** from txt2img/img2img
+- 📤 **Send prompts** to txt2img
+- 🔗 **CivitAI API** integration
+- ⚙️ **Extensive settings**
+
+</details>
+
+### Improvements from Anxety-Solo Fork
+
+- 🎨 Modern, redesigned model cards
+- 📅 Neat brick-style date sorting
+- 🏷️ Visual badges for model type and NSFW
+- 💎 Gold badges for paid models
+- 🔍 Exact search toggle
+- 🖼️ Customizable preview resolution
+- 📱 Better responsive design
+- 🐛 Multiple bugfixes from community issues
+
+---
+
+## 📦 Installation
+
+### For Forge Neo
+
+1. Open Forge Neo WebUI
+2. Navigate to **Extensions** → **Install from URL**
+3. Paste: `https://github.com/eduardoabreu81/sd-civitai-browser-neo`
+4. Click **Install** and reload WebUI
+
+### Requirements
+
+- ✅ [Stable Diffusion WebUI Forge - Neo](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo)
+- ✅ Python 3.10+ (3.13 recommended)
+- ✅ Gradio 4.39.0+ (comes with Forge Neo)
+
+> ⚠️ **Note**: This extension is designed for **Forge Neo only**. For Forge Classic or Automatic1111, use the original [sd-civitai-browser-plus](https://github.com/anxety-solo/sd-civitai-browser-plus).
+
+---
+
+## 📁 Auto-Organization System
+
+### How It Works
+
+The organization system analyzes your models based on their `baseModel` metadata (stored in `.json` files) and automatically organizes them into subfolders.
+
+#### **Before Organization:**
+```
+models/Lora/
+├── model1.safetensors (SDXL)
+├── model2.safetensors (Pony)
+├── model3.safetensors (FLUX)
+├── random_folder/
+│   └── model4.safetensors (SD1.5)
+└── ...
+```
+
+#### **After Organization:**
+```
+models/Lora/
+├── SDXL/
+│   ├── model1.safetensors
+│   ├── model1.json
+│   └── model1.png
+├── Pony/
+│   └── model2.safetensors
+├── FLUX/
+│   └── model3.safetensors
+├── SD/
+│   └── model4.safetensors
+└── ...
+```
+
+### Usage
+
+#### **Option 1: Auto-Organize New Downloads**
+
+1. Go to **Settings** → **Model Organization**
+2. Enable **"Auto-organize downloads by model type"**
+3. New downloads will automatically go to organized folders
+
+#### **Option 2: Organize Existing Models**
+
+1. Go to **CivitAI Browser Neo** tab
+2. Go to **Update Models** sub-tab
+3. Select model types (e.g., LORA)
+4. Click **"📁 Organize models into subfolders by type"**
+5. Wait for completion
+6. (Optional) Click **"↶ Undo Last Organization"** if needed
+
+### Safety Features
+
+- ✅ **Automatic Backup**: Creates backup before any operation
+- ✅ **One-Click Undo**: Restore original structure anytime
+- ✅ **Associated Files**: Moves `.json`, `.png`, `.txt` files together
+- ✅ **Conflict Detection**: Skips files that already exist at destination
+- ✅ **Error Recovery**: Continues operation even if some files fail
+
+---
+
+## 🎨 Supported Model Types
+
+The Neo version includes detection for all modern architectures supported by Forge Neo:
+
+| Category | Detection patterns | Notes |
+|----------|-------------------|-------|
+| **SD** | SD 1, SD1, SD 2, SD2 | Unified SD versions |
+| **SDXL** | SDXL | Base SDXL |
+| **Pony** | PONY | Pony V6 and variants |
+| **Illustrious** | ILLUSTRIOUS | Illustrious XL |
+| **FLUX** | FLUX | Dev, Krea, Kontext, Klein |
+| **Wan** | WAN | Wan 2.2 T2V/I2V |
+| **Qwen** | QWEN | Qwen-Image, Edit |
+| **Z-Image** | Z-IMAGE, ZIMAGE | Z-Image, Turbo |
+| **Lumina** | LUMINA | Lumina-Image 2.0 |
+| **Anima** | ANIMA | Anima |
+| **Cascade** | CASCADE | Stable Cascade |
+| **PixArt** | PIXART | PixArt |
+| **Playground** | PLAYGROUND | Playground |
+| **SVD** | SVD, STABLE VIDEO | Video Diffusion |
+| **Hunyuan** | HUNYUAN | Hunyuan |
+| **Kolors** | KOLORS | Kolors |
+| **AuraFlow** | AURAFLOW | AuraFlow |
+| **Chroma** | CHROMA | Chroma1-HD |
+| **Other** | (unrecognized) | Configurable |
+
+### Custom Categories
+
+You can define your own categories in **Settings** → **Model Organization** using JSON format:
+
+```json
+{
+  "SD": ["SD 1", "SD1", "SD 2", "SD2"],
+  "SDXL": ["SDXL"],
+  "MyCustomType": ["CUSTOM", "PATTERN"],
+  "AnotherType": ["KEYWORD1", "KEYWORD2"]
+}
+```
+
+---
+
+## ⚙️ Settings
+
+### Model Organization (New!)
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| **Auto-organize downloads** | Automatically organize new downloads into subfolders | OFF |
+| **Create "Other" folder** | Put unrecognized models in "Other/" folder | ON |
+| **Custom categories** | JSON with custom folder names and patterns | (empty) |
+
+### Browser Settings
+
+| Setting | Description |
+|---------|-------------|
+| **Personal API key** | Your CivitAI API key (required for some downloads) |
+| **Hide early access** | Hide early access models from results |
+| **Hide dot subfolders** | Hide folders starting with `.` |
+| **Use local HTML** | Use local HTML files instead of CivitAI links |
+| **Page navigation header** | Keep page navigation always visible |
+| **Video playback** | Enable gif/video playback in browser |
+| **Resize preview cards** | Resize preview images for faster loading |
+
+### Download Settings
+
+| Setting | Description |
+|---------|-------------|
+| **Download method** | Choose between Default or Aria2 |
+| **Aria2 connections** | Number of connections for Aria2 (1-64) |
+| **Auto-save images** | Automatically download preview images |
+| **Image count** | Number of images to save (4-64) |
+| **Unpack ZIP** | Automatically extract .zip files |
+| **Save HTML on download** | Save HTML file with model info |
+
+---
+
+## 🖼️ Screenshots
+
+### Browser with Modern Cards
+![Browser Cards](.github/preview_browser_cards.png)
+
+### Date-based Sorting (Brick Style)
+![Sort by Date](.github/preview_sort_by_date.png)
+
+### Model HTML Page
+![HTML Page](.github/preview_html.png)
+
+---
+
+## 🐛 Known Issues
+
+- Some models may not have `baseModel` metadata (download from CivitAI to get it)
+- Rollback only works for the last operation
+- Maximum 5 backups are kept (older ones are deleted)
+
+## 💡 Tips
+
+- **First time using?** Update model info & tags to generate `.json` files with metadata
+- **Want custom folders?** Edit JSON in Settings → Model Organization
+- **Made a mistake?** Use "Undo Organization" button immediately
+- **Need help?** Check console logs (`[CivitAI Browser Neo]` prefix)
+
+---
+
+## 📄 Credits
+
+### Original Project
+- **[sd-civitai-browser](https://github.com/Vetchems/sd-civitai-browser)** by Vetchems
+- **[sd-civitai-browser-plus](https://github.com/BlafKing/sd-civitai-browser-plus)** by BlafKing
+
+### Anxety-Solo Fork
+- **[sd-civitai-browser-plus](https://github.com/anxety-solo/sd-civitai-browser-plus)** by anxety-solo
+  - Modern UI redesign
+  - Quality of life improvements
+  - Multiple bugfixes
+
+### Neo Version
+- **[sd-civitai-browser-neo](https://github.com/eduardoabreu81/sd-civitai-browser-neo)** by Eduardo Abreu
+  - Forge Neo compatibility (Gradio 4.x)
+  - Auto-organization system
+  - Modern model support (FLUX, Pony, Wan, Qwen, etc)
+  - Backup & rollback system
+
+### Special Thanks
+- **[Forge Neo](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo)** by Haoming02
+- All contributors to the original projects
+- CivitAI for their amazing API
+
+---
+
+## 📜 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Feel free to:
+- 🐛 Report bugs
+- 💡 Suggest new features
+- 🔧 Submit pull requests
+- 📖 Improve documentation
+
+---
+
+## ☕ Support
+
+If you find this extension helpful, consider:
+- ⭐ Starring the repository
+- 🐛 Reporting issues
+- 📢 Sharing with others
+- ☕ [Buy me a coffee](https://ko-fi.com/eduardoabreu81)
+
+---
+
+<div align="center">
+
+Made with ❤️ for the Stable Diffusion community
+
+**[Report Bug](https://github.com/eduardoabreu81/sd-civitai-browser-neo/issues)** • **[Request Feature](https://github.com/eduardoabreu81/sd-civitai-browser-neo/issues)** • **[Discussions](https://github.com/eduardoabreu81/sd-civitai-browser-neo/discussions)**
+
+</div>
