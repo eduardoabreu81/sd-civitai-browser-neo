@@ -65,10 +65,10 @@ def all_visible(html_check):
     # Count the number of model-checkbox occurrences in the HTML
     checkbox_count = html_check.count('model-checkbox')
     # Show the button only if there are 2 or more checkboxes (more than 1 model to select)
-    return gr.Button.update(visible=checkbox_count >= 2)
+    return gr.update(visible=checkbox_count >= 2)
 
 def HTMLChange(input):
-    return gr.HTML.update(value=input)
+    return gr.update(value=input)
 
 def show_multi_buttons(model_list, type_list, version_value):
     model_list = json.loads(model_list)
@@ -107,12 +107,12 @@ def show_multi_buttons(model_list, type_list, version_value):
         except:
             sub_folders = ['None']
 
-    return (gr.Button.update(visible=multi, interactive=multi), # Download Multi Button
-            gr.Button.update(visible=BtnDwn if multi else True if not version_value.endswith('[Installed]') else False), # Download Button
-            gr.Button.update(visible=BtnDel if not model_list else False), # Delete Button
-            gr.Button.update(visible=otherButtons), # Save model info Button
-            gr.Button.update(visible=otherButtons), # Save images Button
-            gr.Dropdown.update(visible=multi, interactive=multi_file_subfolder, choices=sub_folders, value=default_subfolder) # Selected type sub folder
+    return (gr.update(visible=multi, interactive=multi), # Download Multi Button
+            gr.update(visible=BtnDwn if multi else True if not version_value.endswith('[Installed]') else False), # Download Button
+            gr.update(visible=BtnDel if not model_list else False), # Delete Button
+            gr.update(visible=otherButtons), # Save model info Button
+            gr.update(visible=otherButtons), # Save images Button
+            gr.update(visible=multi, interactive=multi_file_subfolder, choices=sub_folders, value=default_subfolder) # Selected type sub folder
             )
 
 def txt2img_output(image_url):
@@ -121,7 +121,7 @@ def txt2img_output(image_url):
     if geninfo:
         nr = _download.random_number()
         geninfo = nr + geninfo
-        return gr.Textbox.update(value=geninfo)
+        return gr.update(value=geninfo)
 
 ## === ANXETY EDITs ===
 def get_base_models():
@@ -393,7 +393,7 @@ def on_ui_tabs():
                 newpath = gl.main_folder
             else:
                 newpath = str(gl.main_folder) + sub_folder
-            return gr.Textbox.update(value=newpath)
+            return gr.update(value=newpath)
 
         # Javascript Functions #
 
@@ -481,23 +481,23 @@ def on_ui_tabs():
             # If there is no loaded model data, reset all UI elements and show a message
             if not gl.json_data:
                 return (
-                    gr.Dropdown.update(value=None, choices=[], interactive=False),  # Model list dropdown
-                    gr.Dropdown.update(value=None, choices=[], interactive=False),  # Version list dropdown
-                    gr.Textbox.update(value=None),                                  # Preview HTML
-                    gr.Textbox.update(value=None, interactive=False),               # Trained tags textbox
-                    gr.Textbox.update(value=None, interactive=False),               # Base model textbox
-                    gr.Textbox.update(value=None, interactive=False),               # Model filename textbox
-                    gr.Textbox.update(value=None, interactive=False),               # Install path textbox
-                    gr.Dropdown.update(value=None, choices=[], interactive=False),  # Subfolder dropdown
-                    gr.Button.update(interactive=False),                            # Download model button
-                    gr.Button.update(interactive=False),                            # Save image button
-                    gr.Button.update(interactive=False, visible=False),             # Delete model button
-                    gr.Dropdown.update(value=None, choices=[], interactive=False),  # File list dropdown
-                    gr.Textbox.update(value=None),                                  # Download URL textbox
-                    gr.Textbox.update(value=None),                                  # Model ID textbox
-                    gr.Textbox.update(value=None),                                  # Current SHA256 textbox
-                    gr.Button.update(interactive=False),                            # Save model info button
-                    gr.Textbox.update(
+                    gr.update(value=None, choices=[], interactive=False),  # Model list dropdown
+                    gr.update(value=None, choices=[], interactive=False),  # Version list dropdown
+                    gr.update(value=None),                                  # Preview HTML
+                    gr.update(value=None, interactive=False),               # Trained tags textbox
+                    gr.update(value=None, interactive=False),               # Base model textbox
+                    gr.update(value=None, interactive=False),               # Model filename textbox
+                    gr.update(value=None, interactive=False),               # Install path textbox
+                    gr.update(value=None, choices=[], interactive=False),  # Subfolder dropdown
+                    gr.update(interactive=False),                            # Download model button
+                    gr.update(interactive=False),                            # Save image button
+                    gr.update(interactive=False, visible=False),             # Delete model button
+                    gr.update(value=None, choices=[], interactive=False),  # File list dropdown
+                    gr.update(value=None),                                  # Download URL textbox
+                    gr.update(value=None),                                  # Model ID textbox
+                    gr.update(value=None),                                  # Current SHA256 textbox
+                    gr.update(interactive=False),                            # Save model info button
+                    gr.update(
                         value='<div style="font-size: 24px; text-align: center; margin: 50px;">Click the search icon to load models.<br>Use the filter icon to filter results.</div>'
                     )  # Model list HTML message
                 )
@@ -525,7 +525,7 @@ def on_ui_tabs():
 
             # Return all UI updates in the expected order
             return (
-                gr.Dropdown.update(value=model_string, interactive=True), # Model dropdown
+                gr.update(value=model_string, interactive=True), # Model dropdown
                 model_versions,                                           # Version dropdown
                 html,                                                     # Preview HTML
                 tags,                                                     # Trained tags
@@ -540,8 +540,8 @@ def on_ui_tabs():
                 download_url,                                             # Download URL
                 model_id_value,                                           # Model ID
                 current_sha256,                                           # Current SHA256
-                gr.Button.update(interactive=True),                       # Save model info button
-                gr.Textbox.update()                                       # Model list HTML
+                gr.update(interactive=True),                       # Save model info button
+                gr.update()                                       # Model list HTML
             )
 
         model_select.change(
