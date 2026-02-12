@@ -235,12 +235,12 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
     html = download_manager_html(current_html)
 
     return (
-        gr.Button.update(interactive=False, visible=False),  # Download Button
-        gr.Button.update(interactive=True, visible=True),  # Cancel Button
-        gr.Button.update(interactive=True if len(gl.download_queue) > 1 else False, visible=True),  # Cancel All Button
-        gr.Textbox.update(value=number),  # Download Start Trigger
-        gr.HTML.update(value='<div style="min-height: 100px;"></div>'),  # Download Progress
-        gr.HTML.update(value=html)  # Download Manager HTML
+        gr.update(interactive=False, visible=False),  # Download Button
+        gr.update(interactive=True, visible=True),  # Cancel Button
+        gr.update(interactive=True if len(gl.download_queue) > 1 else False, visible=True),  # Cancel All Button
+        gr.update(value=number),  # Download Start Trigger
+        gr.update(value='<div style="min-height: 100px;"></div>'),  # Download Progress
+        gr.update(value=html)  # Download Manager HTML
     )
 
 
@@ -288,12 +288,12 @@ def download_start(download_start, dl_url, model_filename, install_path, model_s
         gl.download_queue.append(model_item)
     else:
         return (
-            gr.Button.update(interactive=True, visible=True),  # Download Button
-            gr.Button.update(interactive=False, visible=False),  # Cancel Button
-            gr.Button.update(interactive=False, visible=False),  # Cancel All Button
-            gr.Textbox.update(value=download_start),  # Download Start Trigger
-            gr.HTML.update(value='<div style="min-height: 100px;"></div>'),  # Download Progress
-            gr.HTML.update(value=current_html)  # Download Manager HTML
+            gr.update(interactive=True, visible=True),  # Download Button
+            gr.update(interactive=False, visible=False),  # Cancel Button
+            gr.update(interactive=False, visible=False),  # Cancel All Button
+            gr.update(value=download_start),  # Download Start Trigger
+            gr.update(value='<div style="min-height: 100px;"></div>'),  # Download Progress
+            gr.update(value=current_html)  # Download Manager HTML
         )
 
     if len(gl.download_queue) > 1:
@@ -307,12 +307,12 @@ def download_start(download_start, dl_url, model_filename, install_path, model_s
     html = download_manager_html(current_html)
 
     return (
-        gr.Button.update(interactive=False, visible=True),  # Download Button
-        gr.Button.update(interactive=True, visible=True),  # Cancel Button
-        gr.Button.update(interactive=True if len(gl.download_queue) > 1 else False, visible=True),  # Cancel All Button
-        gr.Textbox.update(value=number),  # Download Start Trigger
-        gr.HTML.update(value='<div style="min-height: 100px;"></div>'),  # Download Progress
-        gr.HTML.update(value=html)  # Download Manager HTML
+        gr.update(interactive=False, visible=True),  # Download Button
+        gr.update(interactive=True, visible=True),  # Cancel Button
+        gr.update(interactive=True if len(gl.download_queue) > 1 else False, visible=True),  # Cancel All Button
+        gr.update(value=number),  # Download Start Trigger
+        gr.update(value='<div style="min-height: 100px;"></div>'),  # Download Progress
+        gr.update(value=html)  # Download Manager HTML
     )
 
 def download_finish(model_filename, version, model_id):
@@ -343,12 +343,12 @@ def download_finish(model_filename, version, model_id):
     gl.cancel_status = False
 
     return (
-        gr.Button.update(interactive=model_filename, visible=Down, value="Download model"),  # Download Button
-        gr.Button.update(interactive=False, visible=False),  # Cancel Button
-        gr.Button.update(interactive=False, visible=False),  # Cancel All Button
-        gr.Button.update(interactive=Del, visible=Del),  # Delete Button
-        gr.HTML.update(value='<div style="min-height: 0px;"></div>'),  # Download Progress
-        gr.Dropdown.update(value=version, choices=version_choices)  # Version Dropdown
+        gr.update(interactive=model_filename, visible=Down, value="Download model"),  # Download Button
+        gr.update(interactive=False, visible=False),  # Cancel Button
+        gr.update(interactive=False, visible=False),  # Cancel All Button
+        gr.update(interactive=Del, visible=Del),  # Delete Button
+        gr.update(value='<div style="min-height: 0px;"></div>'),  # Download Progress
+        gr.update(value=version, choices=version_choices)  # Version Dropdown
     )
 
 def download_cancel():
@@ -718,11 +718,11 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
 
     if not gl.download_queue:
         return (
-            gr.HTML.update(),  # Download Progress HTML
-            gr.Textbox.update(value=None),  # Current Model
-            gr.Textbox.update(value=random_number(download_finish)),  # Download Finish Trigger
-            gr.Textbox.update(value=queue_trigger),  # Queue Trigger
-            gr.Button.update(interactive=False)  # Cancel All Button
+            gr.update(),  # Download Progress HTML
+            gr.update(value=None),  # Current Model
+            gr.update(value=random_number(download_finish)),  # Download Finish Trigger
+            gr.update(value=queue_trigger),  # Queue Trigger
+            gr.update(interactive=False)  # Cancel All Button
         )
 
     item = gl.download_queue[0]
@@ -816,11 +816,11 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
         queue_nr = random_number(queue_trigger)
 
     return (
-        gr.HTML.update(),  # Download Progress HTML
-        gr.Textbox.update(value=card_name),  # Current Model
-        gr.Textbox.update(value=finish_nr),  # Download Finish Trigger
-        gr.Textbox.update(value=queue_nr),  # Queue Trigger
-        gr.Button.update(interactive=True if len(gl.download_queue) != 1 else False)  # Cancel All Button
+        gr.update(),  # Download Progress HTML
+        gr.update(value=card_name),  # Current Model
+        gr.update(value=finish_nr),  # Download Finish Trigger
+        gr.update(value=queue_nr),  # Queue Trigger
+        gr.update(interactive=True if len(gl.download_queue) != 1 else False)  # Cancel All Button
     )
 
 def remove_from_queue(dl_id):
