@@ -9,6 +9,7 @@ import time
 import re
 import os
 import io
+import shutil
 import gradio as gr
 from urllib.parse import urlparse
 from pathlib import Path
@@ -846,15 +847,14 @@ def find_and_save(api_response, sha256=None, file_name=None, json_file=None, no_
                 description = clean_description(description)
 
         base_model = model_version.get('baseModel', '')
-
-        if base_model.startswith('SD 1'):
-            base_model = 'SD1'
-        elif base_model.startswith('SD 2'):
-            base_model = 'SD2'
-        elif base_model.startswith('SDXL'):
-            base_model = 'SDXL'
+        
+        # Normalize base model using the same function as organization
+        normalized_base_model = normalize_base_model(base_model)
+        if normalized_base_model:
+            base_model = normalized_base_model
         else:
-            base_model = 'Other'
+            # If normalize returns None (leave in root), keep original or set to 'Other'
+            base_model = base_model if base_model else 'Other'
 
         if isinstance(trained_words, list):
             trained_tags = ','.join(trained_words)
@@ -1446,6 +1446,90 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
             gr.update(value='<div style="min-height: 0px;"></div>'),
             gr.update(value=number)
         )
+    
+    elif from_organize:
+        # Step 1: Analyze organization needs
+        if progress != None:
+            progress(0, desc='Analyzing models for organization...')
+        
+        organization_plan = analyze_organization_plan(folders, progress)
+        
+        if not organization_plan['moves']:
+            # No files need organization
+            gl.scan_files = False
+            preview_html = generate_organization_preview_html(organization_plan)
+            return (
+                gr.update(value=preview_html),
+                gr.update(value=number)
+            )
+        
+        # Step 2: Save backup before making changes
+        if progress != None:
+            progress(0.9, desc='Creating backup...')
+        
+        backup_id = save_organization_backup(organization_plan)
+        if not backup_id:
+            gl.scan_files = False
+            error_html = '''
+            <div style="padding: 20px; border: 1px solid var(--error-border-color); border-radius: 8px;">
+                <h3 style="color: var(--error-text-color);">⚠️ Backup Failed</h3>
+                <p>Unable to create backup. Organization cancelled for safety.</p>
+                <p>Please check file permissions and try again.</p>
+            </div>
+            '''
+            return (
+                gr.update(value=error_html),
+                gr.update(value=number)
+            )
+        
+        # Step 3: Execute organization
+        total_moves = len(organization_plan['moves'])
+        print(f"[CivitAI Browser Neo] Starting organization of {total_moves} files...")
+        print(f"[CivitAI Browser Neo] 💾 Backup ID: {backup_id}")
+        
+        result = execute_organization(organization_plan, progress)
+        
+        # Step 4: Generate result message
+        if result['success']:
+            result_html = f'''
+            <div style="padding: 20px; text-align: center; color: var(--color-accent);">
+                <h3>✅ Organization Complete!</h3>
+                <p>{result['completed']} files successfully organized into folders by model type.</p>
+                <p>Your models are now organized in subfolders: {', '.join(sorted(organization_plan['summary'].keys()))}</p>
+                <div style="margin-top: 15px; padding: 10px; background: var(--background-fill-secondary); border-radius: 5px;">
+                    💾 <strong>Backup saved:</strong> {backup_id}<br>
+                    Use the "Undo Organization" button to rollback if needed.
+                </div>
+            </div>
+            '''
+        else:
+            error_list = '<br>'.join(result['errors'][:10])
+            if len(result['errors']) > 10:
+                error_list += f'<br><em>... and {len(result["errors"]) - 10} more errors</em>'
+            
+            result_html = f'''
+            <div style="padding: 20px; border: 1px solid var(--error-border-color); border-radius: 8px;">
+                <h3 style="color: var(--error-text-color);">⚠️ Organization Completed with Errors</h3>
+                <p>Completed: {result['completed']}/{result['total']} files</p>
+                <p>💾 Backup saved: {backup_id}</p>
+                <details>
+                    <summary style="cursor: pointer;">View errors</summary>
+                    <div style="margin-top: 10px; padding: 10px; background: var(--block-background-fill); border-radius: 5px;">
+                        {error_list}
+                    </div>
+                </details>
+                <div style="margin-top: 10px;">
+                    Use the "Undo Organization" button to rollback changes.
+                </div>
+            </div>
+            '''
+        
+        print(f"[CivitAI Browser Neo] {result['message']}")
+        gl.scan_files = False
+        return (
+            gr.update(value=result_html),
+            gr.update(value=number)
+        )
 
 def finish_returns():
     return (
@@ -1453,7 +1537,7 @@ def finish_returns():
         gr.update(interactive=True, visible=True),
         gr.update(interactive=True, visible=True),
         gr.update(interactive=True, visible=True),
-        gr.update(interactive=True, visible=False),  # Organize models hidden until implemented
+        gr.update(interactive=True, visible=True),  # Organize models button
         gr.update(interactive=False, visible=False)
     )
 
@@ -1465,7 +1549,7 @@ def start_returns(number):
         gr.update(interactive=False, visible=True),
         gr.update(interactive=False, visible=True),
         gr.update(interactive=False, visible=True),
-        gr.update(interactive=False, visible=False),  # Organize models hidden until implemented
+        gr.update(interactive=False, visible=True),  # Organize models button (keep visible but disabled during scan)
         gr.update(value='<div style="min-height: 100px;"></div>')
     )
 
@@ -1506,10 +1590,571 @@ def installed_models_start(installed_start):
     number = _download.random_number(installed_start)
     return start_returns(number)
 
+def get_model_categories():
+    """
+    Get model organization categories from settings or default
+    Returns dict mapping folder names to detection patterns
+    """
+    # Default categories based on Forge Neo supported models
+    default_categories = {
+        'SD': ['SD 1', 'SD1', 'SD 2', 'SD2'],
+        'SDXL': ['SDXL'],
+        'Pony': ['PONY'],
+        'Illustrious': ['ILLUSTRIOUS'],
+        'FLUX': ['FLUX'],
+        'Wan': ['WAN'],
+        'Qwen': ['QWEN'],
+        'Z-Image': ['Z-IMAGE', 'ZIMAGE', 'Z IMAGE'],
+        'Lumina': ['LUMINA'],
+        'Anima': ['ANIMA'],
+        'Cascade': ['CASCADE'],
+        'PixArt': ['PIXART'],
+        'Playground': ['PLAYGROUND'],
+        'SVD': ['SVD', 'STABLE VIDEO'],
+        'Hunyuan': ['HUNYUAN'],
+        'Kolors': ['KOLORS'],
+        'AuraFlow': ['AURAFLOW'],
+        'Chroma': ['CHROMA'],
+    }
+    
+    # Try to load custom categories from settings
+    try:
+        custom_categories = getattr(opts, 'civitai_neo_model_categories', None)
+        if custom_categories:
+            # Parse JSON if stored as string
+            if isinstance(custom_categories, str):
+                import json
+                custom_categories = json.loads(custom_categories)
+            return custom_categories
+    except:
+        pass
+    
+    return default_categories
+
+def normalize_base_model(base_model):
+    """
+    Normalize baseModel from CivitAI to folder-friendly name
+    Supports all Forge Neo model types with customizable categories
+    """
+    if not base_model or base_model == 'Not Found':
+        # Check if user wants to create "Other" folder
+        if not getattr(opts, 'civitai_neo_create_other_folder', True):
+            return None  # Leave in root
+        return 'Other'
+    
+    base_model_upper = base_model.upper()
+    categories = get_model_categories()
+    
+    # Check each category's patterns
+    for folder_name, patterns in categories.items():
+        for pattern in patterns:
+            if pattern.upper() in base_model_upper:
+                return folder_name
+    
+    # No match found
+    if not getattr(opts, 'civitai_neo_create_other_folder', True):
+        return None  # Leave in root
+    return 'Other'
+
+def get_model_info_for_organization(file_path):
+    """
+    Get model information from JSON file for organization
+    Returns: (base_model, model_name) or (None, None) if not found
+    """
+    json_file = os.path.splitext(file_path)[0] + '.json'
+    
+    if not os.path.exists(json_file):
+        return None, None
+    
+    try:
+        data = _api.safe_json_load(json_file)
+        if not data:
+            return None, None
+        
+        # Get base model from sd version field
+        base_model = data.get('sd version', '')
+        
+        # Also check for raw baseModel if available
+        if not base_model and 'baseModel' in data:
+            base_model = data.get('baseModel', '')
+        
+        model_name = os.path.basename(file_path)
+        
+        return base_model, model_name
+    except Exception as e:
+        debug_print(f"Error reading model info for organization: {e}")
+        return None, None
+
+def analyze_organization_plan(folders, progress=None):
+    """
+    Analyze current model files and create an organization plan
+    Returns organization plan with moves grouped by base model
+    """
+    folders_to_check = []
+    
+    if 'All' in folders:
+        folders = _file.get_content_choices()
+    
+    for item in folders:
+        if item == 'LORA':
+            folder = _api.contenttype_folder('LORA')
+            if folder:
+                folders_to_check.append(folder)
+        else:
+            folder = _api.contenttype_folder(item)
+            if folder:
+                folders_to_check.append(folder)
+    
+    files = list_files(folders_to_check)
+    
+    organization_plan = {
+        'moves': [],
+        'summary': {},
+        'total_files': 0,
+        'files_with_info': 0,
+        'files_without_info': 0
+    }
+    
+    files_processed = 0
+    total_files = len(files)
+    
+    for file_path in files:
+        files_processed += 1
+        if progress:
+            file_name = os.path.basename(file_path)
+            progress(files_processed / total_files, desc=f"Analyzing: {file_name}")
+        
+        base_model_raw, model_name = get_model_info_for_organization(file_path)
+        
+        if not base_model_raw:
+            organization_plan['files_without_info'] += 1
+            continue
+        
+        organization_plan['files_with_info'] += 1
+        
+        # Normalize base model to folder name
+        base_model_folder = normalize_base_model(base_model_raw)
+        
+        # If normalize returns None, skip this file (leave in root)
+        if not base_model_folder:
+            continue
+        
+        # Get current directory
+        current_dir = os.path.dirname(file_path)
+        
+        # Check if already in correct subfolder
+        current_parent = os.path.basename(current_dir)
+        if current_parent == base_model_folder:
+            # Already organized
+            continue
+        
+        # Create target path
+        # Determine root folder from current file location
+        # Go up levels until we find a models folder or we're at root model type folder
+        root_folder = current_dir
+        while os.path.basename(root_folder) not in ['Lora', 'Stable-diffusion', 'embeddings', 'VAE', 'ControlNet']:
+            parent = os.path.dirname(root_folder)
+            if parent == root_folder:  # We've reached filesystem root
+                root_folder = current_dir
+                break
+            root_folder = parent
+        
+        target_folder = os.path.join(root_folder, base_model_folder)
+        target_path = os.path.join(target_folder, os.path.basename(file_path))
+        
+        # Add to plan
+        organization_plan['moves'].append({
+            'from': file_path,
+            'to': target_path,
+            'base_model': base_model_folder,
+            'model_name': model_name,
+            'size': os.path.getsize(file_path) if os.path.exists(file_path) else 0
+        })
+        
+        # Update summary
+        if base_model_folder not in organization_plan['summary']:
+            organization_plan['summary'][base_model_folder] = {
+                'count': 0,
+                'size': 0
+            }
+        
+        organization_plan['summary'][base_model_folder]['count'] += 1
+        organization_plan['summary'][base_model_folder]['size'] += organization_plan['moves'][-1]['size']
+    
+    organization_plan['total_files'] = total_files
+    
+    return organization_plan
+
+def format_size(size_bytes):
+    """Format file size in human readable format"""
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size_bytes < 1024.0:
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024.0
+    return f"{size_bytes:.1f} PB"
+
+def generate_organization_preview_html(organization_plan):
+    """Generate HTML preview of organization plan"""
+    
+    if not organization_plan['moves']:
+        return '''
+        <div style="padding: 20px; text-align: center;">
+            <h3>✅ All models are already organized!</h3>
+            <p>No files need to be moved.</p>
+        </div>
+        '''
+    
+    # Build summary table
+    summary_rows = ''
+    for base_model in sorted(organization_plan['summary'].keys()):
+        info = organization_plan['summary'][base_model]
+        summary_rows += f'''
+        <tr>
+            <td>📂 {base_model}</td>
+            <td style="text-align: center;">{info['count']}</td>
+            <td style="text-align: right;">{format_size(info['size'])}</td>
+        </tr>
+        '''
+    
+    total_size = sum(info['size'] for info in organization_plan['summary'].values())
+    total_moves = len(organization_plan['moves'])
+    total_folders = len(organization_plan['summary'])
+    
+    html = f'''
+    <div style="padding: 20px; border: 1px solid var(--border-color-primary); border-radius: 8px; margin: 10px 0;">
+        <h3 style="margin-top: 0;">📁 Organization Preview</h3>
+        
+        <div style="background: var(--background-fill-secondary); padding: 15px; border-radius: 5px; margin: 15px 0;">
+            <strong>Total:</strong> {total_moves} files to organize | 
+            <strong>Folders:</strong> {total_folders} | 
+            <strong>Size:</strong> {format_size(total_size)}
+        </div>
+        
+        <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+            <thead>
+                <tr style="background: var(--background-fill-secondary);">
+                    <th style="padding: 10px; text-align: left;">Folder</th>
+                    <th style="padding: 10px; text-align: center;">Files</th>
+                    <th style="padding: 10px; text-align: right;">Size</th>
+                </tr>
+            </thead>
+            <tbody>
+                {summary_rows}
+            </tbody>
+        </table>
+        
+        <div style="margin-top: 20px; padding: 10px; background: var(--color-accent-soft); border-radius: 5px;">
+            ℹ️ <strong>Note:</strong> Files will be moved along with their associated .json, .png, and .txt files.
+        </div>
+        
+        <div style="margin-top: 15px; padding: 10px; background: var(--block-background-fill); border-radius: 5px;">
+            <details>
+                <summary style="cursor: pointer; font-weight: bold;">📋 View detailed file list ({total_moves} files)</summary>
+                <div style="max-height: 300px; overflow-y: auto; margin-top: 10px;">
+                    {'<br>'.join([f"• {os.path.basename(m['from'])} → {m['base_model']}/" for m in organization_plan['moves'][:100]])}
+                    {f'<br><em>... and {total_moves - 100} more files</em>' if total_moves > 100 else ''}
+                </div>
+            </details>
+        </div>
+    </div>
+    '''
+    
+    return html
+
+def save_organization_backup(organization_plan):
+    """
+    Save organization plan as backup before executing
+    Returns backup ID (timestamp)
+    """
+    from datetime import datetime
+    
+    backup_data = {
+        'timestamp': datetime.now().strftime('%Y-%m-%d_%H-%M-%S'),
+        'moves': organization_plan['moves'],
+        'summary': organization_plan['summary']
+    }
+    
+    # Load existing backups
+    backups = []
+    if os.path.exists(gl.organization_backup_file):
+        try:
+            with open(gl.organization_backup_file, 'r', encoding='utf-8') as f:
+                backups = json.load(f)
+        except:
+            backups = []
+    
+    # Add new backup
+    backups.append(backup_data)
+    
+    # Keep only last 5 backups
+    if len(backups) > 5:
+        backups = backups[-5:]
+    
+    # Save backups
+    try:
+        with open(gl.organization_backup_file, 'w', encoding='utf-8') as f:
+            json.dump(backups, f, indent=2, ensure_ascii=False)
+        
+        gl.last_organization_backup = backup_data['timestamp']
+        print(f"[CivitAI Browser Neo] Backup saved: {backup_data['timestamp']}")
+        return backup_data['timestamp']
+    except Exception as e:
+        print(f"[CivitAI Browser Neo] Failed to save backup: {e}")
+        return None
+
+def get_last_organization_backup():
+    """
+    Get the most recent organization backup
+    Returns backup data or None
+    """
+    if not os.path.exists(gl.organization_backup_file):
+        return None
+    
+    try:
+        with open(gl.organization_backup_file, 'r', encoding='utf-8') as f:
+            backups = json.load(f)
+        
+        if backups:
+            return backups[-1]
+    except Exception as e:
+        debug_print(f"Error loading backup: {e}")
+    
+    return None
+
+def execute_rollback(progress=None):
+    """
+    Rollback the last organization operation
+    Moves files back to their original locations
+    """
+    backup = get_last_organization_backup()
+    
+    if not backup:
+        return {
+            'success': False,
+            'message': 'No backup found to rollback',
+            'completed': 0,
+            'total': 0,
+            'errors': []
+        }
+    
+    moves = backup.get('moves', [])
+    total_moves = len(moves)
+    moves_completed = 0
+    errors = []
+    
+    print(f"[CivitAI Browser Neo] Starting rollback of {total_moves} files...")
+    
+    for move_info in moves:
+        if gl.cancel_status:
+            return {
+                'success': False,
+                'completed': moves_completed,
+                'total': total_moves,
+                'errors': errors,
+                'message': 'Rollback cancelled by user'
+            }
+        
+        # Reverse: from target back to source
+        source_path = move_info['to']  # Where it was moved TO
+        target_path = move_info['from']  # Where it came FROM
+        model_name = move_info['model_name']
+        
+        moves_completed += 1
+        if progress:
+            progress(moves_completed / total_moves, 
+                    desc=f"Rolling back: {model_name} ({moves_completed}/{total_moves})")
+        
+        try:
+            # Check if source file exists (file might have been deleted/moved)
+            if not os.path.exists(source_path):
+                errors.append(f"File not found (may have been moved): {model_name}")
+                continue
+            
+            # Create target directory if it doesn't exist
+            target_dir = os.path.dirname(target_path)
+            os.makedirs(target_dir, exist_ok=True)
+            
+            # Check if target already exists
+            if os.path.exists(target_path):
+                errors.append(f"Target already exists, skipping: {model_name}")
+                continue
+            
+            # Move main file back
+            shutil.move(source_path, target_path)
+            
+            # Move associated files back
+            base_name_source = os.path.splitext(source_path)[0]
+            base_name_target = os.path.splitext(target_path)[0]
+            
+            associated_extensions = ['.json', '.png', '.jpg', '.jpeg', '.txt', '.civitai.info']
+            
+            for ext in associated_extensions:
+                associated_source = base_name_source + ext
+                associated_target = base_name_target + ext
+                
+                if os.path.exists(associated_source):
+                    try:
+                        shutil.move(associated_source, associated_target)
+                    except Exception as e:
+                        debug_print(f"Could not move associated file back: {e}")
+            
+            print(f"✓ Rolled back: {model_name}")
+            
+        except Exception as e:
+            error_msg = f"Failed to rollback {model_name}: {str(e)}"
+            errors.append(error_msg)
+            debug_print(error_msg)
+    
+    # Clean up empty folders created during organization
+    try:
+        for move_info in moves:
+            folder = os.path.dirname(move_info['to'])
+            if os.path.exists(folder) and not os.listdir(folder):
+                os.rmdir(folder)
+                print(f"Removed empty folder: {folder}")
+    except Exception as e:
+        debug_print(f"Error cleaning up folders: {e}")
+    
+    return {
+        'success': len(errors) == 0,
+        'completed': moves_completed,
+        'total': total_moves,
+        'errors': errors,
+        'message': f"Successfully rolled back {moves_completed} files" if len(errors) == 0 else f"Completed with {len(errors)} errors"
+    }
+
+def execute_organization(organization_plan, progress=None):
+    """
+    Execute the organization plan by moving files
+    Moves model files along with associated .json, .png, .txt files
+    """
+    total_moves = len(organization_plan['moves'])
+    moves_completed = 0
+    errors = []
+    
+    for move_info in organization_plan['moves']:
+        if gl.cancel_status:
+            return {
+                'success': False,
+                'completed': moves_completed,
+                'total': total_moves,
+                'errors': errors,
+                'message': 'Organization cancelled by user'
+            }
+        
+        source_path = move_info['from']
+        target_path = move_info['to']
+        model_name = move_info['model_name']
+        
+        moves_completed += 1
+        if progress:
+            progress(moves_completed / total_moves, 
+                    desc=f"Organizing: {model_name} ({moves_completed}/{total_moves})")
+        
+        try:
+            # Create target directory if it doesn't exist
+            target_dir = os.path.dirname(target_path)
+            os.makedirs(target_dir, exist_ok=True)
+            
+            # Check if target file already exists
+            if os.path.exists(target_path):
+                debug_print(f"Target already exists, skipping: {target_path}")
+                continue
+            
+            # Move main model file
+            shutil.move(source_path, target_path)
+            
+            # Move associated files (.json, .png, .jpg, .txt, .civitai.info)
+            base_name = os.path.splitext(source_path)[0]
+            target_base_name = os.path.splitext(target_path)[0]
+            
+            associated_extensions = ['.json', '.png', '.jpg', '.jpeg', '.txt', '.civitai.info']
+            
+            for ext in associated_extensions:
+                associated_file = base_name + ext
+                if os.path.exists(associated_file):
+                    target_associated = target_base_name + ext
+                    try:
+                        shutil.move(associated_file, target_associated)
+                    except Exception as e:
+                        debug_print(f"Could not move associated file {associated_file}: {e}")
+            
+            print(f"✓ Organized: {model_name} → {move_info['base_model']}/")
+            
+        except Exception as e:
+            error_msg = f"Failed to move {model_name}: {str(e)}"
+            errors.append(error_msg)
+            debug_print(error_msg)
+    
+    return {
+        'success': len(errors) == 0,
+        'completed': moves_completed,
+        'total': total_moves,
+        'errors': errors,
+        'message': f"Successfully organized {moves_completed} files" if len(errors) == 0 else f"Completed with {len(errors)} errors"
+    }
+
 def organize_start(organize_start):
     set_globals('from_organize')
     number = _download.random_number(organize_start)
     return start_returns(number)
+
+def rollback_organization(progress=gr.Progress() if queue else None):
+    """
+    Rollback the last organization operation
+    """
+    backup = get_last_organization_backup()
+    
+    if not backup:
+        return gr.update(value='''
+            <div style="padding: 20px; text-align: center;">
+                <h3>ℹ️ No Backup Found</h3>
+                <p>There is no recent organization to undo.</p>
+                <p>Organization backups are only available for operations performed in the current session.</p>
+            </div>
+        ''')
+    
+    # Show confirmation with backup details
+    total_files = len(backup.get('moves', []))
+    timestamp = backup.get('timestamp', 'Unknown')
+    
+    if progress:
+        progress(0, desc=f"Starting rollback of {total_files} files...")
+    
+    print(f"[CivitAI Browser Neo] Starting rollback (Backup: {timestamp})...")
+    
+    result = execute_rollback(progress)
+    
+    # Generate result message
+    if result['success']:
+        result_html = f'''
+        <div style="padding: 20px; text-align: center; color: var(--color-accent);">
+            <h3>✅ Rollback Complete!</h3>
+            <p>{result['completed']} files successfully moved back to original locations.</p>
+            <p>Backup: {timestamp}</p>
+        </div>
+        '''
+    else:
+        error_list = '<br>'.join(result['errors'][:10])
+        if len(result['errors']) > 10:
+            error_list += f'<br><em>... and {len(result["errors"]) - 10} more errors</em>'
+        
+        result_html = f'''
+        <div style="padding: 20px; border: 1px solid var(--error-border-color); border-radius: 8px;">
+            <h3 style="color: var(--error-text-color);">⚠️ Rollback Completed with Errors</h3>
+            <p>Completed: {result['completed']}/{result['total']} files</p>
+            <p>Backup: {timestamp}</p>
+            <details>
+                <summary style="cursor: pointer;">View errors</summary>
+                <div style="margin-top: 10px; padding: 10px; background: var(--block-background-fill); border-radius: 5px;">
+                    {error_list}
+                </div>
+            </details>
+        </div>
+        '''
+    
+    print(f"[CivitAI Browser Neo] {result['message']}")
+    return gr.update(value=result_html)
 
 def save_tag_finish():
     set_globals('reset')

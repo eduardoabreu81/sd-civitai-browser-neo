@@ -308,10 +308,14 @@ def on_ui_tabs():
             with gr.Row():
                 installed_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
             with gr.Row():
-                organize_models = gr.Button(value='Organize model files', interactive=True, visible=False) # Organize models hidden until implemented
-                cancel_organize = gr.Button(value='Cancel loading models', interactive=False, visible=False)
+                organize_models = gr.Button(value='📁 Organize models into subfolders by type', interactive=True, visible=True)
+                cancel_organize = gr.Button(value='Cancel organization', interactive=False, visible=False)
             with gr.Row():
                 organize_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+            with gr.Row():
+                undo_organization = gr.Button(value='↶ Undo Last Organization', interactive=True, visible=True, variant='secondary')
+            with gr.Row():
+                undo_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
 
         ## Queue Tab
         with gr.Tab(label='Download Queue', elem_id='queueTab'):
@@ -882,7 +886,7 @@ def on_ui_tabs():
             exact_search
         ]
 
-        cancel_btn_list = [cancel_all_tags, cancel_ver_search, cancel_installed, cancel_update_preview]
+        cancel_btn_list = [cancel_all_tags, cancel_ver_search, cancel_installed, cancel_update_preview, cancel_organize]
 
         browser = [save_all_tags, ver_search, load_installed, update_preview]
 
@@ -1083,14 +1087,22 @@ def on_ui_tabs():
         )
 
         organize_finish.change(
-            fn=_file.save_preview_finish,
+            fn=_file.scan_finish,
             outputs=[
                 ver_search,
                 save_all_tags,
                 load_installed,
                 update_preview,
                 organize_models,
-                cancel_update_preview
+                cancel_organize,
+                load_to_browser_installed
+            ]
+        )
+
+        undo_organization.click(
+            fn=_file.rollback_organization,
+            outputs=[
+                undo_progress
             ]
         )
 
@@ -1521,6 +1533,41 @@ def on_ui_settings():
                 category_id=cat_id
             )
         )
+
+    ## Organization Options
+    organization = ('civitai_browser_organization', 'Model Organization')
+    
+    shared.opts.add_option(
+        'civitai_neo_auto_organize',
+        shared.OptionInfo(
+            default=False,
+            label='Auto-organize downloads into subfolders by model type',
+            section=organization,
+            category_id=cat_id
+        ).info('When enabled, new downloads will automatically go into subfolders based on baseModel (e.g., SDXL/, Pony/, FLUX/)')
+    )
+    
+    shared.opts.add_option(
+        'civitai_neo_create_other_folder',
+        shared.OptionInfo(
+            default=True,
+            label='Create "Other" folder for unrecognized models',
+            section=organization,
+            category_id=cat_id
+        ).info('When disabled, unrecognized models will be placed in the root folder')
+    )
+    
+    shared.opts.add_option(
+        'civitai_neo_model_categories',
+        shared.OptionInfo(
+            default='',
+            label='Custom model categories (JSON format)',
+            component=gr.Textbox,
+            component_args=lambda: {'lines': 8, 'placeholder': 'Leave empty to use default categories\n\nExample:\n{\n  "SD": ["SD 1", "SD1", "SD 2", "SD2"],\n  "SDXL": ["SDXL"],\n  "Pony": ["PONY"],\n  "FLUX": ["FLUX"]\n}'},
+            section=organization,
+            category_id=cat_id
+        ).info('Advanced: Customize folder names and detection patterns. Leave empty for defaults (SD, SDXL, Pony, Illustrious, FLUX, Wan, Qwen, Z-Image, Lumina, Anima, Cascade, PixArt, Playground, SVD, Hunyuan, Kolors, AuraFlow, Chroma)')
+    )
 
 script_callbacks.on_ui_tabs(on_ui_tabs)
 script_callbacks.on_ui_settings(on_ui_settings)

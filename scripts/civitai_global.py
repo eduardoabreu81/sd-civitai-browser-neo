@@ -26,7 +26,7 @@ def init():
     if not os.path.exists(config_folder):
         os.mkdir(config_folder)
 
-    global download_queue, last_version, cancel_status, recent_model, last_url, json_data, json_info, main_folder, previous_inputs, download_fail, sortNewest, isDownloading, scan_files, from_update_tab, url_list, print, subfolder_json
+    global download_queue, last_version, cancel_status, recent_model, last_url, json_data, json_info, main_folder, previous_inputs, download_fail, sortNewest, isDownloading, scan_files, from_update_tab, url_list, print, subfolder_json, organization_backup_file, last_organization_backup
 
     cancel_status = None
     recent_model = None
@@ -43,6 +43,10 @@ def init():
         with open(subfolder_json, 'w') as json_file:
             #json.dump({}, json_file)
             json.dump({'created_at': datetime.now().timestamp()}, json_file)
+
+    # Organization backup file
+    organization_backup_file = os.path.join(config_folder, 'civitai_organization_backups.json')
+    last_organization_backup = None
 
     from_update_tab = False
     scan_files = False
