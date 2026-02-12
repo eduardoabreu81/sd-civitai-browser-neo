@@ -265,20 +265,7 @@ You can define your own categories in **Settings** → **Model Organization** us
 
 ---
 
-## 🖼️ Screenshots
-
-### Browser with Modern Cards
-![Browser Cards](.github/preview_browser_cards.png)
-
-### Date-based Sorting (Brick Style)
-![Sort by Date](.github/preview_sort_by_date.png)
-
-### Model HTML Page
-![HTML Page](.github/preview_html.png)
-
----
-
-## 🐛 Known Issues
+##  Known Issues
 
 - Some models may not have `baseModel` metadata (download from CivitAI to get it)
 - Rollback only works for the last operation
