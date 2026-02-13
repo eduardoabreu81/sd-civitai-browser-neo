@@ -208,20 +208,25 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
 
         # Check if auto-organization is enabled
         auto_organize = getattr(opts, 'civitai_neo_auto_organize', False)
+        print(f"[DEBUG AUTO-ORG] auto_organize setting: {auto_organize}")
+        print(f"[DEBUG AUTO-ORG] output_basemodel value: '{output_basemodel}'")
         
         if auto_organize and output_basemodel:
             # Use auto-organization: determine folder from baseModel
             from scripts.civitai_file_manage import normalize_base_model
             base_folder = normalize_base_model(output_basemodel)
+            print(f"[DEBUG AUTO-ORG] normalize_base_model returned: '{base_folder}'")
             
             if base_folder:
                 # Create subfolder path for organized download
                 if not base_folder.startswith(os.sep):
                     base_folder = os.sep + base_folder
                 install_path = str(model_folder) + base_folder
+                print(f"[DEBUG AUTO-ORG] Final install_path: {install_path}")
             else:
                 # No folder (user disabled "Other" folder and model is unrecognized)
                 install_path = str(model_folder)
+                print(f"[DEBUG AUTO-ORG] No base_folder, using root: {install_path}")
         else:
             # Original behavior: use custom subfolders or default
             default_subfolder = _api.sub_folder_value(content_type, desc)
