@@ -61,12 +61,9 @@
 
 - [ ] Loading states and progress indicators
   - [ ] Visual spinner during API calls
-  - [ ] Progress bars for downloads
-  - [ ] "Saving..." feedback for JSON/images
-- [ ] Search result preview cards improvements
-  - [ ] Better thumbnail display
-  - [ ] Organized information layout
-  - [ ] Visual tags and ratings
+  - [ ] Better progress feedback during downloads
+  - [ ] "Saving..." status for JSON/images operations
+  - [ ] Loading skeleton for card grids
 
 ## 🔗 Phase 4: HuggingFace Integration
 
