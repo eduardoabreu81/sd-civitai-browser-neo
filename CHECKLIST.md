@@ -59,14 +59,14 @@
 
 ## 🎨 Phase 3: UI/UX Enhancements
 
-- [ ] Neo-style dark theme refinement
-- [ ] Responsive layout improvements
 - [ ] Loading states and progress indicators
-- [ ] Keyboard shortcuts
-- [ ] Drag & drop support
-- [ ] Quick actions menu
-- [ ] Search result preview cards
-- [ ] Model comparison view
+  - [ ] Visual spinner during API calls
+  - [ ] Progress bars for downloads
+  - [ ] "Saving..." feedback for JSON/images
+- [ ] Search result preview cards improvements
+  - [ ] Better thumbnail display
+  - [ ] Organized information layout
+  - [ ] Visual tags and ratings
 
 ## 🔗 Phase 4: HuggingFace Integration
 
