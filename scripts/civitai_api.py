@@ -1289,20 +1289,40 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
             if folder_location != 'None':
                 break
 
-        default_subfolder = sub_folder_value(content_type, desc)
-        if default_subfolder != 'None':
-            default_subfolder = _file.convertCustomFolder(default_subfolder, output_basemodel, is_nsfw, model_uploader, model_name, model_id, version_name, version_id)
-        if folder_location == 'None':
-            folder_location = model_folder
-            if default_subfolder != 'None':
-                folder_path = str(folder_location) + default_subfolder
+        # Check if auto-organization is enabled
+        auto_organize = getattr(opts, 'civitai_neo_auto_organize', False)
+        
+        if auto_organize and output_basemodel and folder_location == 'None':
+            # Use auto-organization: determine folder from baseModel
+            from scripts.civitai_file_manage import normalize_base_model
+            base_folder = normalize_base_model(output_basemodel)
+            
+            if base_folder:
+                # Create subfolder path for organized download
+                if not base_folder.startswith(os.sep):
+                    base_folder = os.sep + base_folder
+                folder_path = str(model_folder) + base_folder
+                default_subfolder = base_folder
             else:
-                folder_path = str(folder_location)
+                # No folder (user disabled "Other" folder and model is unrecognized)
+                folder_path = str(model_folder)
+                default_subfolder = 'None'
         else:
-            folder_path = folder_location
+            # Original behavior: use custom subfolders or default
+            default_subfolder = sub_folder_value(content_type, desc)
+            if default_subfolder != 'None':
+                default_subfolder = _file.convertCustomFolder(default_subfolder, output_basemodel, is_nsfw, model_uploader, model_name, model_id, version_name, version_id)
+            if folder_location == 'None':
+                folder_location = model_folder
+                if default_subfolder != 'None':
+                    folder_path = str(folder_location) + default_subfolder
+                else:
+                    folder_path = str(folder_location)
+            else:
+                folder_path = folder_location
 
-        relative_path = os.path.relpath(folder_location, model_folder)
-        default_subfolder = f"{os.sep}{relative_path}" if relative_path != '.' else default_subfolder if BtnDel == False else 'None'
+            relative_path = os.path.relpath(folder_location, model_folder)
+            default_subfolder = f"{os.sep}{relative_path}" if relative_path != '.' else default_subfolder if BtnDel == False else 'None'
 
         # Use installed filename if model is installed
         if installed_model_filename and BtnDel:
