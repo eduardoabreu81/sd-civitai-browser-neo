@@ -868,6 +868,7 @@ def on_ui_tabs():
             ver_finish,
             installed_finish,
             preview_finish,
+            organize_finish,
             overwrite_toggle,
             tile_count_slider,
             skip_hash_toggle,
