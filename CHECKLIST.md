@@ -2,12 +2,11 @@
 
 ## 🐛 Critical Bugs (Blocking v1.0.0)
 
-- [ ] **Auto-organization not working**
-  - Status: Debug logs added to civitai_download.py
-  - Issue: Downloaded models not going to subfolders despite setting enabled
-  - Test case: Illustrious checkpoint going to root instead of Illustrious/
-  - Next: User needs to test with debug logs and report findings
-  - Blocked by: RunPod environment PyTorch/torchvision compatibility issue
+- [x] **Auto-organization not working** ✅ FIXED
+  - Root cause: `update_model_info()` in civitai_api.py was setting install_path without checking auto-organize setting
+  - Solution: Added auto-organize logic to update_model_info() to automatically set correct subfolder based on baseModel
+  - Tested: Illustrious LoRA correctly saved to `models/Lora/Illustrious/`
+  - Status: Working correctly for both single downloads and batch downloads
 
 ## ✅ Phase 1: Core Migration (COMPLETED)
 
@@ -25,7 +24,7 @@
 
 ## 📝 Phase 1 Remaining Tasks
 
-- [ ] Fix auto-organization bug
+- [x] Fix auto-organization bug ✅
 - [ ] Add screenshots to README
   - [ ] Auto-organization in action
   - [ ] Manual organization interface
@@ -184,20 +183,21 @@
 
 ## 🔧 Known Issues
 
-1. **Auto-organization bug** (Critical)
-   - Downloads not respecting subfolder setting
-   - Debug logs added, awaiting user test
+1. **Forge Neo UI limitation** (Not a bug)
+   - Forge Neo's model browser shows all LoRAs from all subfolders mixed together
+   - Files are correctly organized in subfolders on disk
+   - This is Forge Neo's behavior, not controllable by the extension
+   - Workaround: Use Forge Neo's "Extra Paths" feature for separate tabs
 
-2. **PyTorch/torchvision compatibility** (Environment)
-   - Forge Neo failing to start on RunPod
-   - Not related to extension code
-   - User needs to reinstall dependencies
+2. ~~**Auto-organization bug**~~ ✅ FIXED
+   - ~~Downloads not respecting subfolder setting~~
+   - Fixed in commit c55ed7f
 
 ## 📊 Progress Summary
 
 | Phase | Status | Completion |
 |-------|--------|------------|
-| Phase 1 | 🟡 Testing | ~95% |
+| Phase 1 | ✅ Complete | 100% |
 | Phase 2 | ⬜ Not Started | 0% |
 | Phase 3 | ⬜ Not Started | 0% |
 | Phase 4 | ⬜ Not Started | 0% |
@@ -205,9 +205,9 @@
 | Phase 6 | ⬜ Not Started | 0% |
 | Phase 7 | ⬜ Not Started | 0% |
 
-**Overall Progress**: Phase 1 implementation complete, waiting for bug fix validation.
+**Overall Progress**: Phase 1 complete and tested in production. Ready for v1.0.0 release.
 
 ---
 
-*Last Updated: February 13, 2026*
-*Status: Blocked on auto-organization bug fix and environment setup*
+*Last Updated: February 14, 2026*
+*Status: Ready for v1.0.0 release - awaiting screenshots and documentation*
