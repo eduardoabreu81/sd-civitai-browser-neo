@@ -207,9 +207,11 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
         model_folder = _api.contenttype_folder(content_type, desc)
 
         # Check if auto-organization is enabled
+        print(f"[DEBUG AUTO-ORG] ========== Starting auto-org check ==========")
         auto_organize = getattr(opts, 'civitai_neo_auto_organize', False)
         print(f"[DEBUG AUTO-ORG] auto_organize setting: {auto_organize}")
         print(f"[DEBUG AUTO-ORG] output_basemodel value: '{output_basemodel}'")
+        print(f"[DEBUG AUTO-ORG] subfolder param: '{subfolder}'")
         
         if auto_organize and output_basemodel:
             # Use auto-organization: determine folder from baseModel
