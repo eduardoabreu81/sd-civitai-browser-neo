@@ -1146,7 +1146,7 @@ def get_save_path_and_name(install_path, file_name, api_response, sub_folder=Non
     return save_path, name
 
 ## === ANXETY EDITs ===
-def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish, overwrite_toggle, tile_count, gen_hash, create_html, progress=gr.Progress() if queue else None):
+def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish, organize_finish, overwrite_toggle, tile_count, gen_hash, create_html, progress=gr.Progress() if queue else None):
     global no_update
     proxies, ssl = _api.get_proxies()
     gl.scan_files = True
@@ -1160,6 +1160,8 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
         number = _download.random_number(installed_finish)
     elif from_preview:
         number = _download.random_number(preview_finish)
+    elif from_organize:
+        number = _download.random_number(organize_finish)
 
     if not folders:
         if progress != None:
