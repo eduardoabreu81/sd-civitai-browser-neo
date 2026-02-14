@@ -791,6 +791,8 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
                 except Exception as e:
                     print(f"Failed to extract {item['model_filename']} with error: {e}")
             if not gl.cancel_status:
+                print(f"[CivitAI Browser Neo] - Saving model information...")
+                print(f"[CivitAI Browser Neo] - create_json: {item['create_json']}, save_all_images: {save_all_images}")
                 if item['create_json']:
                     _file.save_model_info(item['install_path'], item['model_filename'], item['sub_folder'], item['model_sha256'], item['preview_html'], api_response=item['model_json'])
                 info_to_json(path_to_new_file, item['model_id'], item['model_sha256'], unpackList)
