@@ -260,6 +260,7 @@ def model_list_html(json_data):
         # Install status - check if model is installed and determine if it's outdated
         ## Note: Sensitive check for updates by `name_match`... (It is possible that an outdated version of the model will not be marked as outdated)
         installstatus = ''
+        installed_file_sha256 = None  # Track SHA256 of installed file for delete functionality
         model_versions = item.get('modelVersions', [])
         if model_versions:
             precise_check = getattr(opts, 'precise_version_check', True)
@@ -284,6 +285,9 @@ def model_list_html(json_data):
                     sha_match = file_sha256 and file_sha256 in existing_files_sha256
 
                     if sha_match or name_match:
+                        # Store SHA256 of first installed file found (for delete button)
+                        if not installed_file_sha256:
+                            installed_file_sha256 = file_sha256
                         if precise_check and family:
                             installed_map.setdefault(family, []).append(version_parts)
                         else:
@@ -362,7 +366,22 @@ def model_list_html(json_data):
             f'<div class="badges-container">{model_type_badge}{nsfw_badge}</div>'
         )
 
-        if installstatus != 'civmodelcardinstalled':
+        # Show delete button if installed, otherwise show checkbox
+        if installstatus in ['civmodelcardinstalled', 'civmodelcardoutdated']:
+            # Delete button for installed models
+            sha256_attr = f'data-sha256="{installed_file_sha256}"' if installed_file_sha256 else ''
+            card_html += (
+                f'<div class="delete-button-container">'
+                f'<button class="delete-model-btn" {sha256_attr} data-model-name="{model_name_js}" '
+                f'onclick="deleteInstalledModel(event, \'{model_name_js}\', \'{installed_file_sha256 or ""}\')" title="Delete model">'
+                f'<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor">'
+                f'<path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>'
+                f'</svg>'
+                f'</button>'
+                f'</div>'
+            )
+        else:
+            # Checkbox for non-installed models
             card_html += (
                 f'<div class="checkbox-container">'
                 f'<input type="checkbox" class="model-checkbox" id="checkbox-{model_string}" '

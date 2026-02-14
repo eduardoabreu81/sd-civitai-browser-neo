@@ -388,6 +388,11 @@ def on_ui_tabs():
         current_model = gr.Textbox(visible=False)
         current_sha256 = gr.Textbox(visible=False)
         model_preview_html_input = gr.Textbox(visible=False)
+        
+        # Hidden elements for quick delete by SHA256 (from model cards)
+        delete_trigger_sha256 = gr.Textbox(elem_id='sha256', visible=False)
+        delete_trigger_btn = gr.Button(elem_id='delete_trigger_btn', visible=False)
+        delete_trigger_finish = gr.Textbox(visible=False)
 
         def ToggleDate(toggle_date):
             gl.sortNewest = toggle_date
@@ -750,6 +755,13 @@ def on_ui_tabs():
                 current_model,
                 list_versions
             ]
+        )
+        
+        # Quick delete button for installed models (triggered from model cards)
+        delete_trigger_btn.click(
+            fn=_file.delete_installed_by_sha256,
+            inputs=[delete_trigger_sha256, delete_trigger_finish],
+            outputs=[delete_trigger_finish]
         )
 
         save_info.click(

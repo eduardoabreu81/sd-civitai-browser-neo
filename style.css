@@ -99,6 +99,46 @@
     pointer-events: auto;
 }
 
+.delete-button-container {
+    position: relative;
+    pointer-events: auto;
+}
+
+.delete-model-btn {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(220, 38, 38, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
+    box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(8px);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    z-index: 10;
+    pointer-events: auto;
+    padding: 0;
+}
+
+.delete-model-btn svg {
+    width: 18px;
+    height: 18px;
+    fill: white;
+    pointer-events: none;
+}
+
+.delete-model-btn:hover {
+    background: rgba(239, 68, 68, 0.9);
+    border-color: #ffffff;
+    box-shadow: 0 2px 12px 0 rgba(220, 38, 38, 0.5);
+    transform: scale(1.05);
+}
+
 /* --- Model Card Badges --- */
 /* Type Badge */
 .model-type-badge {

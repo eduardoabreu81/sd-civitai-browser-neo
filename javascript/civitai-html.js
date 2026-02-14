@@ -1474,3 +1474,53 @@ function initializeImageViewer() {
         });
     }
 }
+
+// Delete installed model with confirmation
+function deleteInstalledModel(event, modelName, sha256) {
+    // Stop event propagation to prevent card selection
+    event.stopPropagation();
+    event.preventDefault();
+    
+    if (!sha256) {
+        alert('Error: No SHA256 hash available for this model. Cannot delete.');
+        return;
+    }
+    
+    // Show confirmation dialog
+    const confirmMessage = `Are you sure you want to delete "${modelName}"?\n\nThis will move the model and its associated files to the trash.`;
+    if (!confirm(confirmMessage)) {
+        return;
+    }
+    
+    // Find the delete trigger input element
+    const deleteFinishInput = gradioApp().querySelector('#delete_finish textarea');
+    if (!deleteFinishInput) {
+        alert('Error: Delete function not available.');
+        console.error('Could not find #delete_finish element');
+        return;
+    }
+    
+    // Find the SHA256 input element
+    const sha256Input = gradioApp().querySelector('#sha256 textarea');
+    if (!sha256Input) {
+        alert('Error: SHA256 input not found.');
+        console.error('Could not find #sha256 element');
+        return;
+    }
+    
+    // Set SHA256 value
+    sha256Input.value = sha256;
+    updateInput(sha256Input);
+    
+    // Wait a bit for the SHA256 to be set, then trigger delete
+    setTimeout(() => {
+        // Trigger delete by updating delete_trigger_btn click
+        const deleteButton = gradioApp().querySelector('#delete_trigger_btn');
+        if (deleteButton) {
+            deleteButton.click();
+        } else {
+            console.error('Could not find #delete_trigger_btn element');
+            alert('Error: Delete button not found. Please try using the delete button in the model details panel.');
+        }
+    }, 100);
+}
