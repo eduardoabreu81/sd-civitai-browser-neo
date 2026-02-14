@@ -151,6 +151,93 @@ def delete_model(delete_finish=None, model_filename=None, model_string=None, lis
         gr.update(value=ver_value, choices=ver_choices)  # Version List
     )
 
+def delete_installed_by_sha256(sha256, delete_finish=None):
+    """
+    Simplified delete function for installed models using only SHA256.
+    Searches all model folders for a match and deletes the model.
+    """
+    if not sha256:
+        print("No SHA256 provided for deletion")
+        return gr.update(value=_download.random_number(delete_finish))
+    
+    sha256_upper = sha256.upper()
+    
+    # Get all content types to search
+    content_types = ['Checkpoint', 'LORA', 'LoCon', 'DoRA', 'VAE', 'Controlnet', 'Poses', 
+                     'TextualInversion', 'Upscaler', 'MotionModule', 'Workflows', 'Detection', 'Other', 'Wildcards']
+    
+    folders_to_check = []
+    for content_type in content_types:
+        if content_type == 'Upscaler':
+            for desc in ['SWINIR', 'REALESRGAN', 'GFPGAN', 'BSRGAN', 'ESRGAN']:
+                folder = _api.contenttype_folder('Upscaler', desc)
+                if folder and folder not in folders_to_check:
+                    folders_to_check.append(folder)
+        else:
+            folder = _api.contenttype_folder(content_type)
+            if folder and folder not in folders_to_check:
+                folders_to_check.append(folder)
+    
+    deleted = False
+    for model_folder in folders_to_check:
+        if deleted:
+            break
+        for root, _, files in os.walk(model_folder, followlinks=True):
+            for file in files:
+                if file.endswith('.json'):
+                    file_path = os.path.join(root, file)
+                    data = _api.safe_json_load(file_path)
+                    if not data:
+                        continue
+                    
+                    file_sha256 = data.get('sha256', '').upper()
+                    if file_sha256 == sha256_upper:
+                        # Found matching model!
+                        model_name = data.get('model', {}).get('name', 'Unknown Model')
+                        print(f"Found model to delete: {model_name} (SHA256: {sha256_upper})")
+                        
+                        # Get base filename (without extension)
+                        model_filename = data.get('file', {}).get('name', '')
+                        if not model_filename:
+                            # Try to find associated model file
+                            json_base = os.path.splitext(file)[0]
+                            model_extensions = ['.safetensors', '.ckpt', '.pt', '.pth', '.bin']
+                            for ext in model_extensions:
+                                potential_model = json_base + ext
+                                if os.path.exists(potential_model):
+                                    model_filename = os.path.basename(potential_model)
+                                    break
+                        
+                        if model_filename:
+                            # Delete model file
+                            model_file_path = os.path.join(root, model_filename)
+                            if os.path.exists(model_file_path):
+                                try:
+                                    send2trash(model_file_path)
+                                    print(f"Model moved to trash: {model_file_path}")
+                                except:
+                                    os.remove(model_file_path)
+                                    print(f"Model deleted: {model_file_path}")
+                                
+                                # Delete associated files
+                                base_filename = os.path.splitext(model_filename)[0]
+                                delete_associated_files(root, base_filename)
+                                
+                                deleted = True
+                                break
+                        else:
+                            print(f"Could not find model file for JSON: {file_path}")
+            
+            if deleted:
+                break
+    
+    if deleted:
+        print(f"Successfully deleted model with SHA256: {sha256_upper}")
+    else:
+        print(f"Could not find model with SHA256: {sha256_upper}")
+    
+    return gr.update(value=_download.random_number(delete_finish))
+
 ## === ANXETY EDITs ===
 def delete_associated_files(directory, base_name):
     """Deletes related model files in the save directory"""
@@ -1722,7 +1809,7 @@ def analyze_organization_plan(folders, progress=None):
     
     for file_path in files:
         files_processed += 1
-        if progress:
+        if progress is not None:
             file_name = os.path.basename(file_path)
             progress(files_processed / total_files, desc=f"Analyzing: {file_name}")
         
@@ -1962,7 +2049,7 @@ def execute_rollback(progress=None):
         model_name = move_info['model_name']
         
         moves_completed += 1
-        if progress:
+        if progress is not None:
             progress(moves_completed / total_moves, 
                     desc=f"Rolling back: {model_name} ({moves_completed}/{total_moves})")
         
@@ -2049,7 +2136,7 @@ def execute_organization(organization_plan, progress=None):
         model_name = move_info['model_name']
         
         moves_completed += 1
-        if progress:
+        if progress is not None:
             progress(moves_completed / total_moves, 
                     desc=f"Organizing: {model_name} ({moves_completed}/{total_moves})")
         
@@ -2120,7 +2207,7 @@ def rollback_organization(progress=gr.Progress() if queue else None):
     total_files = len(backup.get('moves', []))
     timestamp = backup.get('timestamp', 'Unknown')
     
-    if progress:
+    if progress is not None:
         progress(0, desc=f"Starting rollback of {total_files} files...")
     
     print(f"[CivitAI Browser Neo] Starting rollback (Backup: {timestamp})...")
