@@ -8,36 +8,6 @@
   - Tested: Illustrious LoRA correctly saved to `models/Lora/Illustrious/`
   - Status: Working correctly for both single downloads and batch downloads
 
-- [x] **Gradio progress IndexError** ✅ FIXED (Feb 15, 2026)
-  - Root cause: Gradio 4.x doesn't support truthy checks on progress objects (`if progress:`)
-  - Solution: Changed to `if progress is not None:` in 4 locations
-  - Status: Organization feature now works without crashes
-
-## 🎯 Project Scope
-
-### ✅ In Scope (Focused Goals)
-- **Phase 1**: Core Migration (Forge Neo + Gradio 4) ✅
-- **Phase 2**: API Optimization (Rate limits, safety, performance) 🔴 HIGH PRIORITY
-- **Phase 3**: UI/UX (Modern cards, badges, responsive) ✅
-- **Phase 4**: Advanced Organization (Delete, duplicates, analytics) 🔴 HIGH PRIORITY
-- **Phase 5**: Performance & Polish (Testing, optimization, docs)
-
-### ❌ Out of Scope (Removed)
-- **~~Phase 4: HuggingFace Integration~~** - Removed
-  - Reason: Too complex, different API patterns, low user demand
-  - Alternative: Users can use ComfyUI Manager for HF models
-- **~~Phase 6: Enhanced Search & Discovery~~** - Removed
-  - Reason: CivitAI website already has excellent search
-  - Alternative: Use CivitAI website for advanced search, extension for download/organize
-
-### 📌 Philosophy
-Focus on what we do best:
-- ✅ **Download & Organize** local models efficiently
-- ✅ **Manage & Cleanup** existing collections
-- ✅ **Safety & Performance** of operations
-- ❌ Don't duplicate CivitAI's search features
-- ❌ Don't try to support every model source
-
 ## ✅ Phase 1: Core Migration (COMPLETED)
 
 - [x] Migrate to Gradio 4.40.0 (205 gr.update() changes)
@@ -69,7 +39,7 @@ Focus on what we do best:
 - [ ] Add screenshots to README
 - [ ] Video tutorial (optional)
 
-## 🚀 Phase 2: API Optimization (HIGH PRIORITY)
+## 🚀 Phase 2: API Optimization
 
 - [ ] Rate limiter implementation
   - [ ] Track API calls per minute/hour
@@ -94,44 +64,49 @@ Focus on what we do best:
 
 **Phase 3 Complete** - All UI/UX features already present in the extension.
 
-## 📦 Phase 4: Advanced Organization & Management (HIGH PRIORITY)
+## 📦 Phase 4: Advanced Organization (HIGH PRIORITY)
 
-- [x] Delete system ✅ COMPLETED
+- [x] Delete system with SHA256 tracking ✅ COMPLETED
   - [x] Delete button on installed model cards
-  - [x] SHA256 tracking for reliable identification
-  - [x] Confirmation dialog
+  - [x] Confirmation dialog before deletion
+  - [x] SHA256-based identification across folders
   - [x] send2trash for recoverable deletion
   - [x] Delete associated files (.json, .png, .html, .txt)
+  - [x] New 'Local Models' tab for file management
 - [ ] Duplicate detection (NEXT)
-  - [ ] Scan SHA256 to find duplicates
-  - [ ] Group identical models
-  - [ ] UI to show duplicates side by side
-  - [ ] Batch delete duplicates
-  - [ ] Space recovery statistics
+  - [ ] Scan by SHA256 hash
+  - [ ] Group duplicate models
+  - [ ] UI to show duplicates side-by-side with details
+  - [ ] Batch delete duplicates keeping best version
+  - [ ] Show recoverable space statistics
 - [ ] Storage analytics
-  - [ ] Calculate space by folder (LORA, Checkpoint, etc)
-  - [ ] Model count by type
-  - [ ] Total space visualization
-  - [ ] Usage statistics
+  - [ ] Folder size visualization
+  - [ ] Usage statistics per model type
+  - [ ] Cleanup recommendations
+  - [ ] Timeline of downloads
 - [ ] Bulk operations
-  - [ ] Multi-select for organization
-  - [ ] Batch delete selected
+  - [ ] Multi-select UI with checkboxes
+  - [ ] Batch delete selected models
   - [ ] Batch move to folder
   - [ ] Batch tag editing
 - [ ] Smart organization suggestions
   - [ ] Detect misplaced models
-  - [ ] Recommend categories
+  - [ ] Recommend categories based on metadata
   - [ ] Identify outdated versions
 
 ## ⚡ Phase 5: Performance & Polish
 
 - [ ] Code optimization
-  - [ ] Async operations
-  - [ ] Lazy loading
-  - [ ] Memory optimization
+  - [ ] Async operations for background tasks
+  - [ ] Lazy loading for model cards
+  - [ ] Memory optimization for large collections
+  - [ ] Database for metadata (SQLite)
 - [ ] Error handling improvements
+  - [ ] Better error messages
+  - [ ] Recovery mechanisms
+  - [ ] Debug mode
 - [ ] Comprehensive logging
-- [ ] Unit tests
+- [ ] Unit tests (pytest)
 - [ ] Integration tests
 - [ ] Performance benchmarks
 - [ ] Documentation finalization
@@ -181,22 +156,24 @@ Focus on what we do best:
 
 ## 🎯 Milestone Goals
 
-### v1.0.0 (TARGET: 1-2 weeks)
+### v1.0.0 (Target: 4-6 weeks)
 - Complete Phase 1 ✅
 - Complete Phase 3 ✅ (Already implemented)
-- **Complete Phase 4** (Advanced Organization) - Delete ✅, Duplicate Detection, Storage Analytics
-- **Target**: After implementing duplicate detection and storage analytics
+- Complete Phase 2 (API Optimization) - **IN PROGRESS**
+- Complete Phase 4 (Advanced Organization) - **IN PROGRESS**
+  - Delete system ✅
+  - Duplicate detection ⏳
+  - Storage analytics ⏳
+  - Bulk operations ⏳
+- Release documentation
+- **Target**: March 2026
 
-### v1.5.0 (TARGET: 1-2 months)
-- Complete Phase 2 (API Optimization)
-- Complete Phase 4 (Advanced Organization - all features)
-- **Target**: Production-ready with performance optimizations
-
-### v2.0.0 (TARGET: 3-4 months)
+### v2.0.0 (Target: 3-4 months after v1.0.0)
 - Complete Phase 5 (Performance & Polish)
-- Major feature milestone
-- Full testing suite
-- **Target**: Stable release with comprehensive documentation
+- Advanced features refinement
+- Comprehensive testing
+- Major stability milestone
+- **Target**: June 2026
 
 ## 🔧 Known Issues
 
@@ -215,22 +192,16 @@ Focus on what we do best:
 | Phase | Status | Completion | Priority |
 |-------|--------|------------|----------|
 | Phase 1 | ✅ Complete | 100% | Done |
-| **Phase 2** | 🔵 **Next Priority** | 0% | 🔴 **HIGH** |
+| Phase 2 | 🔵 In Progress | 0% | 🔴 High |
 | Phase 3 | ✅ Complete | 100% | Done |
-| **Phase 4** | 🔵 **In Progress** | 20% | 🔴 **HIGH** |
-| Phase 5 | ⬜ Planned | 0% | 🟡 Medium |
+| Phase 4 | 🔵 In Progress | 20% | 🔴 High |
+| Phase 5 | ⬜ Not Started | 0% | 🟡 Medium |
 
-**Overall Progress**: 44% complete (2 of 5 phases done, Phase 4 at 20%)
-
-**Current Focus**: 
-- 🎯 **Phase 4**: Duplicate Detection + Storage Analytics
-- 🎯 **Phase 2**: API Optimization + Safety Checks
-
-**Removed from Scope**:
-- ❌ HuggingFace Integration (too complex, low ROI)
-- ❌ Enhanced Search & Discovery (CivitAI already has good search)
+**Overall Progress**: ~45% complete (2 of 5 phases done)
+**Current Focus**: Phase 2 (API) + Phase 4 (Organization)
+**Next Up**: Duplicate Detection → Storage Analytics
 
 ---
 
 *Last Updated: February 15, 2026*
-*Status: ✅ Phases 1 & 3 complete! Focusing on Phase 4 (Advanced Organization) and Phase 2 (API Optimization).*
+*Status: ✅ Phases 1 & 3 complete! Active: Phase 2 (API) + Phase 4 (Organization). HuggingFace & Search phases removed from roadmap.*
