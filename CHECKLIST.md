@@ -8,6 +8,36 @@
   - Tested: Illustrious LoRA correctly saved to `models/Lora/Illustrious/`
   - Status: Working correctly for both single downloads and batch downloads
 
+- [x] **Gradio progress IndexError** ✅ FIXED (Feb 15, 2026)
+  - Root cause: Gradio 4.x doesn't support truthy checks on progress objects (`if progress:`)
+  - Solution: Changed to `if progress is not None:` in 4 locations
+  - Status: Organization feature now works without crashes
+
+## 🎯 Project Scope
+
+### ✅ In Scope (Focused Goals)
+- **Phase 1**: Core Migration (Forge Neo + Gradio 4) ✅
+- **Phase 2**: API Optimization (Rate limits, safety, performance) 🔴 HIGH PRIORITY
+- **Phase 3**: UI/UX (Modern cards, badges, responsive) ✅
+- **Phase 4**: Advanced Organization (Delete, duplicates, analytics) 🔴 HIGH PRIORITY
+- **Phase 5**: Performance & Polish (Testing, optimization, docs)
+
+### ❌ Out of Scope (Removed)
+- **~~Phase 4: HuggingFace Integration~~** - Removed
+  - Reason: Too complex, different API patterns, low user demand
+  - Alternative: Users can use ComfyUI Manager for HF models
+- **~~Phase 6: Enhanced Search & Discovery~~** - Removed
+  - Reason: CivitAI website already has excellent search
+  - Alternative: Use CivitAI website for advanced search, extension for download/organize
+
+### 📌 Philosophy
+Focus on what we do best:
+- ✅ **Download & Organize** local models efficiently
+- ✅ **Manage & Cleanup** existing collections
+- ✅ **Safety & Performance** of operations
+- ❌ Don't duplicate CivitAI's search features
+- ❌ Don't try to support every model source
+
 ## ✅ Phase 1: Core Migration (COMPLETED)
 
 - [x] Migrate to Gradio 4.40.0 (205 gr.update() changes)
@@ -39,7 +69,7 @@
 - [ ] Add screenshots to README
 - [ ] Video tutorial (optional)
 
-## 🚀 Phase 2: API Optimization
+## 🚀 Phase 2: API Optimization (HIGH PRIORITY)
 
 - [ ] Rate limiter implementation
   - [ ] Track API calls per minute/hour
@@ -64,43 +94,36 @@
 
 **Phase 3 Complete** - All UI/UX features already present in the extension.
 
-## 🔗 Phase 4: HuggingFace Integration
+## 📦 Phase 4: Advanced Organization & Management (HIGH PRIORITY)
 
-- [ ] Research HuggingFace Hub API
-- [ ] Unified model browser (CivitAI + HuggingFace)
-- [ ] Download from both sources
-- [ ] Auto-organization for HF models
-- [ ] Authentication handling
-- [ ] Private repo support
-
-## 📦 Phase 5: Advanced Organization
-
+- [x] Delete system ✅ COMPLETED
+  - [x] Delete button on installed model cards
+  - [x] SHA256 tracking for reliable identification
+  - [x] Confirmation dialog
+  - [x] send2trash for recoverable deletion
+  - [x] Delete associated files (.json, .png, .html, .txt)
+- [ ] Duplicate detection (NEXT)
+  - [ ] Scan SHA256 to find duplicates
+  - [ ] Group identical models
+  - [ ] UI to show duplicates side by side
+  - [ ] Batch delete duplicates
+  - [ ] Space recovery statistics
+- [ ] Storage analytics
+  - [ ] Calculate space by folder (LORA, Checkpoint, etc)
+  - [ ] Model count by type
+  - [ ] Total space visualization
+  - [ ] Usage statistics
 - [ ] Bulk operations
   - [ ] Multi-select for organization
-  - [ ] Batch delete
+  - [ ] Batch delete selected
+  - [ ] Batch move to folder
   - [ ] Batch tag editing
 - [ ] Smart organization suggestions
   - [ ] Detect misplaced models
   - [ ] Recommend categories
-- [ ] Duplicate detection
-- [ ] Storage analytics
-  - [ ] Folder size visualization
-  - [ ] Usage statistics
-  - [ ] Cleanup recommendations
+  - [ ] Identify outdated versions
 
-## 🔍 Phase 6: Enhanced Search & Discovery
-
-- [ ] Advanced filters
-  - [ ] By creator/uploader
-  - [ ] By tags/trigger words
-  - [ ] By rating/download count
-  - [ ] By date range
-- [ ] Saved searches
-- [ ] Collections/favorites
-- [ ] Model recommendations
-- [ ] Related models suggestions
-
-## ⚡ Phase 7: Performance & Polish
+## ⚡ Phase 5: Performance & Polish
 
 - [ ] Code optimization
   - [ ] Async operations
@@ -158,24 +181,22 @@
 
 ## 🎯 Milestone Goals
 
-### v1.0.0 (Future)
+### v1.0.0 (TARGET: 1-2 weeks)
 - Complete Phase 1 ✅
 - Complete Phase 3 ✅ (Already implemented)
-- Complete Phase 2 (API Optimization) - **NEXT PRIORITY**
-- Release documentation
-- **Target**: After implementing Phase 2 improvements
+- **Complete Phase 4** (Advanced Organization) - Delete ✅, Duplicate Detection, Storage Analytics
+- **Target**: After implementing duplicate detection and storage analytics
 
-### v1.5.0
-- Complete Phase 4 (HuggingFace Integration)
-- Multi-source support
-- **Target**: 2-3 months after v1.0.0
+### v1.5.0 (TARGET: 1-2 months)
+- Complete Phase 2 (API Optimization)
+- Complete Phase 4 (Advanced Organization - all features)
+- **Target**: Production-ready with performance optimizations
 
-### v2.0.0
-- Complete Phase 5 (Advanced Organization)
-- Complete Phase 6 (Enhanced Search)
-- Complete Phase 7 (Performance & Polish)
+### v2.0.0 (TARGET: 3-4 months)
+- Complete Phase 5 (Performance & Polish)
 - Major feature milestone
-- **Target**: 6 months after v1.5.0
+- Full testing suite
+- **Target**: Stable release with comprehensive documentation
 
 ## 🔧 Known Issues
 
@@ -191,19 +212,25 @@
 
 ## 📊 Progress Summary
 
-| Phase | Status | Completion |
-|-------|--------|------------|
-| Phase 1 | ✅ Complete | 100% |
-| Phase 2 | 🔵 **In Progress** | 0% |
-| Phase 3 | ✅ Complete | 100% |
-| Phase 4 | ⬜ Not Started | 0% |
-| Phase 5 | ⬜ Not Started | 0% |
-| Phase 6 | ⬜ Not Started | 0% |
-| Phase 7 | ⬜ Not Started | 0% |
+| Phase | Status | Completion | Priority |
+|-------|--------|------------|----------|
+| Phase 1 | ✅ Complete | 100% | Done |
+| **Phase 2** | 🔵 **Next Priority** | 0% | 🔴 **HIGH** |
+| Phase 3 | ✅ Complete | 100% | Done |
+| **Phase 4** | 🔵 **In Progress** | 20% | 🔴 **HIGH** |
+| Phase 5 | ⬜ Planned | 0% | 🟡 Medium |
 
-**Overall Progress**: Phases 1 & 3 complete. Starting Phase 2 (API Optimization).
+**Overall Progress**: 44% complete (2 of 5 phases done, Phase 4 at 20%)
+
+**Current Focus**: 
+- 🎯 **Phase 4**: Duplicate Detection + Storage Analytics
+- 🎯 **Phase 2**: API Optimization + Safety Checks
+
+**Removed from Scope**:
+- ❌ HuggingFace Integration (too complex, low ROI)
+- ❌ Enhanced Search & Discovery (CivitAI already has good search)
 
 ---
 
-*Last Updated: February 14, 2026*
-*Status: ✅ Phases 1 & 3 complete! Starting Phase 2 (API Optimization) - safety checks and performance.*
+*Last Updated: February 15, 2026*
+*Status: ✅ Phases 1 & 3 complete! Focusing on Phase 4 (Advanced Organization) and Phase 2 (API Optimization).*
