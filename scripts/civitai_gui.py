@@ -301,21 +301,6 @@ def on_ui_tabs():
                 load_to_browser_outdated = gr.Button(value='Load outdated models to browser', interactive=False, visible=False)
             with gr.Row():
                 version_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-            with gr.Row():
-                load_installed = gr.Button(value='Load all installed models', interactive=True, visible=True)
-                cancel_installed = gr.Button(value='Cancel loading models', interactive=False, visible=False)
-                load_to_browser_installed = gr.Button(value='Load installed models to browser', interactive=False, visible=False)
-            with gr.Row():
-                installed_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-            with gr.Row():
-                organize_models = gr.Button(value='📁 Organize models into subfolders by type', interactive=True, visible=True)
-                cancel_organize = gr.Button(value='Cancel organization', interactive=False, visible=False)
-            with gr.Row():
-                organize_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-            with gr.Row():
-                undo_organization = gr.Button(value='↶ Undo Last Organization', interactive=True, visible=True, variant='secondary')
-            with gr.Row():
-                undo_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
 
         ## Queue Tab
         with gr.Tab(label='Download Queue', elem_id='queueTab'):
@@ -337,6 +322,42 @@ def on_ui_tabs():
                 <div class="list" id="queue_list">
                 </div>
                 ''')
+
+        ## Local Models Tab
+        with gr.Tab(label='Local Models', elem_id='localTab'):
+            gr.Markdown('## 📂 Manage Local Models', elem_id='local_models_header')
+            gr.Markdown('Load, organize, and manage your installed models.')
+            
+            with gr.Row():
+                selected_tags_local = gr.CheckboxGroup(elem_id='selected_tags_local', label='Selected content types:', choices=scan_choices, value=['All'])
+            
+            with gr.Accordion(label='🔧 Scan Options', open=False):
+                with gr.Row(elem_id='civitai_local_toggles'):
+                    overwrite_toggle_local = gr.Checkbox(elem_id='overwrite_toggle_local', label='Overwrite any existing files (previews, HTMLs, tags, descriptions)', value=True, min_width=300)
+                    skip_hash_toggle_local = gr.Checkbox(elem_id='skip_hash_toggle_local', label='One-Time Hash Generation for externally downloaded models', value=True, min_width=300)
+                    do_html_gen_local = gr.Checkbox(elem_id='do_html_gen_local', label='Save HTML file for each model when updating info & tags', value=False, min_width=300)
+            
+            with gr.Row():
+                load_installed = gr.Button(value='📋 Load all installed models', interactive=True, visible=True, variant='primary')
+                cancel_installed = gr.Button(value='Cancel loading models', interactive=False, visible=False)
+                load_to_browser_installed = gr.Button(value='Load installed models to browser', interactive=False, visible=False)
+            with gr.Row():
+                installed_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+            
+            gr.Markdown('---')
+            gr.Markdown('### 📁 Model Organization')
+            gr.Markdown('Automatically organize your models into subfolders by base model type (SDXL, Pony, FLUX, etc.)')
+            
+            with gr.Row():
+                organize_models = gr.Button(value='📁 Organize models into subfolders by type', interactive=True, visible=True, variant='primary')
+                cancel_organize = gr.Button(value='Cancel organization', interactive=False, visible=False)
+            with gr.Row():
+                organize_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+            
+            with gr.Row():
+                undo_organization = gr.Button(value='↶ Undo Last Organization', interactive=True, visible=True, variant='secondary')
+            with gr.Row():
+                undo_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
 
         def format_custom_subfolders():
             separator = '␞␞'
@@ -887,6 +908,19 @@ def on_ui_tabs():
             do_html_gen
         ]
 
+        file_scan_inputs_local = [
+            selected_tags_local,
+            tag_finish,
+            ver_finish,
+            installed_finish,
+            preview_finish,
+            organize_finish,
+            overwrite_toggle_local,
+            tile_count_slider,
+            skip_hash_toggle_local,
+            do_html_gen_local
+        ]
+
         load_to_browser_inputs = [
             content_type,
             sort_type,
@@ -983,7 +1017,7 @@ def on_ui_tabs():
 
         installed_start.change(
             fn=_file.file_scan,
-            inputs=file_scan_inputs,
+            inputs=file_scan_inputs_local,
             outputs=[
                 installed_progress,
                 installed_finish
@@ -1092,7 +1126,7 @@ def on_ui_tabs():
 
         organize_start.change(
             fn=_file.file_scan,
-            inputs=file_scan_inputs,
+            inputs=file_scan_inputs_local,
             outputs=[
                 organize_progress,
                 organize_finish
