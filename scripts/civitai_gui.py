@@ -408,6 +408,13 @@ def on_ui_tabs():
                     label='Content types to analyze:', 
                     choices=dashboard_scan_choices_with_all
                 )
+
+            with gr.Row():
+                dashboard_hide_empty = gr.Checkbox(
+                    elem_id='dashboard_hide_empty',
+                    label='Hide empty categories (0 files)',
+                    value=True
+                )
             
             with gr.Row():
                 generate_dashboard = gr.Button(
@@ -1247,13 +1254,13 @@ def on_ui_tabs():
 
         generate_dashboard.click(
             fn=_file.generate_dashboard_statistics,
-            inputs=[dashboard_content_types],
+            inputs=[dashboard_content_types, dashboard_hide_empty],
             outputs=[dashboard_html]
         )
 
         refresh_dashboard.click(
             fn=_file.generate_dashboard_statistics,
-            inputs=[dashboard_content_types],
+            inputs=[dashboard_content_types, dashboard_hide_empty],
             outputs=[dashboard_html]
         )
 

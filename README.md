@@ -215,6 +215,8 @@ The Dashboard provides comprehensive insight into your model collection with det
 - **📊 Visual Breakdowns**: Progress bars showing percentage of total storage
 - **🔍 Flexible Scanning**: Select which content types to analyze
 - **⚡ Fast Detection**: Auto-detects organization from folder structure
+- **🧹 Cleaner View**: Optional "Hide empty categories (0 files)" toggle
+- **🧾 Scan Summary**: Displays folders scanned, duration, skipped files, and read errors
 
 ### Usage
 
@@ -225,9 +227,11 @@ The Dashboard provides comprehensive insight into your model collection with det
 3. Click **"📊 Generate Dashboard"**
 4. View statistics with:
    - Total file count and size
+  - Scan summary (folders scanned, scan duration, skipped files, read errors)
    - Breakdown by category
    - Percentage of total storage
    - Visual progress bars
+5. Optional: Enable **"Hide empty categories (0 files)"** for a cleaner table/chart
 
 ### Example Output
 
@@ -263,9 +267,9 @@ The Dashboard provides comprehensive insight into your model collection with det
 
 The Dashboard intelligently detects organization:
 
-1. **From JSON metadata**: Reads `.json` or `.api_info.json` files for baseModel
-2. **From folder structure**: If no JSON, detects from subfolder name
-3. **Normalization**: Applies same rules as organization system (Pony → Pony, SDXL → SDXL, etc.)
+1. **From folder structure**: Uses real subfolder layout for Checkpoint/LORA categories
+2. **Root handling**: Files in the root Checkpoint/LORA folder are shown as `Unorganized`
+3. **Direct scan**: Counts real files and sizes from disk (fast, no metadata dependency)
 
 ---
 
@@ -348,7 +352,7 @@ You can define your own categories in **Settings** → **Model Organization** us
 ##  Known Issues
 
 - Some models may not have `baseModel` metadata (download from CivitAI to get it)
-- Dashboard shows "Unorganized" for models without JSON metadata or in root folder
+- Dashboard shows "Unorganized" for files placed directly in root model folders
 - Rollback only works for the last operation
 - Maximum 5 backups are kept (older ones are deleted)
 

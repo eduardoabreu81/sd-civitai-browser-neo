@@ -2449,13 +2449,14 @@ def save_preview_finish():
     set_globals('reset')
     return finish_returns()
 
-def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queue else None):
+def generate_dashboard_statistics(selected_types, hide_empty_categories=True, progress=gr.Progress() if queue else None):
     """
     Generate dashboard statistics showing disk usage by model type
     Returns HTML with detailed breakdown of files and sizes per folder
     """
     import os
     import math
+    import time
     from collections import defaultdict
     
     # Format sizes helper function
@@ -2467,12 +2468,22 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
             size_bytes /= 1024.0
         return f"{size_bytes:.1f} PB"
     
+    scan_start_time = time.time()
+    scanned_folder_count = 0
+    skipped_files = 0
+    read_errors = 0
+
     if progress is not None:
         progress(0, desc="Starting dashboard generation...")
     
     # Get content types to scan
     if not selected_types:
-        return gr.update(value='<div style="padding: 20px; text-align: center;">Please select at least one content type to scan.</div>')
+        return gr.update(value='''
+            <div style="padding: 20px; text-align: center;">
+                <strong>No content types selected.</strong><br>
+                <span style="color: var(--body-text-color-subdued);">Please select at least one content type to analyze.</span>
+            </div>
+        ''')
     
     # Dictionary to store stats: {category: {'count': int, 'size': int}}
     model_stats = defaultdict(lambda: {'count': 0, 'size': 0})
@@ -2494,6 +2505,7 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
             for desc in ['ESRGAN', 'RealESRGAN', 'SwinIR', 'GFPGAN', 'BSRGAN']:
                 upscaler_folder = _api.contenttype_folder('Upscaler', desc)
                 if upscaler_folder and os.path.isdir(str(upscaler_folder)):
+                    scanned_folder_count += 1
                     category = f'Upscaler ({desc})'
                     # Scan all files in this upscaler folder
                     for root, dirs, files in os.walk(str(upscaler_folder)):
@@ -2507,7 +2519,9 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
                                     total_files += 1
                                     total_size += file_size
                                 except:
-                                    pass
+                                    read_errors += 1
+                            else:
+                                skipped_files += 1
             continue
         elif content_type == 'Wildcards':
             folder = _api.contenttype_folder('Wildcards')
@@ -2521,6 +2535,8 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
         
         if not folder or not os.path.isdir(str(folder)):
             continue
+
+        scanned_folder_count += 1
         
         folder_str = str(folder)
         if getattr(opts, 'civitai_neo_debug_organize', False):
@@ -2540,6 +2556,8 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
                         print(f"[Dashboard]   Found subfolder: {item}")
                 elif item.endswith(MODEL_EXTENSIONS):
                     root_files.append(item_path)
+                else:
+                    skipped_files += 1
             
             if getattr(opts, 'civitai_neo_debug_organize', False):
                 print(f"[Dashboard]   Total subfolders: {len(subfolders)}")
@@ -2563,6 +2581,7 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
             # Process each subfolder
             for subfolder in subfolders:
                 subfolder_path = os.path.join(folder_str, subfolder)
+                scanned_folder_count += 1
                 # Use the actual folder name as the category
                 # This shows how the user has actually organized their models
                 category = f'{content_type} → {subfolder}'
@@ -2590,8 +2609,11 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
                                 if folder_file_count <= 2 and getattr(opts, 'civitai_neo_debug_organize', False):
                                     print(f"[Dashboard]     File: {file} → {format_size(file_size)}")
                             except Exception as e:
+                                read_errors += 1
                                 if getattr(opts, 'civitai_neo_debug_organize', False):
                                     print(f"[Dashboard]     ERROR reading {file}: {e}")
+                        else:
+                            skipped_files += 1
                 
                 folder_size_after = model_stats[category]['size']
                 if getattr(opts, 'civitai_neo_debug_organize', False):
@@ -2613,10 +2635,17 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
                             total_files += 1
                             total_size += file_size
                         except:
-                            pass
+                            read_errors += 1
+                    else:
+                        skipped_files += 1
     
     if total_files == 0:
-        return gr.update(value='<div style="padding: 20px; text-align: center;">No model files found in selected directories.</div>')
+        return gr.update(value='''
+            <div style="padding: 20px; text-align: center;">
+                <strong>No matching model files found.</strong><br>
+                <span style="color: var(--body-text-color-subdued);">Try selecting other content types or verify your model folders.</span>
+            </div>
+        ''')
     
     # Debug: Show final model_stats before sorting
     if getattr(opts, 'civitai_neo_debug_organize', False):
@@ -2627,9 +2656,16 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
     
     if progress is not None:
         progress(1.0, desc="Generating dashboard...")
+
+    scan_duration_seconds = time.time() - scan_start_time
+
+    display_stats = [
+        (category, stats) for category, stats in model_stats.items()
+        if (not hide_empty_categories or stats['count'] > 0)
+    ]
     
     # Sort by size (descending)
-    sorted_stats = sorted(model_stats.items(), key=lambda x: x[1]['size'], reverse=True)
+    sorted_stats = sorted(display_stats, key=lambda x: x[1]['size'], reverse=True)
     
     # Generate HTML
     html_parts = []
@@ -2641,7 +2677,21 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
             📊 Model Collection Dashboard
         </h2>
         <div style="text-align: center; font-size: 18px; margin-bottom: 30px; padding: 15px; background: var(--block-background-fill); border-radius: 8px;">
-            <strong>{total_files} files ({format_size(total_size)}) → {len(model_stats)} categories</strong>
+            <strong>{total_files} files ({format_size(total_size)}) → {len(sorted_stats)} categories</strong>
+        </div>
+        <div style="display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; margin-bottom: 24px;">
+            <div style="padding: 8px 12px; border-radius: 8px; background: var(--block-background-fill); font-size: 13px; color: var(--body-text-color);">
+                <strong>Folders scanned:</strong> {scanned_folder_count}
+            </div>
+            <div style="padding: 8px 12px; border-radius: 8px; background: var(--block-background-fill); font-size: 13px; color: var(--body-text-color);">
+                <strong>Scan duration:</strong> {scan_duration_seconds:.2f}s
+            </div>
+            <div style="padding: 8px 12px; border-radius: 8px; background: var(--block-background-fill); font-size: 13px; color: var(--body-text-color);">
+                <strong>Skipped files:</strong> {skipped_files}
+            </div>
+            <div style="padding: 8px 12px; border-radius: 8px; background: var(--block-background-fill); font-size: 13px; color: var(--body-text-color);">
+                <strong>Read errors:</strong> {read_errors}
+            </div>
         </div>
     ''')
     
