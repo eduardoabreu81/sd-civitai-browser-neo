@@ -207,6 +207,9 @@ def on_ui_tabs():
 
     content_choices = _file.get_content_choices()
     scan_choices = _file.get_content_choices(scan_choices=True)
+    
+    # Local Models tab should only scan Checkpoint and LORA folders
+    local_scan_choices = ['Checkpoint', 'LORA']
 
     with gr.Blocks() as civitai_interface:
         ## Browser Tab
@@ -329,7 +332,7 @@ def on_ui_tabs():
             gr.Markdown('Load, organize, and manage your installed models.')
             
             with gr.Row():
-                selected_tags_local = gr.CheckboxGroup(elem_id='selected_tags_local', label='Selected content types:', choices=scan_choices, value=['All'])
+                selected_tags_local = gr.CheckboxGroup(elem_id='selected_tags_local', label='Selected content types:', choices=local_scan_choices, value=['Checkpoint', 'LORA'])
             
             with gr.Accordion(label='🔧 Scan Options', open=False):
                 with gr.Row(elem_id='civitai_local_toggles'):
