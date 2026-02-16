@@ -2564,7 +2564,9 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
                 category = f'{content_type} → {subfolder}'
                 
                 print(f"[Dashboard]   Scanning subfolder: {subfolder}")
+                print(f"[Dashboard]   Category key: '{category}'")
                 folder_file_count = 0
+                folder_size_before = model_stats[category]['size']
                 
                 # Scan all files in subfolder (including nested subfolders)
                 for root, dirs, files in os.walk(subfolder_path):
@@ -2578,10 +2580,18 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
                                 total_files += 1
                                 total_size += file_size
                                 folder_file_count += 1
-                            except:
-                                pass
+                                
+                                # Debug first 2 files per folder
+                                if folder_file_count <= 2:
+                                    print(f"[Dashboard]     File: {file} → {format_size(file_size)}")
+                            except Exception as e:
+                                print(f"[Dashboard]     ERROR reading {file}: {e}")
                 
-                print(f"[Dashboard]     → Found {folder_file_count} files in '{subfolder}' ({format_size(model_stats[category]['size'])})")
+                folder_size_after = model_stats[category]['size']
+                print(f"[Dashboard]     → Found {folder_file_count} files in '{subfolder}'")
+                print(f"[Dashboard]     → Total size: {format_size(folder_size_after)}")
+                print(f"[Dashboard]     → Added: {format_size(folder_size_after - folder_size_before)}")
+                print()
         
         else:
             # For other types: just count all files in folder
@@ -2601,6 +2611,12 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
     
     if total_files == 0:
         return gr.update(value='<div style="padding: 20px; text-align: center;">No model files found in selected directories.</div>')
+    
+    # Debug: Show final model_stats before sorting
+    print("\n[Dashboard] === FINAL STATS BEFORE SORTING ===")
+    for cat, stats in model_stats.items():
+        print(f"[Dashboard]   {cat}: {stats['count']} files, {format_size(stats['size'])}")
+    print("[Dashboard] ===================================\n")
     
     if progress is not None:
         progress(1.0, desc="Generating dashboard...")
