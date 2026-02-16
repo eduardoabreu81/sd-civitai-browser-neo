@@ -405,8 +405,14 @@ def on_ui_tabs():
                 dashboard_content_types = gr.CheckboxGroup(
                     elem_id='dashboard_content_types', 
                     label='Content types to analyze:', 
-                    choices=dashboard_scan_choices, 
-                    value=['Checkpoint', 'LORA']
+                    choices=dashboard_scan_choices
+                )
+            
+            with gr.Row():
+                select_all_dashboard = gr.Button(
+                    value='✅ Select All',
+                    interactive=True,
+                    visible=True
                 )
             
             with gr.Row():
@@ -1240,6 +1246,12 @@ def on_ui_tabs():
             fn=_file.generate_dashboard_statistics,
             inputs=[dashboard_content_types],
             outputs=[dashboard_html]
+        )
+
+        select_all_dashboard.click(
+            fn=lambda: gr.update(value=dashboard_scan_choices),
+            inputs=[],
+            outputs=[dashboard_content_types]
         )
 
         load_to_browser_outdated.click(
