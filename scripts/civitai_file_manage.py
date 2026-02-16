@@ -2591,7 +2591,6 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
                 print(f"[Dashboard]     → Found {folder_file_count} files in '{subfolder}'")
                 print(f"[Dashboard]     → Total size: {format_size(folder_size_after)}")
                 print(f"[Dashboard]     → Added: {format_size(folder_size_after - folder_size_before)}")
-                print()
         
         else:
             # For other types: just count all files in folder
