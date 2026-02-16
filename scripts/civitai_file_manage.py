@@ -2458,6 +2458,15 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
     import math
     from collections import defaultdict
     
+    # Format sizes helper function
+    def format_size(size_bytes):
+        """Format bytes to human readable format"""
+        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+            if size_bytes < 1024.0:
+                return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.1f} PB"
+    
     if progress is not None:
         progress(0, desc="Starting dashboard generation...")
     
@@ -2514,6 +2523,7 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
             continue
         
         folder_str = str(folder)
+        print(f"\n[Dashboard] Scanning {content_type} folder: {folder_str}")
         
         # For Checkpoint and LORA: scan subfolders and categorize
         if content_type in ['Checkpoint', 'LORA']:
@@ -2525,8 +2535,12 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
                 item_path = os.path.join(folder_str, item)
                 if os.path.isdir(item_path):
                     subfolders.append(item)
+                    print(f"[Dashboard]   Found subfolder: {item}")
                 elif item.endswith(MODEL_EXTENSIONS):
                     root_files.append(item_path)
+            
+            print(f"[Dashboard]   Total subfolders: {len(subfolders)}")
+            print(f"[Dashboard]   Files in root: {len(root_files)}")
             
             # Process files in root (not in subfolders)
             if root_files:
@@ -2540,16 +2554,17 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
                         total_size += file_size
                     except:
                         pass
+                print(f"[Dashboard]   Category '{category}': {model_stats[category]['count']} files")
             
             # Process each subfolder
             for subfolder in subfolders:
                 subfolder_path = os.path.join(folder_str, subfolder)
-                # Create category: normalize subfolder name
-                normalized = normalize_base_model(subfolder)
-                if not normalized:
-                    category = f'{content_type} → Não classificado'
-                else:
-                    category = f'{content_type} → {normalized}'
+                # Use the actual folder name as the category
+                # This shows how the user has actually organized their models
+                category = f'{content_type} → {subfolder}'
+                
+                print(f"[Dashboard]   Scanning subfolder: {subfolder}")
+                folder_file_count = 0
                 
                 # Scan all files in subfolder (including nested subfolders)
                 for root, dirs, files in os.walk(subfolder_path):
@@ -2562,8 +2577,11 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
                                 model_stats[category]['size'] += file_size
                                 total_files += 1
                                 total_size += file_size
+                                folder_file_count += 1
                             except:
                                 pass
+                
+                print(f"[Dashboard]     → Found {folder_file_count} files in '{subfolder}' ({format_size(model_stats[category]['size'])})")
         
         else:
             # For other types: just count all files in folder
@@ -2587,15 +2605,6 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
     if progress is not None:
         progress(1.0, desc="Generating dashboard...")
     
-    # Format sizes
-    def format_size(size_bytes):
-        """Format bytes to human readable format"""
-        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-            if size_bytes < 1024.0:
-                return f"{size_bytes:.1f} {unit}"
-            size_bytes /= 1024.0
-        return f"{size_bytes:.1f} PB"
-    
     # Sort by size (descending)
     sorted_stats = sorted(model_stats.items(), key=lambda x: x[1]['size'], reverse=True)
     
@@ -2616,6 +2625,7 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
     # Pie chart - Always show when there's data
     if sorted_stats and len(sorted_stats) > 0:
         try:
+            print(f"[Dashboard] Generating pie chart for {len(sorted_stats)} categories")
             # Generate pie chart using SVG
             pie_colors = [
                 '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
@@ -2633,6 +2643,8 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
             else:
                 chart_data = sorted_stats
             
+            print(f"[Dashboard] Chart will show {len(chart_data)} categories")
+            
             # Calculate angles for pie slices
             total = sum(stats['size'] for _, stats in chart_data)
             angles = []
@@ -2644,6 +2656,8 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
                 angles.append((category, percentage, current_angle, current_angle + angle, stats))
                 current_angle += angle
             
+            print(f"[Dashboard] Calculated {len(angles)} pie slices")
+            
             # Generate SVG pie chart
             svg_parts = []
             svg_parts.append('''
@@ -2652,9 +2666,13 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
                     <svg viewBox="0 0 200 200" style="width: 300px; height: 300px; transform: rotate(-90deg);">
             ''')
             
+            slice_count = 0
             for i, (category, percentage, start_angle, end_angle, stats) in enumerate(angles):
                 if percentage < 0.1:  # Skip very small slices
+                    print(f"[Dashboard] Skipping tiny slice: {category} ({percentage:.2f}%)")
                     continue
+                
+                slice_count += 1
                 
                 # Convert angles to radians
                 start_rad = start_angle * math.pi / 180
@@ -2679,6 +2697,8 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
                     </path>
                 ''')
             
+            print(f"[Dashboard] Generated {slice_count} SVG slices")
+            
             svg_parts.append('''
                     </svg>
                 </div>
@@ -2686,9 +2706,11 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
             ''')
             
             # Legend
+            legend_count = 0
             for i, (category, percentage, _, _, stats) in enumerate(angles):
                 if percentage < 0.1:
                     continue
+                legend_count += 1
                 color = pie_colors[i % len(pie_colors)]
                 svg_parts.append(f'''
                     <div style="display: flex; align-items: center; gap: 10px;">
@@ -2702,15 +2724,22 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
                     </div>
                 ''')
             
+            print(f"[Dashboard] Generated {legend_count} legend items")
+            
             svg_parts.append('''
                 </div>
             </div>
             ''')
             
             html_parts.append(''.join(svg_parts))
+            print(f"[Dashboard] Pie chart HTML added ({len(''.join(svg_parts))} chars)")
         except Exception as e:
             # If pie chart fails, log error but continue with table
-            html_parts.append(f'<div style="color: red; padding: 10px;">Pie chart generation failed: {str(e)}</div>')
+            error_msg = f'Pie chart generation failed: {str(e)}'
+            print(f"[Dashboard ERROR] {error_msg}")
+            import traceback
+            traceback.print_exc()
+            html_parts.append(f'<div style="color: red; padding: 10px; text-align: center;">{error_msg}</div>')
     
     # Table with breakdown
     if sorted_stats:
