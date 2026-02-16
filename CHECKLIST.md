@@ -39,7 +39,7 @@
 - [ ] Add screenshots to README
 - [ ] Video tutorial (optional)
 
-## 🚀 Phase 2: API Optimization
+## 🚀 Phase 2: API Optimization (PRIORITY 3)
 
 - [ ] Rate limiter implementation
   - [ ] Track API calls per minute/hour
@@ -64,7 +64,7 @@
 
 **Phase 3 Complete** - All UI/UX features already present in the extension.
 
-## 📦 Phase 4: Advanced Organization (HIGH PRIORITY)
+## 📦 Phase 4: Advanced Organization (PRIORITY 2)
 
 - [x] Delete system with SHA256 tracking ✅ COMPLETED
   - [x] Delete button on installed model cards
@@ -94,9 +94,9 @@
   - [ ] Recommend categories based on metadata
   - [ ] Identify outdated versions
 
-## ⚡ Phase 5: Performance & Polish
+## ⚡ Phase 5: Performance & Polish (PRIORITY 1 - HIGHEST)
 
-- [ ] Code optimization
+- [ ] Code optimization (CRITICAL PATH)
   - [ ] Async operations for background tasks
   - [ ] Lazy loading for model cards
   - [ ] Memory optimization for large collections
@@ -156,22 +156,27 @@
 
 ## 🎯 Milestone Goals
 
-### v1.0.0 (Target: 4-6 weeks)
+### v1.0.0 (Target: 4-6 weeks / March 2026)
 - Complete Phase 1 ✅
 - Complete Phase 3 ✅ (Already implemented)
-- Complete Phase 2 (API Optimization) - **IN PROGRESS**
-- Complete Phase 4 (Advanced Organization) - **IN PROGRESS**
+- Complete Phase 5 (Performance & Polish) - **PRIORITY 1**
+  - Code optimization ⏳
+  - Error handling ⏳
+  - Testing ⏳
+- Complete Phase 4 (Advanced Organization) - **PRIORITY 2**
   - Delete system ✅
   - Duplicate detection ⏳
   - Storage analytics ⏳
   - Bulk operations ⏳
+- Partial Phase 2 (API Optimization) - **PRIORITY 3**
+  - Safety checks as needed
 - Release documentation
 - **Target**: March 2026
 
-### v2.0.0 (Target: 3-4 months after v1.0.0)
-- Complete Phase 5 (Performance & Polish)
+### v2.0.0 (Target: 3-4 months after v1.0.0 / June 2026)
+- Complete Phase 2 (API Optimization)
 - Advanced features refinement
-- Comprehensive testing
+- Comprehensive testing coverage
 - Major stability milestone
 - **Target**: June 2026
 
@@ -192,16 +197,17 @@
 | Phase | Status | Completion | Priority |
 |-------|--------|------------|----------|
 | Phase 1 | ✅ Complete | 100% | Done |
-| Phase 2 | 🔵 In Progress | 0% | 🔴 High |
+| Phase 2 | ⬜ Not Started | 0% | 🟡 Low |
 | Phase 3 | ✅ Complete | 100% | Done |
-| Phase 4 | 🔵 In Progress | 20% | 🔴 High |
-| Phase 5 | ⬜ Not Started | 0% | 🟡 Medium |
+| Phase 4 | 🔵 In Progress | 20% | 🟠 Medium |
+| Phase 5 | ⬜ Not Started | 0% | 🔴 **HIGHEST** |
 
 **Overall Progress**: ~45% complete (2 of 5 phases done)
-**Current Focus**: Phase 2 (API) + Phase 4 (Organization)
-**Next Up**: Duplicate Detection → Storage Analytics
+**Priority Order**: Phase 5 (Performance) → Phase 4 (Organization) → Phase 2 (API)
+**Current Focus**: Starting Phase 5 - Code Optimization & Testing
+**Next Up**: Async operations → Lazy loading → Duplicate Detection
 
 ---
 
 *Last Updated: February 15, 2026*
-*Status: ✅ Phases 1 & 3 complete! Active: Phase 2 (API) + Phase 4 (Organization). HuggingFace & Search phases removed from roadmap.*
+*Status: ✅ Phases 1 & 3 complete! **New Priority Order**: Phase 5 (Performance - HIGHEST) → Phase 4 (Organization) → Phase 2 (API). Starting with code optimization and testing.*
