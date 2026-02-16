@@ -2523,7 +2523,8 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
             continue
         
         folder_str = str(folder)
-        print(f"\n[Dashboard] Scanning {content_type} folder: {folder_str}")
+        if getattr(opts, 'civitai_neo_debug_organize', False):
+            print(f"\n[Dashboard] Scanning {content_type} folder: {folder_str}")
         
         # For Checkpoint and LORA: scan subfolders and categorize
         if content_type in ['Checkpoint', 'LORA']:
@@ -2535,16 +2536,18 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
                 item_path = os.path.join(folder_str, item)
                 if os.path.isdir(item_path):
                     subfolders.append(item)
-                    print(f"[Dashboard]   Found subfolder: {item}")
+                    if getattr(opts, 'civitai_neo_debug_organize', False):
+                        print(f"[Dashboard]   Found subfolder: {item}")
                 elif item.endswith(MODEL_EXTENSIONS):
                     root_files.append(item_path)
             
-            print(f"[Dashboard]   Total subfolders: {len(subfolders)}")
-            print(f"[Dashboard]   Files in root: {len(root_files)}")
+            if getattr(opts, 'civitai_neo_debug_organize', False):
+                print(f"[Dashboard]   Total subfolders: {len(subfolders)}")
+                print(f"[Dashboard]   Files in root: {len(root_files)}")
             
             # Process files in root (not in subfolders)
             if root_files:
-                category = f'{content_type} → Não classificado'
+                category = f'{content_type} → Unorganized'
                 for file_path in root_files:
                     try:
                         file_size = os.path.getsize(file_path)
@@ -2554,7 +2557,8 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
                         total_size += file_size
                     except:
                         pass
-                print(f"[Dashboard]   Category '{category}': {model_stats[category]['count']} files")
+                if getattr(opts, 'civitai_neo_debug_organize', False):
+                    print(f"[Dashboard]   Category '{category}': {model_stats[category]['count']} files")
             
             # Process each subfolder
             for subfolder in subfolders:
@@ -2563,8 +2567,9 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
                 # This shows how the user has actually organized their models
                 category = f'{content_type} → {subfolder}'
                 
-                print(f"[Dashboard]   Scanning subfolder: {subfolder}")
-                print(f"[Dashboard]   Category key: '{category}'")
+                if getattr(opts, 'civitai_neo_debug_organize', False):
+                    print(f"[Dashboard]   Scanning subfolder: {subfolder}")
+                    print(f"[Dashboard]   Category key: '{category}'")
                 folder_file_count = 0
                 folder_size_before = model_stats[category]['size']
                 
@@ -2582,15 +2587,17 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
                                 folder_file_count += 1
                                 
                                 # Debug first 2 files per folder
-                                if folder_file_count <= 2:
+                                if folder_file_count <= 2 and getattr(opts, 'civitai_neo_debug_organize', False):
                                     print(f"[Dashboard]     File: {file} → {format_size(file_size)}")
                             except Exception as e:
-                                print(f"[Dashboard]     ERROR reading {file}: {e}")
+                                if getattr(opts, 'civitai_neo_debug_organize', False):
+                                    print(f"[Dashboard]     ERROR reading {file}: {e}")
                 
                 folder_size_after = model_stats[category]['size']
-                print(f"[Dashboard]     → Found {folder_file_count} files in '{subfolder}'")
-                print(f"[Dashboard]     → Total size: {format_size(folder_size_after)}")
-                print(f"[Dashboard]     → Added: {format_size(folder_size_after - folder_size_before)}")
+                if getattr(opts, 'civitai_neo_debug_organize', False):
+                    print(f"[Dashboard]     → Found {folder_file_count} files in '{subfolder}'")
+                    print(f"[Dashboard]     → Total size: {format_size(folder_size_after)}")
+                    print(f"[Dashboard]     → Added: {format_size(folder_size_after - folder_size_before)}")
         
         else:
             # For other types: just count all files in folder
@@ -2612,10 +2619,11 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
         return gr.update(value='<div style="padding: 20px; text-align: center;">No model files found in selected directories.</div>')
     
     # Debug: Show final model_stats before sorting
-    print("\n[Dashboard] === FINAL STATS BEFORE SORTING ===")
-    for cat, stats in model_stats.items():
-        print(f"[Dashboard]   {cat}: {stats['count']} files, {format_size(stats['size'])}")
-    print("[Dashboard] ===================================\n")
+    if getattr(opts, 'civitai_neo_debug_organize', False):
+        print("\n[Dashboard] === FINAL STATS BEFORE SORTING ===")
+        for cat, stats in model_stats.items():
+            print(f"[Dashboard]   {cat}: {stats['count']} files, {format_size(stats['size'])}")
+        print("[Dashboard] ===================================\n")
     
     if progress is not None:
         progress(1.0, desc="Generating dashboard...")
@@ -2640,7 +2648,8 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
     # Pie chart - Always show when there's data
     if sorted_stats and len(sorted_stats) > 0:
         try:
-            print(f"[Dashboard] Generating pie chart for {len(sorted_stats)} categories")
+            if getattr(opts, 'civitai_neo_debug_organize', False):
+                print(f"[Dashboard] Generating pie chart for {len(sorted_stats)} categories")
             # Generate pie chart using SVG
             pie_colors = [
                 '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
@@ -2658,7 +2667,8 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
             else:
                 chart_data = sorted_stats
             
-            print(f"[Dashboard] Chart will show {len(chart_data)} categories")
+            if getattr(opts, 'civitai_neo_debug_organize', False):
+                print(f"[Dashboard] Chart will show {len(chart_data)} categories")
             
             # Calculate angles for pie slices
             total = sum(stats['size'] for _, stats in chart_data)
@@ -2671,7 +2681,8 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
                 angles.append((category, percentage, current_angle, current_angle + angle, stats))
                 current_angle += angle
             
-            print(f"[Dashboard] Calculated {len(angles)} pie slices")
+            if getattr(opts, 'civitai_neo_debug_organize', False):
+                print(f"[Dashboard] Calculated {len(angles)} pie slices")
             
             # Generate SVG pie chart
             svg_parts = []
@@ -2684,7 +2695,8 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
             slice_count = 0
             for i, (category, percentage, start_angle, end_angle, stats) in enumerate(angles):
                 if percentage < 0.1:  # Skip very small slices
-                    print(f"[Dashboard] Skipping tiny slice: {category} ({percentage:.2f}%)")
+                    if getattr(opts, 'civitai_neo_debug_organize', False):
+                        print(f"[Dashboard] Skipping tiny slice: {category} ({percentage:.2f}%)")
                     continue
                 
                 slice_count += 1
@@ -2712,7 +2724,8 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
                     </path>
                 ''')
             
-            print(f"[Dashboard] Generated {slice_count} SVG slices")
+            if getattr(opts, 'civitai_neo_debug_organize', False):
+                print(f"[Dashboard] Generated {slice_count} SVG slices")
             
             svg_parts.append('''
                     </svg>
@@ -2739,7 +2752,8 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
                     </div>
                 ''')
             
-            print(f"[Dashboard] Generated {legend_count} legend items")
+            if getattr(opts, 'civitai_neo_debug_organize', False):
+                print(f"[Dashboard] Generated {legend_count} legend items")
             
             svg_parts.append('''
                 </div>
@@ -2747,13 +2761,15 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
             ''')
             
             html_parts.append(''.join(svg_parts))
-            print(f"[Dashboard] Pie chart HTML added ({len(''.join(svg_parts))} chars)")
+            if getattr(opts, 'civitai_neo_debug_organize', False):
+                print(f"[Dashboard] Pie chart HTML added ({len(''.join(svg_parts))} chars)")
         except Exception as e:
             # If pie chart fails, log error but continue with table
             error_msg = f'Pie chart generation failed: {str(e)}'
-            print(f"[Dashboard ERROR] {error_msg}")
-            import traceback
-            traceback.print_exc()
+            if getattr(opts, 'civitai_neo_debug_organize', False):
+                print(f"[Dashboard ERROR] {error_msg}")
+                import traceback
+                traceback.print_exc()
             html_parts.append(f'<div style="color: red; padding: 10px; text-align: center;">{error_msg}</div>')
     
     # Table with breakdown
