@@ -1725,24 +1725,34 @@ def normalize_base_model(base_model):
     Normalize baseModel from CivitAI to folder-friendly name
     Supports all Forge Neo model types with customizable categories
     """
+    print(f"[DEBUG] normalize_base_model() received: '{base_model}'")
+    
     if not base_model or base_model == 'Not Found':
         # Check if user wants to create "Other" folder
         if not getattr(opts, 'civitai_neo_create_other_folder', True):
+            print(f"[DEBUG] No baseModel, returning None (no 'Other' folder)")
             return None  # Leave in root
+        print(f"[DEBUG] No baseModel, returning 'Other'")
         return 'Other'
     
     base_model_upper = base_model.upper()
     categories = get_model_categories()
     
+    print(f"[DEBUG] Checking '{base_model_upper}' against categories...")
+    
     # Check each category's patterns
     for folder_name, patterns in categories.items():
         for pattern in patterns:
             if pattern.upper() in base_model_upper:
+                print(f"[DEBUG] MATCH! '{pattern}' found in '{base_model_upper}' → Folder: '{folder_name}'")
                 return folder_name
     
     # No match found
+    print(f"[DEBUG] No match found for '{base_model_upper}'")
     if not getattr(opts, 'civitai_neo_create_other_folder', True):
+        print(f"[DEBUG] Returning None (no 'Other' folder)")
         return None  # Leave in root
+    print(f"[DEBUG] Returning 'Other'")
     return 'Other'
 
 def get_model_info_for_organization(file_path):
@@ -1757,14 +1767,18 @@ def get_model_info_for_organization(file_path):
     model_name = os.path.basename(file_path)
     base_name = os.path.splitext(file_path)[0]
     
-    # Try both .json and .api_info.json
+    print(f"[DEBUG] Checking metadata for: {model_name}")
+    
+    # Try .api_info.json FIRST (official API data), then .json (local data)
     json_files = [
-        base_name + '.json',
-        base_name + '.api_info.json'
+        base_name + '.api_info.json',
+        base_name + '.json'
     ]
     
     for json_file in json_files:
+        print(f"[DEBUG] Trying: {os.path.basename(json_file)}")
         if os.path.exists(json_file):
+            print(f"[DEBUG] File exists: {os.path.basename(json_file)}")
             try:
                 data = _api.safe_json_load(json_file)
                 if data:
@@ -1774,48 +1788,50 @@ def get_model_info_for_organization(file_path):
                     # 1. Check raw 'baseModel' from API (most reliable)
                     if 'baseModel' in data:
                         base_model = data.get('baseModel', '')
-                        debug_print(f"Found baseModel from data['baseModel']: {base_model}")
+                        if base_model:  # Only print if non-empty
+                            print(f"[DEBUG] Found from data['baseModel']: '{base_model}'")
                     
                     # 2. Check 'sd version' (legacy storage)
                     if not base_model:
                         base_model = data.get('sd version', '')
                         if base_model:
-                            debug_print(f"Found baseModel from data['sd version']: {base_model}")
+                            print(f"[DEBUG] Found from data['sd version']: '{base_model}'")
                     
                     # 3. Check nested in model data
                     if not base_model and 'model' in data:
                         base_model = data.get('model', {}).get('baseModel', '')
                         if base_model:
-                            debug_print(f"Found baseModel from data['model']['baseModel']: {base_model}")
+                            print(f"[DEBUG] Found from data['model']['baseModel']: '{base_model}'")
                     
                     # 4. Check in modelVersions array (CivitAI API format)
                     if not base_model and 'modelVersions' in data:
                         versions = data.get('modelVersions', [])
+                        print(f"[DEBUG] Found modelVersions array with {len(versions)} versions")
                         if versions and len(versions) > 0:
                             base_model = versions[0].get('baseModel', '')
                             if base_model:
-                                debug_print(f"Found baseModel from data['modelVersions'][0]['baseModel']: {base_model}")
+                                print(f"[DEBUG] Found from data['modelVersions'][0]['baseModel']: '{base_model}'")
                     
                     # 5. Check in version data
                     if not base_model and 'version' in data:
                         base_model = data.get('version', {}).get('baseModel', '')
                         if base_model:
-                            debug_print(f"Found baseModel from data['version']['baseModel']: {base_model}")
+                            print(f"[DEBUG] Found from data['version']['baseModel']: '{base_model}'")
                     
                     if base_model:
+                        print(f"[DEBUG] SUCCESS! Final baseModel: '{base_model}' from {os.path.basename(json_file)}")
                         return base_model, model_name
                     else:
-                        # JSON exists but no baseModel found
-                        debug_print(f"⚠️ JSON found but no baseModel for: {model_name}")
-                        print(f"[CivitAI Browser Neo] ⚠️ No baseModel in JSON for: {model_name}")
-                        return None, model_name
+                        # JSON exists but no baseModel found - try next JSON file
+                        print(f"[DEBUG] No baseModel found in {os.path.basename(json_file)}, trying next file...")
+                        continue  # ← FIX: Continue to next file instead of returning
             except Exception as e:
-                debug_print(f"Error reading JSON {json_file}: {e}")
+                print(f"[DEBUG] Error reading JSON {json_file}: {e}")
                 continue
     
-    # No JSON file found - cannot determine base model
-    debug_print(f"⚠️ No JSON metadata found for: {model_name}")
-    print(f"[CivitAI Browser Neo] ⚠️ No metadata (.json or .api_info.json) for: {model_name} - Use API search to fetch metadata")
+    # No JSON file found OR no baseModel in any JSON - cannot determine base model
+    print(f"[DEBUG] ⚠️ No baseModel found in any JSON file for: {model_name}")
+    print(f"[CivitAI Browser Neo] ⚠️ No metadata with baseModel for: {model_name} - Use API search to fetch metadata")
     return None, model_name
 
 def analyze_organization_plan(folders, progress=None):
