@@ -1968,17 +1968,14 @@ def generate_organization_preview_html(organization_plan):
             ℹ️ <strong>Note:</strong> Files will be moved along with their associated .json, .png, and .txt files.
         </div>
         
-        {f'''<div style="margin-top: 15px; padding: 10px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 5px; color: #856404;">
-            ⚠️ <strong>Warning:</strong> {files_without_info} of {total_files} files have no metadata (no .json file or no baseModel in JSON).<br>
-            These files will NOT be organized. Use the API search to fetch metadata for these models first.
-        </div>''' if files_without_info > 0 else ''}
+        {'<div style="margin-top: 15px; padding: 10px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 5px; color: #856404;">⚠️ <strong>Warning:</strong> ' + str(files_without_info) + ' of ' + str(total_files) + ' files have no metadata (no .json file or no baseModel in JSON).<br>These files will NOT be organized. Use the API search to fetch metadata for these models first.</div>' if files_without_info > 0 else ''}
         
         <div style="margin-top: 15px; padding: 10px; background: var(--block-background-fill); border-radius: 5px;">
             <details>
                 <summary style="cursor: pointer; font-weight: bold;">📋 View detailed file list ({total_moves} files)</summary>
                 <div style="max-height: 300px; overflow-y: auto; margin-top: 10px;">
                     {'<br>'.join([f"• {os.path.basename(m['from'])} → {m['base_model']}/" for m in organization_plan['moves'][:100]])}
-                    {f'<br><em>... and {total_moves - 100} more files</em>' if total_moves > 100 else ''}
+                    {'<br><em>... and ' + str(total_moves - 100) + ' more files</em>' if total_moves > 100 else ''}
                 </div>
             </details>
         </div>
@@ -2000,26 +1997,31 @@ def save_organization_backup(organization_plan):
         'summary': organization_plan['summary']
     }
     
-    # Load existing backups
-    backups = []
+    # Load existing backup file
+    backup_file_data = {'created_at': datetime.now().timestamp(), 'backups': []}
     if os.path.exists(gl.organization_backup_file):
         try:
             with open(gl.organization_backup_file, 'r', encoding='utf-8') as f:
-                backups = json.load(f)
+                backup_file_data = json.load(f)
+                # Handle old format (plain list) - migrate to new format
+                if isinstance(backup_file_data, list):
+                    backup_file_data = {'created_at': datetime.now().timestamp(), 'backups': backup_file_data}
+                elif 'backups' not in backup_file_data:
+                    backup_file_data['backups'] = []
         except:
-            backups = []
+            backup_file_data = {'created_at': datetime.now().timestamp(), 'backups': []}
     
     # Add new backup
-    backups.append(backup_data)
+    backup_file_data['backups'].append(backup_data)
     
     # Keep only last 5 backups
-    if len(backups) > 5:
-        backups = backups[-5:]
+    if len(backup_file_data['backups']) > 5:
+        backup_file_data['backups'] = backup_file_data['backups'][-5:]
     
     # Save backups
     try:
         with open(gl.organization_backup_file, 'w', encoding='utf-8') as f:
-            json.dump(backups, f, indent=2, ensure_ascii=False)
+            json.dump(backup_file_data, f, indent=2, ensure_ascii=False)
         
         gl.last_organization_backup = backup_data['timestamp']
         print(f"[CivitAI Browser Neo] Backup saved: {backup_data['timestamp']}")
@@ -2038,7 +2040,13 @@ def get_last_organization_backup():
     
     try:
         with open(gl.organization_backup_file, 'r', encoding='utf-8') as f:
-            backups = json.load(f)
+            backup_file_data = json.load(f)
+        
+        # Handle old format (plain list)
+        if isinstance(backup_file_data, list):
+            backups = backup_file_data
+        else:
+            backups = backup_file_data.get('backups', [])
         
         if backups:
             return backups[-1]

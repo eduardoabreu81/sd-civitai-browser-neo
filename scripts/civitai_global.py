@@ -46,6 +46,10 @@ def init():
 
     # Organization backup file
     organization_backup_file = os.path.join(config_folder, 'civitai_organization_backups.json')
+    if not os.path.exists(organization_backup_file):
+        with open(organization_backup_file, 'w', encoding='utf-8') as json_file:
+            # Initialize with created_at (required by Forge config_states system)
+            json.dump({'created_at': datetime.now().timestamp(), 'backups': []}, json_file)
     last_organization_backup = None
 
     from_update_tab = False
