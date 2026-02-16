@@ -1688,7 +1688,7 @@ def get_model_categories():
     default_categories = {
         'SD': ['SD 1', 'SD1', 'SD 2', 'SD2'],
         'SDXL': ['SDXL'],
-        'Pony': ['PONY'],
+        'Pony': ['PONY', 'PONYXL', 'PONY XL', 'PONY V6', 'PONYV6'],
         'Illustrious': ['ILLUSTRIOUS'],
         'FLUX': ['FLUX'],
         'Wan': ['WAN'],
@@ -1697,12 +1697,12 @@ def get_model_categories():
         'Lumina': ['LUMINA'],
         'Anima': ['ANIMA'],
         'Cascade': ['CASCADE'],
-        'PixArt': ['PIXART'],
+        'PixArt': ['PIXART', 'PIX ART'],
         'Playground': ['PLAYGROUND'],
         'SVD': ['SVD', 'STABLE VIDEO'],
         'Hunyuan': ['HUNYUAN'],
         'Kolors': ['KOLORS'],
-        'AuraFlow': ['AURAFLOW'],
+        'AuraFlow': ['AURAFLOW', 'AURA FLOW'],
         'Chroma': ['CHROMA'],
     }
     
@@ -1760,12 +1760,24 @@ def get_model_info_for_organization(file_path):
         if not data:
             return None, None
         
-        # Get base model from sd version field
-        base_model = data.get('sd version', '')
+        # Try multiple sources for base model (in priority order)
+        base_model = None
         
-        # Also check for raw baseModel if available
-        if not base_model and 'baseModel' in data:
+        # 1. Check raw 'baseModel' from API (most reliable)
+        if 'baseModel' in data:
             base_model = data.get('baseModel', '')
+        
+        # 2. Check 'sd version' (legacy storage)
+        if not base_model:
+            base_model = data.get('sd version', '')
+        
+        # 3. Check nested in model data
+        if not base_model and 'model' in data:
+            base_model = data.get('model', {}).get('baseModel', '')
+        
+        # 4. Check in version data
+        if not base_model and 'version' in data:
+            base_model = data.get('version', {}).get('baseModel', '')
         
         model_name = os.path.basename(file_path)
         
@@ -2153,20 +2165,39 @@ def execute_organization(organization_plan, progress=None):
             # Move main model file
             shutil.move(source_path, target_path)
             
-            # Move associated files (.json, .png, .jpg, .txt, .civitai.info)
+            # Move associated files
+            # First, handle exact matches (.json, .png, etc.)
             base_name = os.path.splitext(source_path)[0]
             target_base_name = os.path.splitext(target_path)[0]
+            source_dir = os.path.dirname(source_path)
             
-            associated_extensions = ['.json', '.png', '.jpg', '.jpeg', '.txt', '.civitai.info']
+            # Extensions to move (both with and without .preview suffix)
+            associated_extensions = ['.json', '.png', '.jpg', '.jpeg', '.txt', '.html', '.civitai.info']
             
+            # Move files with exact base name
             for ext in associated_extensions:
                 associated_file = base_name + ext
                 if os.path.exists(associated_file):
                     target_associated = target_base_name + ext
                     try:
                         shutil.move(associated_file, target_associated)
+                        debug_print(f"Moved associated file: {os.path.basename(associated_file)}")
                     except Exception as e:
                         debug_print(f"Could not move associated file {associated_file}: {e}")
+            
+            # Also move files with .preview, .api_info suffixes before extension
+            # e.g., model.preview.png, model.api_info.json
+            suffixes = ['.preview', '.api_info', '.civitai']
+            for suffix in suffixes:
+                for ext in associated_extensions:
+                    associated_file = base_name + suffix + ext
+                    if os.path.exists(associated_file):
+                        target_associated = target_base_name + suffix + ext
+                        try:
+                            shutil.move(associated_file, target_associated)
+                            debug_print(f"Moved associated file: {os.path.basename(associated_file)}")
+                        except Exception as e:
+                            debug_print(f"Could not move associated file {associated_file}: {e}")
             
             print(f"✓ Organized: {model_name} → {move_info['base_model']}/")
             
