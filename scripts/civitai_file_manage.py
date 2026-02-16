@@ -1755,53 +1755,67 @@ def get_model_info_for_organization(file_path):
     User must decide whether to fetch metadata via API or organize manually
     """
     model_name = os.path.basename(file_path)
-    json_file = os.path.splitext(file_path)[0] + '.json'
+    base_name = os.path.splitext(file_path)[0]
     
-    # Only try to get info from JSON file (API metadata)
-    if os.path.exists(json_file):
-        try:
-            data = _api.safe_json_load(json_file)
-            if data:
-                # Try multiple sources for base model (in priority order)
-                base_model = None
-                
-                # 1. Check raw 'baseModel' from API (most reliable)
-                if 'baseModel' in data:
-                    base_model = data.get('baseModel', '')
-                    debug_print(f"Found baseModel from data['baseModel']: {base_model}")
-                
-                # 2. Check 'sd version' (legacy storage)
-                if not base_model:
-                    base_model = data.get('sd version', '')
+    # Try both .json and .api_info.json
+    json_files = [
+        base_name + '.json',
+        base_name + '.api_info.json'
+    ]
+    
+    for json_file in json_files:
+        if os.path.exists(json_file):
+            try:
+                data = _api.safe_json_load(json_file)
+                if data:
+                    # Try multiple sources for base model (in priority order)
+                    base_model = None
+                    
+                    # 1. Check raw 'baseModel' from API (most reliable)
+                    if 'baseModel' in data:
+                        base_model = data.get('baseModel', '')
+                        debug_print(f"Found baseModel from data['baseModel']: {base_model}")
+                    
+                    # 2. Check 'sd version' (legacy storage)
+                    if not base_model:
+                        base_model = data.get('sd version', '')
+                        if base_model:
+                            debug_print(f"Found baseModel from data['sd version']: {base_model}")
+                    
+                    # 3. Check nested in model data
+                    if not base_model and 'model' in data:
+                        base_model = data.get('model', {}).get('baseModel', '')
+                        if base_model:
+                            debug_print(f"Found baseModel from data['model']['baseModel']: {base_model}")
+                    
+                    # 4. Check in modelVersions array (CivitAI API format)
+                    if not base_model and 'modelVersions' in data:
+                        versions = data.get('modelVersions', [])
+                        if versions and len(versions) > 0:
+                            base_model = versions[0].get('baseModel', '')
+                            if base_model:
+                                debug_print(f"Found baseModel from data['modelVersions'][0]['baseModel']: {base_model}")
+                    
+                    # 5. Check in version data
+                    if not base_model and 'version' in data:
+                        base_model = data.get('version', {}).get('baseModel', '')
+                        if base_model:
+                            debug_print(f"Found baseModel from data['version']['baseModel']: {base_model}")
+                    
                     if base_model:
-                        debug_print(f"Found baseModel from data['sd version']: {base_model}")
-                
-                # 3. Check nested in model data
-                if not base_model and 'model' in data:
-                    base_model = data.get('model', {}).get('baseModel', '')
-                    if base_model:
-                        debug_print(f"Found baseModel from data['model']['baseModel']: {base_model}")
-                
-                # 4. Check in version data
-                if not base_model and 'version' in data:
-                    base_model = data.get('version', {}).get('baseModel', '')
-                    if base_model:
-                        debug_print(f"Found baseModel from data['version']['baseModel']: {base_model}")
-                
-                if base_model:
-                    return base_model, model_name
-                else:
-                    # JSON exists but no baseModel found
-                    debug_print(f"⚠️ JSON found but no baseModel for: {model_name}")
-                    print(f"[CivitAI Browser Neo] ⚠️ No baseModel in JSON for: {model_name}")
-                    return None, model_name
-        except Exception as e:
-            debug_print(f"Error reading JSON for {file_path}: {e}")
-            return None, model_name
+                        return base_model, model_name
+                    else:
+                        # JSON exists but no baseModel found
+                        debug_print(f"⚠️ JSON found but no baseModel for: {model_name}")
+                        print(f"[CivitAI Browser Neo] ⚠️ No baseModel in JSON for: {model_name}")
+                        return None, model_name
+            except Exception as e:
+                debug_print(f"Error reading JSON {json_file}: {e}")
+                continue
     
     # No JSON file found - cannot determine base model
     debug_print(f"⚠️ No JSON metadata found for: {model_name}")
-    print(f"[CivitAI Browser Neo] ⚠️ No metadata (.json) for: {model_name} - Use API search to fetch metadata")
+    print(f"[CivitAI Browser Neo] ⚠️ No metadata (.json or .api_info.json) for: {model_name} - Use API search to fetch metadata")
     return None, model_name
 
 def analyze_organization_plan(folders, progress=None):
@@ -2120,8 +2134,9 @@ def execute_rollback(progress=None):
             base_name_source = os.path.splitext(source_path)[0]
             base_name_target = os.path.splitext(target_path)[0]
             
-            associated_extensions = ['.json', '.png', '.jpg', '.jpeg', '.txt', '.civitai.info']
+            associated_extensions = ['.json', '.png', '.jpg', '.jpeg', '.txt', '.html', '.civitai.info']
             
+            # Move exact matches back
             for ext in associated_extensions:
                 associated_source = base_name_source + ext
                 associated_target = base_name_target + ext
@@ -2129,8 +2144,34 @@ def execute_rollback(progress=None):
                 if os.path.exists(associated_source):
                     try:
                         shutil.move(associated_source, associated_target)
+                        debug_print(f"Rolled back: {os.path.basename(associated_source)}")
                     except Exception as e:
                         debug_print(f"Could not move associated file back: {e}")
+            
+            # Move numbered preview images back (_0.png, _1.png, etc.)
+            for i in range(20):
+                for ext in ['.png', '.jpg', '.jpeg']:
+                    numbered_source = f"{base_name_source}_{i}{ext}"
+                    if os.path.exists(numbered_source):
+                        numbered_target = f"{base_name_target}_{i}{ext}"
+                        try:
+                            shutil.move(numbered_source, numbered_target)
+                            debug_print(f"Rolled back preview: {os.path.basename(numbered_source)}")
+                        except Exception as e:
+                            debug_print(f"Could not rollback preview {numbered_source}: {e}")
+            
+            # Move suffixed files back (.preview, .api_info, .civitai)
+            suffixes = ['.preview', '.api_info', '.civitai']
+            for suffix in suffixes:
+                for ext in associated_extensions:
+                    suffixed_source = base_name_source + suffix + ext
+                    if os.path.exists(suffixed_source):
+                        suffixed_target = base_name_target + suffix + ext
+                        try:
+                            shutil.move(suffixed_source, suffixed_target)
+                            debug_print(f"Rolled back {suffix}: {os.path.basename(suffixed_source)}")
+                        except Exception as e:
+                            debug_print(f"Could not rollback {suffixed_source}: {e}")
             
             print(f"✓ Rolled back: {model_name}")
             
@@ -2217,6 +2258,20 @@ def execute_organization(organization_plan, progress=None):
                         debug_print(f"Moved associated file: {os.path.basename(associated_file)}")
                     except Exception as e:
                         debug_print(f"Could not move associated file {associated_file}: {e}")
+            
+            # Move numbered preview images (e.g., model_0.png, model_1.png, ...)
+            import glob
+            model_basename = os.path.basename(base_name)
+            for i in range(20):  # Support up to 20 preview images
+                for ext in ['.png', '.jpg', '.jpeg']:
+                    numbered_file = f"{base_name}_{i}{ext}"
+                    if os.path.exists(numbered_file):
+                        target_numbered = f"{target_base_name}_{i}{ext}"
+                        try:
+                            shutil.move(numbered_file, target_numbered)
+                            debug_print(f"Moved numbered preview: {os.path.basename(numbered_file)}")
+                        except Exception as e:
+                            debug_print(f"Could not move numbered preview {numbered_file}: {e}")
             
             # Also move files with .preview, .api_info suffixes before extension
             # e.g., model.preview.png, model.api_info.json
