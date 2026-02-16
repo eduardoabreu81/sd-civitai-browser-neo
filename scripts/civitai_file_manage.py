@@ -2613,8 +2613,9 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
             # Determine category based on content type
             if content_type in ['Checkpoint', 'LORA']:
                 # For Checkpoints and LORAs, use baseModel classification
-                model_info = get_model_info_for_organization(file_path)
-                base_model = model_info.get('base_model', 'Unknown') if model_info else 'Unknown'
+                base_model, model_name = get_model_info_for_organization(file_path)
+                if not base_model:
+                    base_model = 'Unknown'
                 
                 # Normalize to folder name
                 normalized = normalize_base_model(base_model)
