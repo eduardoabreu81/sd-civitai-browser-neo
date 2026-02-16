@@ -215,6 +215,7 @@ def on_ui_tabs():
     dashboard_scan_choices = ['Checkpoint', 'LORA', 'TextualInversion', 'VAE', 'Controlnet', 
                               'Upscaler', 'MotionModule', 'AestheticGradient', 'Poses', 
                               'Detection', 'Wildcards', 'Workflows', 'Other']
+    dashboard_scan_choices_with_all = ['All'] + dashboard_scan_choices
 
     with gr.Blocks() as civitai_interface:
         ## Browser Tab
@@ -405,14 +406,7 @@ def on_ui_tabs():
                 dashboard_content_types = gr.CheckboxGroup(
                     elem_id='dashboard_content_types', 
                     label='Content types to analyze:', 
-                    choices=dashboard_scan_choices
-                )
-            
-            with gr.Row():
-                select_all_dashboard = gr.Button(
-                    value='✅ Select All',
-                    interactive=True,
-                    visible=True
+                    choices=dashboard_scan_choices_with_all
                 )
             
             with gr.Row():
@@ -1236,6 +1230,21 @@ def on_ui_tabs():
             ]
         )
 
+        def handle_dashboard_selection(selected):
+            """Handle 'All' checkbox logic"""
+            if 'All' in selected:
+                # If 'All' is selected, select everything except 'All' itself
+                return gr.update(value=dashboard_scan_choices)
+            else:
+                # Return current selection
+                return gr.update(value=selected)
+        
+        dashboard_content_types.change(
+            fn=handle_dashboard_selection,
+            inputs=[dashboard_content_types],
+            outputs=[dashboard_content_types]
+        )
+
         generate_dashboard.click(
             fn=_file.generate_dashboard_statistics,
             inputs=[dashboard_content_types],
@@ -1246,12 +1255,6 @@ def on_ui_tabs():
             fn=_file.generate_dashboard_statistics,
             inputs=[dashboard_content_types],
             outputs=[dashboard_html]
-        )
-
-        select_all_dashboard.click(
-            fn=lambda: gr.update(value=dashboard_scan_choices),
-            inputs=[],
-            outputs=[dashboard_content_types]
         )
 
         load_to_browser_outdated.click(

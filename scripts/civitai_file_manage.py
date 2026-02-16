@@ -2614,15 +2614,49 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
             if content_type in ['Checkpoint', 'LORA']:
                 # For Checkpoints and LORAs, use baseModel classification
                 base_model, model_name = get_model_info_for_organization(file_path)
-                if not base_model:
-                    base_model = 'Unknown'
+                is_in_root = False
                 
-                # Normalize to folder name
-                normalized = normalize_base_model(base_model)
-                if not normalized:
-                    category = f'{content_type} (Root)'
+                # Fallback: detect from folder path if no baseModel in JSON
+                if not base_model:
+                    # Try to detect subfolder (e.g., /Stable-diffusion/Pony/ -> Pony)
+                    path_parts = file_path.replace('\\', '/').split('/')
+                    # Find the content type folder index
+                    found_subfolder = False
+                    for i, part in enumerate(path_parts):
+                        if content_type == 'Checkpoint' and ('Stable-diffusion' in part or 'Checkpoint' in part):
+                            # Check if there's a subfolder after the content type folder
+                            if i + 1 < len(path_parts) - 1:  # -1 to exclude the filename
+                                subfolder = path_parts[i + 1]
+                                base_model = subfolder
+                                found_subfolder = True
+                            else:
+                                # File is directly in root folder
+                                is_in_root = True
+                            break
+                        elif content_type == 'LORA' and ('Lora' in part or 'LORA' in part):
+                            # Check if there's a subfolder after the content type folder
+                            if i + 1 < len(path_parts) - 1:  # -1 to exclude the filename
+                                subfolder = path_parts[i + 1]
+                                base_model = subfolder
+                                found_subfolder = True
+                            else:
+                                # File is directly in root folder
+                                is_in_root = True
+                            break
+                
+                # Create category
+                if is_in_root:
+                    # File is directly in root (no subfolder)
+                    category = f'{content_type} → Não classificado'
                 else:
-                    category = f'{content_type} → {normalized}'
+                    # Normalize to folder name
+                    normalized = normalize_base_model(base_model)
+                    if not normalized:
+                        # normalize_base_model returned None - arquivo no raiz pela configuração
+                        category = f'{content_type} → Não classificado'
+                    else:
+                        # normalized pode ser "Other", "Pony", "SDXL", etc.
+                        category = f'{content_type} → {normalized}'
             else:
                 # For other types, just use the content type
                 category = content_type
