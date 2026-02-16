@@ -1808,9 +1808,33 @@ def get_model_info_for_organization(file_path):
                         versions = data.get('modelVersions', [])
                         print(f"[DEBUG] Found modelVersions array with {len(versions)} versions")
                         if versions and len(versions) > 0:
-                            base_model = versions[0].get('baseModel', '')
+                            # Try to find the correct version by SHA256 hash
+                            file_hash = _file.get_model_hash(file_path, hash_type='SHA256')
+                            matched_version = None
+                            
+                            if file_hash:
+                                print(f"[DEBUG] Model SHA256: {file_hash}")
+                                # Search for matching version by hash
+                                for version in versions:
+                                    version_files = version.get('files', [])
+                                    for vfile in version_files:
+                                        hashes = vfile.get('hashes', {})
+                                        if hashes.get('SHA256', '').upper() == file_hash.upper():
+                                            matched_version = version
+                                            print(f"[DEBUG] Found matching version by SHA256: {version.get('name')} (id: {version.get('id')})")
+                                            break
+                                    if matched_version:
+                                        break
+                            
+                            # Use matched version if found, otherwise use first version
+                            target_version = matched_version if matched_version else versions[0]
+                            base_model = target_version.get('baseModel', '')
+                            
                             if base_model:
-                                print(f"[DEBUG] Found from data['modelVersions'][0]['baseModel']: '{base_model}'")
+                                if matched_version:
+                                    print(f"[DEBUG] Found from MATCHED modelVersion['{target_version.get('name')}']: '{base_model}'")
+                                else:
+                                    print(f"[DEBUG] Found from modelVersions[0]['baseModel']: '{base_model}' (no hash match, using first)")
                     
                     # 5. Check in version data
                     if not base_model and 'version' in data:
