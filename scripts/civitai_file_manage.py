@@ -2613,100 +2613,104 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
         </div>
     ''')
     
-    # Pie chart
-    if sorted_stats:
-        # Generate pie chart using SVG
-        pie_colors = [
-            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
-            '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0', '#FF6384',
-            '#36A2EB', '#FFCE56', '#FF9F40', '#9966FF', '#C9CBCF'
-        ]
-        
-        # Prepare data for top categories (show top 8, group rest as "Other")
-        top_categories = sorted_stats[:8]
-        other_size = sum(stats['size'] for _, stats in sorted_stats[8:])
-        other_count = sum(stats['count'] for _, stats in sorted_stats[8:])
-        
-        if len(sorted_stats) > 8 and other_size > 0:
-            chart_data = top_categories + [('Others', {'size': other_size, 'count': other_count})]
-        else:
-            chart_data = sorted_stats
-        
-        # Calculate angles for pie slices
-        total = sum(stats['size'] for _, stats in chart_data)
-        angles = []
-        current_angle = 0
-        
-        for category, stats in chart_data:
-            percentage = (stats['size'] / total * 100) if total > 0 else 0
-            angle = (stats['size'] / total * 360) if total > 0 else 0
-            angles.append((category, percentage, current_angle, current_angle + angle, stats))
-            current_angle += angle
-        
-        # Generate SVG pie chart
-        svg_parts = []
-        svg_parts.append('''
-        <div style="display: flex; justify-content: center; margin: 30px 0; flex-wrap: wrap; gap: 40px;">
-            <div style="position: relative;">
-                <svg viewBox="0 0 200 200" style="width: 300px; height: 300px; transform: rotate(-90deg);">
-        ''')
-        
-        for i, (category, percentage, start_angle, end_angle, stats) in enumerate(angles):
-            if percentage < 0.1:  # Skip very small slices
-                continue
+    # Pie chart - Always show when there's data
+    if sorted_stats and len(sorted_stats) > 0:
+        try:
+            # Generate pie chart using SVG
+            pie_colors = [
+                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
+                '#FF9F40', '#FF6B9D', '#C9CBCF', '#8DD3C7', '#FFED6F',
+                '#BEBADA', '#FB8072', '#80B1D3', '#FDB462', '#B3DE69'
+            ]
             
-            # Convert angles to radians
-            start_rad = start_angle * math.pi / 180
-            end_rad = end_angle * math.pi / 180
+            # Prepare data for top categories (show top 8, group rest as "Others")
+            top_categories = sorted_stats[:8]
+            other_size = sum(stats['size'] for _, stats in sorted_stats[8:])
+            other_count = sum(stats['count'] for _, stats in sorted_stats[8:])
             
-            # Calculate arc path
-            x1 = 100 + 90 * math.cos(start_rad)
-            y1 = 100 + 90 * math.sin(start_rad)
-            x2 = 100 + 90 * math.cos(end_rad)
-            y2 = 100 + 90 * math.sin(end_rad)
+            if len(sorted_stats) > 8 and other_size > 0:
+                chart_data = top_categories + [('Others', {'size': other_size, 'count': other_count})]
+            else:
+                chart_data = sorted_stats
             
-            large_arc = 1 if (end_angle - start_angle) > 180 else 0
+            # Calculate angles for pie slices
+            total = sum(stats['size'] for _, stats in chart_data)
+            angles = []
+            current_angle = 0
             
-            color = pie_colors[i % len(pie_colors)]
+            for category, stats in chart_data:
+                percentage = (stats['size'] / total * 100) if total > 0 else 0
+                angle = (stats['size'] / total * 360) if total > 0 else 0
+                angles.append((category, percentage, current_angle, current_angle + angle, stats))
+                current_angle += angle
             
-            svg_parts.append(f'''
-                <path d="M 100 100 L {x1} {y1} A 90 90 0 {large_arc} 1 {x2} {y2} Z"
-                      fill="{color}" stroke="var(--block-background-fill)" stroke-width="2"
-                      style="transition: opacity 0.3s; cursor: pointer;"
-                      onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
-                    <title>{category}: {format_size(stats['size'])} ({percentage:.1f}%)</title>
-                </path>
+            # Generate SVG pie chart
+            svg_parts = []
+            svg_parts.append('''
+            <div style="display: flex; justify-content: center; margin: 30px 0; flex-wrap: wrap; gap: 40px; align-items: center;">
+                <div style="position: relative;">
+                    <svg viewBox="0 0 200 200" style="width: 300px; height: 300px; transform: rotate(-90deg);">
             ''')
-        
-        svg_parts.append('''
-                </svg>
-            </div>
-            <div style="display: flex; flex-direction: column; justify-content: center; gap: 8px;">
-        ''')
-        
-        # Legend
-        for i, (category, percentage, _, _, stats) in enumerate(angles):
-            if percentage < 0.1:
-                continue
-            color = pie_colors[i % len(pie_colors)]
-            svg_parts.append(f'''
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <div style="width: 20px; height: 20px; background: {color}; border-radius: 3px; flex-shrink: 0;"></div>
-                    <div style="color: var(--body-text-color); font-size: 13px;">
-                        <strong>{category}</strong><br>
-                        <span style="color: var(--body-text-color-subdued); font-size: 12px;">
-                            {format_size(stats['size'])} ({percentage:.1f}%)
-                        </span>
-                    </div>
+            
+            for i, (category, percentage, start_angle, end_angle, stats) in enumerate(angles):
+                if percentage < 0.1:  # Skip very small slices
+                    continue
+                
+                # Convert angles to radians
+                start_rad = start_angle * math.pi / 180
+                end_rad = end_angle * math.pi / 180
+                
+                # Calculate arc path
+                x1 = 100 + 90 * math.cos(start_rad)
+                y1 = 100 + 90 * math.sin(start_rad)
+                x2 = 100 + 90 * math.cos(end_rad)
+                y2 = 100 + 90 * math.sin(end_rad)
+                
+                large_arc = 1 if (end_angle - start_angle) > 180 else 0
+                
+                color = pie_colors[i % len(pie_colors)]
+                
+                svg_parts.append(f'''
+                    <path d="M 100 100 L {x1:.2f} {y1:.2f} A 90 90 0 {large_arc} 1 {x2:.2f} {y2:.2f} Z"
+                          fill="{color}" stroke="#ffffff" stroke-width="2"
+                          style="transition: opacity 0.3s; cursor: pointer;"
+                          onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
+                        <title>{category}: {format_size(stats['size'])} ({percentage:.1f}%)</title>
+                    </path>
+                ''')
+            
+            svg_parts.append('''
+                    </svg>
                 </div>
+                <div style="display: flex; flex-direction: column; justify-content: center; gap: 8px; max-width: 300px;">
             ''')
-        
-        svg_parts.append('''
+            
+            # Legend
+            for i, (category, percentage, _, _, stats) in enumerate(angles):
+                if percentage < 0.1:
+                    continue
+                color = pie_colors[i % len(pie_colors)]
+                svg_parts.append(f'''
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="width: 20px; height: 20px; background: {color}; border-radius: 3px; flex-shrink: 0;"></div>
+                        <div style="color: var(--body-text-color); font-size: 13px;">
+                            <strong>{category}</strong><br>
+                            <span style="color: var(--body-text-color-subdued); font-size: 12px;">
+                                {format_size(stats['size'])} ({percentage:.1f}%)
+                            </span>
+                        </div>
+                    </div>
+                ''')
+            
+            svg_parts.append('''
+                </div>
             </div>
-        </div>
-        ''')
-        
-        html_parts.append(''.join(svg_parts))
+            ''')
+            
+            html_parts.append(''.join(svg_parts))
+        except Exception as e:
+            # If pie chart fails, log error but continue with table
+            html_parts.append(f'<div style="color: red; padding: 10px;">Pie chart generation failed: {str(e)}</div>')
     
     # Table with breakdown
     if sorted_stats:
