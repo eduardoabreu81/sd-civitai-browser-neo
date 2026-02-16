@@ -16,6 +16,7 @@ Modern fork of sd-civitai-browser-plus optimized for Forge Neo with auto-organiz
 - [Features](#-features)
 - [Installation](#-installation)
 - [Auto-Organization System](#-auto-organization-system)
+- [Dashboard & Statistics](#-dashboard--statistics)
 - [Supported Model Types](#-supported-model-types)
 - [Settings](#%EF%B8%8F-settings)
 - [Credits](#-credits)
@@ -50,7 +51,16 @@ Full support for all Forge Neo architectures:
 - Modern UI components and improved performance
 - Better error handling and stability
 
-#### **4. Safety Features** 🛡️
+#### **4. Dashboard & Statistics** 📊
+Get comprehensive insights into your model collection:
+- **Disk usage statistics**: See how much space each model type uses
+- **File count by category**: Know exactly what you have
+- **Organized by baseModel**: Checkpoints and LORAs grouped by type (Pony, SDXL, FLUX, etc.)
+- **Visual breakdown**: Progress bars and percentage indicators
+- **All model types**: Supports Checkpoints, LORAs, VAEs, Upscalers, ControlNets, and more
+- **Smart detection**: Auto-detects organization from folder structure
+
+#### **5. Safety Features** 🛡️
 - **Automatic backups** before any organization
 - **One-click rollback** to undo changes
 - **Backup history** (keeps last 5 operations)
@@ -81,7 +91,8 @@ Full support for all Forge Neo architectures:
 - ↶ **Undo organization** with one click
 - 💾 **Automatic backups** before changes
 - 🗂️ **Custom categories** for organization
-- 🔄 **Update model info & tags**
+- � **Dashboard statistics** - View disk usage by type (NEW!)
+- �🔄 **Update model info & tags**
 - 🖼️ **Download preview images**
 - 📋 **Generate model info HTML**
 
@@ -189,6 +200,75 @@ models/Lora/
 
 ---
 
+## 📊 Dashboard & Statistics
+
+### Overview
+
+The Dashboard provides comprehensive insight into your model collection with detailed disk usage statistics organized by model type and architecture.
+
+### Features
+
+- **📈 Disk Usage Analysis**: See exactly how much space each model type uses
+- **📁 Smart Categorization**: 
+  - Checkpoints and LORAs organized by baseModel (Pony, SDXL, FLUX, Illustrious, etc.)
+  - Other types shown as-is (VAE, ControlNet, Upscaler, etc.)
+- **📊 Visual Breakdowns**: Progress bars showing percentage of total storage
+- **🔍 Flexible Scanning**: Select which content types to analyze
+- **⚡ Fast Detection**: Auto-detects organization from folder structure
+
+### Usage
+
+1. Go to **CivitAI Browser Neo** → **Dashboard** tab
+2. Select content types to analyze:
+   - Check **"All"** to select everything
+   - Or select individual types (Checkpoint, LORA, VAE, etc.)
+3. Click **"📊 Generate Dashboard"**
+4. View statistics with:
+   - Total file count and size
+   - Breakdown by category
+   - Percentage of total storage
+   - Visual progress bars
+
+### Example Output
+
+```
+2294 files (1.4 TB) → 12 categories
+
+┌────────────────────────┬───────┬──────────────┬────────────┐
+│ MODEL TYPE             │ FILES │ TOTAL SIZE   │ % OF TOTAL │
+├────────────────────────┼───────┼──────────────┼────────────┤
+│ Checkpoint → Other     │ 148   │ 968.3 GB     │ 70.0%      │
+│ LORA → Other           │ 1960  │ 366.6 GB     │ 26.5%      │
+│ LORA → SDXL            │ 59    │ 17.7 GB      │ 1.3%       │
+│ Checkpoint → Illust... │ 2     │ 13.2 GB      │ 1.0%       │
+│ LORA → SD              │ 66    │ 6.6 GB       │ 0.5%       │
+│ LORA → Pony            │ 2     │ 386.7 MB     │ 0.0%       │
+│ VAE                    │ 5     │ 1.2 GB       │ 0.1%       │
+└────────────────────────┴───────┴──────────────┴────────────┘
+```
+
+### What It Shows
+
+**For Checkpoints & LORAs:**
+- Shows baseModel categorization (Pony, SDXL, FLUX, etc.)
+- `→ Não classificado`: Files in root directory without organization
+- `→ Other`: Files in "Other" subfolder or unrecognized types
+
+**For Other Types:**
+- VAE, ControlNet, TextualInversion: Shown as-is
+- Upscalers: Grouped by type (ESRGAN, RealESRGAN, etc.)
+- Detection, Wildcards, Workflows: Individual categories
+
+### Smart Detection
+
+The Dashboard intelligently detects organization:
+
+1. **From JSON metadata**: Reads `.json` or `.api_info.json` files for baseModel
+2. **From folder structure**: If no JSON, detects from subfolder name
+3. **Normalization**: Applies same rules as organization system (Pony → Pony, SDXL → SDXL, etc.)
+
+---
+
 ## 🎨 Supported Model Types
 
 The Neo version includes detection for all modern architectures supported by Forge Neo:
@@ -268,12 +348,14 @@ You can define your own categories in **Settings** → **Model Organization** us
 ##  Known Issues
 
 - Some models may not have `baseModel` metadata (download from CivitAI to get it)
+- Dashboard shows "Não classificado" for models without JSON metadata or in root folder
 - Rollback only works for the last operation
 - Maximum 5 backups are kept (older ones are deleted)
 
 ## 💡 Tips
 
 - **First time using?** Update model info & tags to generate `.json` files with metadata
+- **Want to see your collection?** Use Dashboard tab to analyze disk usage
 - **Want custom folders?** Edit JSON in Settings → Model Organization
 - **Made a mistake?** Use "Undo Organization" button immediately
 - **Need help?** Check console logs (`[CivitAI Browser Neo]` prefix)
@@ -296,6 +378,7 @@ You can define your own categories in **Settings** → **Model Organization** us
 - **[sd-civitai-browser-neo](https://github.com/eduardoabreu81/sd-civitai-browser-neo)** by Eduardo Abreu
   - Forge Neo compatibility (Gradio 4.x)
   - Auto-organization system
+  - Dashboard & statistics
   - Modern model support (FLUX, Pony, Wan, Qwen, etc)
   - Backup & rollback system
 
