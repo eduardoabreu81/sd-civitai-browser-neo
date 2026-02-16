@@ -1747,44 +1747,62 @@ def normalize_base_model(base_model):
 
 def get_model_info_for_organization(file_path):
     """
-    Get model information from JSON file for organization
-    Returns: (base_model, model_name) or (None, None) if not found
+    Get model info from associated JSON file for organization purposes
+    Only uses JSON metadata - does NOT auto-detect to avoid incorrect moves
+    
+    Returns tuple: (base_model_type, model_name)
+    If no JSON found or no baseModel in JSON, returns (None, model_name)
+    User must decide whether to fetch metadata via API or organize manually
     """
+    model_name = os.path.basename(file_path)
     json_file = os.path.splitext(file_path)[0] + '.json'
     
-    if not os.path.exists(json_file):
-        return None, None
+    # Only try to get info from JSON file (API metadata)
+    if os.path.exists(json_file):
+        try:
+            data = _api.safe_json_load(json_file)
+            if data:
+                # Try multiple sources for base model (in priority order)
+                base_model = None
+                
+                # 1. Check raw 'baseModel' from API (most reliable)
+                if 'baseModel' in data:
+                    base_model = data.get('baseModel', '')
+                    debug_print(f"Found baseModel from data['baseModel']: {base_model}")
+                
+                # 2. Check 'sd version' (legacy storage)
+                if not base_model:
+                    base_model = data.get('sd version', '')
+                    if base_model:
+                        debug_print(f"Found baseModel from data['sd version']: {base_model}")
+                
+                # 3. Check nested in model data
+                if not base_model and 'model' in data:
+                    base_model = data.get('model', {}).get('baseModel', '')
+                    if base_model:
+                        debug_print(f"Found baseModel from data['model']['baseModel']: {base_model}")
+                
+                # 4. Check in version data
+                if not base_model and 'version' in data:
+                    base_model = data.get('version', {}).get('baseModel', '')
+                    if base_model:
+                        debug_print(f"Found baseModel from data['version']['baseModel']: {base_model}")
+                
+                if base_model:
+                    return base_model, model_name
+                else:
+                    # JSON exists but no baseModel found
+                    debug_print(f"⚠️ JSON found but no baseModel for: {model_name}")
+                    print(f"[CivitAI Browser Neo] ⚠️ No baseModel in JSON for: {model_name}")
+                    return None, model_name
+        except Exception as e:
+            debug_print(f"Error reading JSON for {file_path}: {e}")
+            return None, model_name
     
-    try:
-        data = _api.safe_json_load(json_file)
-        if not data:
-            return None, None
-        
-        # Try multiple sources for base model (in priority order)
-        base_model = None
-        
-        # 1. Check raw 'baseModel' from API (most reliable)
-        if 'baseModel' in data:
-            base_model = data.get('baseModel', '')
-        
-        # 2. Check 'sd version' (legacy storage)
-        if not base_model:
-            base_model = data.get('sd version', '')
-        
-        # 3. Check nested in model data
-        if not base_model and 'model' in data:
-            base_model = data.get('model', {}).get('baseModel', '')
-        
-        # 4. Check in version data
-        if not base_model and 'version' in data:
-            base_model = data.get('version', {}).get('baseModel', '')
-        
-        model_name = os.path.basename(file_path)
-        
-        return base_model, model_name
-    except Exception as e:
-        debug_print(f"Error reading model info for organization: {e}")
-        return None, None
+    # No JSON file found - cannot determine base model
+    debug_print(f"⚠️ No JSON metadata found for: {model_name}")
+    print(f"[CivitAI Browser Neo] ⚠️ No metadata (.json) for: {model_name} - Use API search to fetch metadata")
+    return None, model_name
 
 def analyze_organization_plan(folders, progress=None):
     """
@@ -1920,6 +1938,8 @@ def generate_organization_preview_html(organization_plan):
     total_size = sum(info['size'] for info in organization_plan['summary'].values())
     total_moves = len(organization_plan['moves'])
     total_folders = len(organization_plan['summary'])
+    files_without_info = organization_plan['files_without_info']
+    total_files = organization_plan['total_files']
     
     html = f'''
     <div style="padding: 20px; border: 1px solid var(--border-color-primary); border-radius: 8px; margin: 10px 0;">
@@ -1947,6 +1967,11 @@ def generate_organization_preview_html(organization_plan):
         <div style="margin-top: 20px; padding: 10px; background: var(--color-accent-soft); border-radius: 5px;">
             ℹ️ <strong>Note:</strong> Files will be moved along with their associated .json, .png, and .txt files.
         </div>
+        
+        {f'''<div style="margin-top: 15px; padding: 10px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 5px; color: #856404;">
+            ⚠️ <strong>Warning:</strong> {files_without_info} of {total_files} files have no metadata (no .json file or no baseModel in JSON).<br>
+            These files will NOT be organized. Use the API search to fetch metadata for these models first.
+        </div>''' if files_without_info > 0 else ''}
         
         <div style="margin-top: 15px; padding: 10px; background: var(--block-background-fill); border-radius: 5px;">
             <details>
