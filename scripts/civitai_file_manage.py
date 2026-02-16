@@ -1543,14 +1543,21 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
         
         organization_plan = analyze_organization_plan(folders, progress)
         
+        # Always show preview first with statistics
+        preview_html = generate_organization_preview_html(organization_plan)
+        
         if not organization_plan['moves']:
             # No files need organization
             gl.scan_files = False
-            preview_html = generate_organization_preview_html(organization_plan)
             return (
                 gr.update(value=preview_html),
                 gr.update(value=number)
             )
+        
+        # Files need organization - show preview with detailed stats
+        _debug_log(f"Organization plan created: {len(organization_plan['moves'])} files to move")
+        for category, info in organization_plan['summary'].items():
+            _debug_log(f"  {category}: {info['count']} files ({format_size(info['size'])})")
         
         # Step 2: Save backup before making changes
         if progress != None:
@@ -1578,16 +1585,23 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
         
         result = execute_organization(organization_plan, progress)
         
-        # Step 4: Generate result message
+        # Step 4: Generate result message with detailed statistics
         if result['success']:
+            # Calculate total size moved
+            total_size = sum(info['size'] for info in organization_plan['summary'].values())
+            folder_list = ', '.join(sorted(organization_plan['summary'].keys()))
+            
             result_html = f'''
             <div style="padding: 20px; text-align: center; color: var(--color-accent);">
-                <h3>✅ Organization Complete!</h3>
-                <p>{result['completed']} files successfully organized into folders by model type.</p>
-                <p>Your models are now organized in subfolders: {', '.join(sorted(organization_plan['summary'].keys()))}</p>
-                <div style="margin-top: 15px; padding: 10px; background: var(--background-fill-secondary); border-radius: 5px;">
-                    💾 <strong>Backup saved:</strong> {backup_id}<br>
-                    Use the "Undo Organization" button to rollback if needed.
+                <h2 style="margin: 0 0 15px 0;">✅ Organization Complete!</h2>
+                <div style="font-size: 18px; margin-bottom: 20px;">
+                    <strong>{result['completed']} files</strong> ({format_size(total_size)}) organized into <strong>{len(organization_plan['summary'])} folders</strong>
+                </div>
+                <div style="background: var(--background-fill-secondary); padding: 10px; border-radius: 5px; font-size: 14px;">
+                    📂 {folder_list}
+                </div>
+                <div style="margin-top: 15px; padding: 10px; background: var(--color-accent-soft); border-radius: 5px; font-size: 13px;">
+                    💾 Backup: {backup_id} | Use "↶ Undo" button to rollback
                 </div>
             </div>
             '''
@@ -1720,39 +1734,47 @@ def get_model_categories():
     
     return default_categories
 
+def _debug_log(message):
+    """
+    Print debug messages for organization system if enabled in settings
+    Enable in Settings > CivitAI Browser Neo > Debug Organization Logs
+    """
+    if getattr(opts, 'civitai_neo_debug_organize', False):
+        print(f"[DEBUG] {message}")
+
 def normalize_base_model(base_model):
     """
     Normalize baseModel from CivitAI to folder-friendly name
     Supports all Forge Neo model types with customizable categories
     """
-    print(f"[DEBUG] normalize_base_model() received: '{base_model}'")
+    _debug_log(f"normalize_base_model() received: '{base_model}'")
     
     if not base_model or base_model == 'Not Found':
         # Check if user wants to create "Other" folder
         if not getattr(opts, 'civitai_neo_create_other_folder', True):
-            print(f"[DEBUG] No baseModel, returning None (no 'Other' folder)")
+            _debug_log("No baseModel, returning None (no 'Other' folder)")
             return None  # Leave in root
-        print(f"[DEBUG] No baseModel, returning 'Other'")
+        _debug_log("No baseModel, returning 'Other'")
         return 'Other'
     
     base_model_upper = base_model.upper()
     categories = get_model_categories()
     
-    print(f"[DEBUG] Checking '{base_model_upper}' against categories...")
+    _debug_log(f"Checking '{base_model_upper}' against categories...")
     
     # Check each category's patterns
     for folder_name, patterns in categories.items():
         for pattern in patterns:
             if pattern.upper() in base_model_upper:
-                print(f"[DEBUG] MATCH! '{pattern}' found in '{base_model_upper}' → Folder: '{folder_name}'")
+                _debug_log(f"MATCH! '{pattern}' found in '{base_model_upper}' → Folder: '{folder_name}'")
                 return folder_name
     
     # No match found
-    print(f"[DEBUG] No match found for '{base_model_upper}'")
+    _debug_log(f"No match found for '{base_model_upper}'")
     if not getattr(opts, 'civitai_neo_create_other_folder', True):
-        print(f"[DEBUG] Returning None (no 'Other' folder)")
+        _debug_log("Returning None (no 'Other' folder)")
         return None  # Leave in root
-    print(f"[DEBUG] Returning 'Other'")
+    _debug_log("Returning 'Other'")
     return 'Other'
 
 def get_model_info_for_organization(file_path):
@@ -1767,7 +1789,7 @@ def get_model_info_for_organization(file_path):
     model_name = os.path.basename(file_path)
     base_name = os.path.splitext(file_path)[0]
     
-    print(f"[DEBUG] Checking metadata for: {model_name}")
+    _debug_log(f"Checking metadata for: {model_name}")
     
     # Try .api_info.json FIRST (official API data), then .json (local data)
     json_files = [
@@ -1776,9 +1798,9 @@ def get_model_info_for_organization(file_path):
     ]
     
     for json_file in json_files:
-        print(f"[DEBUG] Trying: {os.path.basename(json_file)}")
+        _debug_log(f"Trying: {os.path.basename(json_file)}")
         if os.path.exists(json_file):
-            print(f"[DEBUG] File exists: {os.path.basename(json_file)}")
+            _debug_log(f"File exists: {os.path.basename(json_file)}")
             try:
                 data = _api.safe_json_load(json_file)
                 if data:
@@ -1789,31 +1811,31 @@ def get_model_info_for_organization(file_path):
                     if 'baseModel' in data:
                         base_model = data.get('baseModel', '')
                         if base_model:  # Only print if non-empty
-                            print(f"[DEBUG] Found from data['baseModel']: '{base_model}'")
+                            _debug_log(f"Found from data['baseModel']: '{base_model}'")
                     
                     # 2. Check 'sd version' (legacy storage)
                     if not base_model:
                         base_model = data.get('sd version', '')
                         if base_model:
-                            print(f"[DEBUG] Found from data['sd version']: '{base_model}'")
+                            _debug_log(f"Found from data['sd version']: '{base_model}'")
                     
                     # 3. Check nested in model data
                     if not base_model and 'model' in data:
                         base_model = data.get('model', {}).get('baseModel', '')
                         if base_model:
-                            print(f"[DEBUG] Found from data['model']['baseModel']: '{base_model}'")
+                            _debug_log(f"Found from data['model']['baseModel']: '{base_model}'")
                     
                     # 4. Check in modelVersions array (CivitAI API format)
                     if not base_model and 'modelVersions' in data:
                         versions = data.get('modelVersions', [])
-                        print(f"[DEBUG] Found modelVersions array with {len(versions)} versions")
+                        _debug_log(f"Found modelVersions array with {len(versions)} versions")
                         if versions and len(versions) > 0:
                             # Try to find the correct version by SHA256 hash
                             file_hash = _file.get_model_hash(file_path, hash_type='SHA256')
                             matched_version = None
                             
                             if file_hash:
-                                print(f"[DEBUG] Model SHA256: {file_hash}")
+                                _debug_log(f"Model SHA256: {file_hash}")
                                 # Search for matching version by hash
                                 for version in versions:
                                     version_files = version.get('files', [])
@@ -1821,7 +1843,7 @@ def get_model_info_for_organization(file_path):
                                         hashes = vfile.get('hashes', {})
                                         if hashes.get('SHA256', '').upper() == file_hash.upper():
                                             matched_version = version
-                                            print(f"[DEBUG] Found matching version by SHA256: {version.get('name')} (id: {version.get('id')})")
+                                            _debug_log(f"Found matching version by SHA256: {version.get('name')} (id: {version.get('id')})")
                                             break
                                     if matched_version:
                                         break
@@ -1832,29 +1854,29 @@ def get_model_info_for_organization(file_path):
                             
                             if base_model:
                                 if matched_version:
-                                    print(f"[DEBUG] Found from MATCHED modelVersion['{target_version.get('name')}']: '{base_model}'")
+                                    _debug_log(f"Found from MATCHED modelVersion['{target_version.get('name')}']: '{base_model}'")
                                 else:
-                                    print(f"[DEBUG] Found from modelVersions[0]['baseModel']: '{base_model}' (no hash match, using first)")
+                                    _debug_log(f"Found from modelVersions[0]['baseModel']: '{base_model}' (no hash match, using first)")
                     
                     # 5. Check in version data
                     if not base_model and 'version' in data:
                         base_model = data.get('version', {}).get('baseModel', '')
                         if base_model:
-                            print(f"[DEBUG] Found from data['version']['baseModel']: '{base_model}'")
+                            _debug_log(f"Found from data['version']['baseModel']: '{base_model}'")
                     
                     if base_model:
-                        print(f"[DEBUG] SUCCESS! Final baseModel: '{base_model}' from {os.path.basename(json_file)}")
+                        _debug_log(f"SUCCESS! Final baseModel: '{base_model}' from {os.path.basename(json_file)}")
                         return base_model, model_name
                     else:
                         # JSON exists but no baseModel found - try next JSON file
-                        print(f"[DEBUG] No baseModel found in {os.path.basename(json_file)}, trying next file...")
+                        _debug_log(f"No baseModel found in {os.path.basename(json_file)}, trying next file...")
                         continue  # ← FIX: Continue to next file instead of returning
             except Exception as e:
-                print(f"[DEBUG] Error reading JSON {json_file}: {e}")
+                _debug_log(f"Error reading JSON {json_file}: {e}")
                 continue
     
     # No JSON file found OR no baseModel in any JSON - cannot determine base model
-    print(f"[DEBUG] ⚠️ No baseModel found in any JSON file for: {model_name}")
+    _debug_log(f"⚠️ No baseModel found in any JSON file for: {model_name}")
     print(f"[CivitAI Browser Neo] ⚠️ No metadata with baseModel for: {model_name} - Use API search to fetch metadata")
     return None, model_name
 
@@ -1977,15 +1999,15 @@ def generate_organization_preview_html(organization_plan):
         </div>
         '''
     
-    # Build summary table
+    # Build compact summary table
     summary_rows = ''
     for base_model in sorted(organization_plan['summary'].keys()):
         info = organization_plan['summary'][base_model]
         summary_rows += f'''
         <tr>
-            <td>📂 {base_model}</td>
-            <td style="text-align: center;">{info['count']}</td>
-            <td style="text-align: right;">{format_size(info['size'])}</td>
+            <td style="padding: 5px;">📂 {base_model}</td>
+            <td style="text-align: center; padding: 5px;">{info['count']}</td>
+            <td style="text-align: right; padding: 5px;">{format_size(info['size'])}</td>
         </tr>
         '''
     
@@ -1993,24 +2015,21 @@ def generate_organization_preview_html(organization_plan):
     total_moves = len(organization_plan['moves'])
     total_folders = len(organization_plan['summary'])
     files_without_info = organization_plan['files_without_info']
-    total_files = organization_plan['total_files']
     
     html = f'''
-    <div style="padding: 20px; border: 1px solid var(--border-color-primary); border-radius: 8px; margin: 10px 0;">
-        <h3 style="margin-top: 0;">📁 Organization Preview</h3>
+    <div style="padding: 15px; border: 1px solid var(--border-color-primary); border-radius: 8px; margin: 10px 0;">
+        <h3 style="margin: 0 0 15px 0;">📁 Organization Plan</h3>
         
-        <div style="background: var(--background-fill-secondary); padding: 15px; border-radius: 5px; margin: 15px 0;">
-            <strong>Total:</strong> {total_moves} files to organize | 
-            <strong>Folders:</strong> {total_folders} | 
-            <strong>Size:</strong> {format_size(total_size)}
+        <div style="background: var(--background-fill-secondary); padding: 12px; border-radius: 5px; margin-bottom: 15px; font-size: 15px;">
+            <strong>{total_moves} files</strong> ({format_size(total_size)}) → <strong>{total_folders} folders</strong>
         </div>
         
-        <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
             <thead>
                 <tr style="background: var(--background-fill-secondary);">
-                    <th style="padding: 10px; text-align: left;">Folder</th>
-                    <th style="padding: 10px; text-align: center;">Files</th>
-                    <th style="padding: 10px; text-align: right;">Size</th>
+                    <th style="padding: 8px; text-align: left;">Folder</th>
+                    <th style="padding: 8px; text-align: center;">Files</th>
+                    <th style="padding: 8px; text-align: right;">Size</th>
                 </tr>
             </thead>
             <tbody>
@@ -2018,21 +2037,17 @@ def generate_organization_preview_html(organization_plan):
             </tbody>
         </table>
         
-        <div style="margin-top: 20px; padding: 10px; background: var(--color-accent-soft); border-radius: 5px;">
-            ℹ️ <strong>Note:</strong> Files will be moved along with their associated .json, .png, and .txt files.
-        </div>
+        {f'<div style="margin-top: 12px; padding: 10px; background: #fff3cd; border-radius: 5px; font-size: 13px;">⚠️ {files_without_info} of {organization_plan["total_files"]} files without metadata (will be skipped)</div>' if files_without_info > 0 else ''}
         
-        {'<div style="margin-top: 15px; padding: 10px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 5px; color: #856404;">⚠️ <strong>Warning:</strong> ' + str(files_without_info) + ' of ' + str(total_files) + ' files have no metadata (no .json file or no baseModel in JSON).<br>These files will NOT be organized. Use the API search to fetch metadata for these models first.</div>' if files_without_info > 0 else ''}
-        
-        <div style="margin-top: 15px; padding: 10px; background: var(--block-background-fill); border-radius: 5px;">
-            <details>
-                <summary style="cursor: pointer; font-weight: bold;">📋 View detailed file list ({total_moves} files)</summary>
-                <div style="max-height: 300px; overflow-y: auto; margin-top: 10px;">
-                    {'<br>'.join([f"• {os.path.basename(m['from'])} → {m['base_model']}/" for m in organization_plan['moves'][:100]])}
-                    {'<br><em>... and ' + str(total_moves - 100) + ' more files</em>' if total_moves > 100 else ''}
-                </div>
-            </details>
-        </div>
+        <details style="margin-top: 12px;">
+            <summary style="cursor: pointer; padding: 8px; background: var(--block-background-fill); border-radius: 5px; font-size: 13px;">
+                📋 Show file list ({total_moves} files)
+            </summary>
+            <div style="max-height: 200px; overflow-y: auto; margin-top: 8px; padding: 8px; background: var(--block-background-fill); border-radius: 5px; font-size: 12px; font-family: monospace;">
+                {'<br>'.join([f"• {os.path.basename(m['from'])} → {m['base_model']}/" for m in organization_plan['moves'][:50]])}
+                {f'<br><em>... and {total_moves - 50} more</em>' if total_moves > 50 else ''}
+            </div>
+        </details>
     </div>
     '''
     
@@ -2045,10 +2060,21 @@ def save_organization_backup(organization_plan):
     """
     from datetime import datetime
     
+    # Calculate statistics
+    total_files = len(organization_plan['moves'])
+    total_size = sum(info['size'] for info in organization_plan['summary'].values())
+    
     backup_data = {
         'timestamp': datetime.now().strftime('%Y-%m-%d_%H-%M-%S'),
+        'date_readable': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'moves': organization_plan['moves'],
-        'summary': organization_plan['summary']
+        'summary': organization_plan['summary'],
+        'stats': {
+            'total_files': total_files,
+            'total_size': total_size,
+            'total_folders': len(organization_plan['summary']),
+            'folders': list(organization_plan['summary'].keys())
+        }
     }
     
     # Load existing backup file
@@ -2373,13 +2399,21 @@ def rollback_organization(progress=gr.Progress() if queue else None):
     
     result = execute_rollback(progress)
     
-    # Generate result message
+    # Get backup stats if available
+    stats = backup.get('stats', {})
+    total_size = stats.get('total_size', 0)
+    
+    # Generate compact result message
     if result['success']:
         result_html = f'''
         <div style="padding: 20px; text-align: center; color: var(--color-accent);">
-            <h3>✅ Rollback Complete!</h3>
-            <p>{result['completed']} files successfully moved back to original locations.</p>
-            <p>Backup: {timestamp}</p>
+            <h2 style="margin: 0 0 15px 0;">✅ Rollback Complete!</h2>
+            <div style="font-size: 16px;">
+                <strong>{result['completed']} files</strong> {f'({format_size(total_size)})' if total_size > 0 else ''} restored to original locations
+            </div>
+            <div style="margin-top: 10px; font-size: 13px; opacity: 0.8;">
+                Backup: {timestamp}
+            </div>
         </div>
         '''
     else:
@@ -2388,13 +2422,16 @@ def rollback_organization(progress=gr.Progress() if queue else None):
             error_list += f'<br><em>... and {len(result["errors"]) - 10} more errors</em>'
         
         result_html = f'''
-        <div style="padding: 20px; border: 1px solid var(--error-border-color); border-radius: 8px;">
-            <h3 style="color: var(--error-text-color);">⚠️ Rollback Completed with Errors</h3>
-            <p>Completed: {result['completed']}/{result['total']} files</p>
-            <p>Backup: {timestamp}</p>
-            <details>
-                <summary style="cursor: pointer;">View errors</summary>
-                <div style="margin-top: 10px; padding: 10px; background: var(--block-background-fill); border-radius: 5px;">
+        <div style="padding: 20px; text-align: center; color: var(--error-text-color);">
+            <h2 style="margin: 0 0 15px 0;">⚠️ Rollback Completed with Errors</h2>
+            <div style="font-size: 16px; margin-bottom: 15px;">
+                {result['completed']}/{result['total']} files restored | {len(result['errors'])} errors
+            </div>
+            <details style="text-align: left;">
+                <summary style="cursor: pointer; padding: 8px; background: var(--block-background-fill); border-radius: 5px;">
+                    View errors
+                </summary>
+                <div style="margin-top: 10px; padding: 10px; background: var(--block-background-fill); border-radius: 5px; font-size: 13px; max-height: 200px; overflow-y: auto;">
                     {error_list}
                 </div>
             </details>
@@ -2411,6 +2448,283 @@ def save_tag_finish():
 def save_preview_finish():
     set_globals('reset')
     return finish_returns()
+
+def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queue else None):
+    """
+    Generate dashboard statistics showing disk usage by model type
+    Returns HTML with detailed breakdown of files and sizes per baseModel category
+    """
+    import os
+    from collections import defaultdict
+    
+    if progress:
+        progress(0, desc="Starting dashboard generation...")
+    
+    # Get content types to scan
+    if not selected_types:
+        return gr.update(value='<div style="padding: 20px; text-align: center;">Please select at least one content type to scan.</div>')
+    
+    # Dictionary to store stats: {baseModel: {'count': int, 'size': int, 'files': []}}
+    model_stats = defaultdict(lambda: {'count': 0, 'size': 0, 'files': []})
+    total_files = 0
+    total_size = 0
+    scanned_files = 0
+    
+    # Get all model files
+    all_files = []
+    folders_to_check = []
+    
+    # Build list of folders to check
+    for content_type in selected_types:
+        if content_type == 'Checkpoint':
+            folder = _api.contenttype_folder('Checkpoint')
+            if folder:
+                folders_to_check.append(folder)
+        elif content_type == 'LORA':
+            folder = _api.contenttype_folder('LORA')
+            if folder:
+                folders_to_check.append(folder)
+        elif content_type == 'TextualInversion':
+            folder = _api.contenttype_folder('TextualInversion')
+            if folder:
+                folders_to_check.append(folder)
+        elif content_type == 'VAE':
+            folder = _api.contenttype_folder('VAE')
+            if folder:
+                folders_to_check.append(folder)
+        elif content_type == 'Controlnet':
+            folder = _api.contenttype_folder('Controlnet')
+            if folder:
+                folders_to_check.append(folder)
+        elif content_type == 'Upscaler':
+            # Upscalers have multiple subfolders
+            for desc in ['ESRGAN', 'RealESRGAN', 'SwinIR', 'GFPGAN', 'BSRGAN']:
+                folder = _api.contenttype_folder('Upscaler', desc)
+                if folder:
+                    folders_to_check.append(folder)
+        elif content_type == 'MotionModule':
+            folder = _api.contenttype_folder('MotionModule')
+            if folder:
+                folders_to_check.append(folder)
+        elif content_type == 'AestheticGradient':
+            folder = _api.contenttype_folder('AestheticGradient')
+            if folder:
+                folders_to_check.append(folder)
+        elif content_type == 'Poses':
+            folder = _api.contenttype_folder('Poses')
+            if folder:
+                folders_to_check.append(folder)
+        elif content_type == 'Detection':
+            folder = _api.contenttype_folder('Detection')
+            if folder:
+                folders_to_check.append(folder)
+        elif content_type == 'Wildcards':
+            folder = _api.contenttype_folder('Wildcards')
+            if folder:
+                folders_to_check.append(folder)
+        elif content_type == 'Workflows':
+            folder = _api.contenttype_folder('Workflows')
+            if folder:
+                folders_to_check.append(folder)
+        elif content_type == 'Other':
+            folder = _api.contenttype_folder('Other')
+            if folder:
+                folders_to_check.append(folder)
+    
+    # Scan all folders
+    folder_to_type = {}  # Map folder path to content type
+    for folder in folders_to_check:
+        if not folder or not os.path.isdir(str(folder)):
+            continue
+        folder_str = str(folder)
+        # Detect content type from folder path
+        if 'Stable-diffusion' in folder_str or 'Checkpoint' in folder_str:
+            folder_to_type[folder_str] = 'Checkpoint'
+        elif 'Lora' in folder_str or 'LORA' in folder_str:
+            folder_to_type[folder_str] = 'LORA'
+        elif 'embeddings' in folder_str or 'TextualInversion' in folder_str:
+            folder_to_type[folder_str] = 'TextualInversion'
+        elif 'VAE' in folder_str:
+            folder_to_type[folder_str] = 'VAE'
+        elif 'ControlNet' in folder_str or 'Controlnet' in folder_str:
+            folder_to_type[folder_str] = 'ControlNet'
+        elif 'ESRGAN' in folder_str:
+            folder_to_type[folder_str] = 'Upscaler (ESRGAN)'
+        elif 'RealESRGAN' in folder_str:
+            folder_to_type[folder_str] = 'Upscaler (RealESRGAN)'
+        elif 'SwinIR' in folder_str:
+            folder_to_type[folder_str] = 'Upscaler (SwinIR)'
+        elif 'GFPGAN' in folder_str:
+            folder_to_type[folder_str] = 'Upscaler (GFPGAN)'
+        elif 'BSRGAN' in folder_str:
+            folder_to_type[folder_str] = 'Upscaler (BSRGAN)'
+        elif 'animatediff' in folder_str or 'MotionModule' in folder_str:
+            folder_to_type[folder_str] = 'MotionModule'
+        elif 'aesthetic' in folder_str or 'AestheticGradient' in folder_str:
+            folder_to_type[folder_str] = 'AestheticGradient'
+        elif 'Poses' in folder_str:
+            folder_to_type[folder_str] = 'Poses'
+        elif 'adetailer' in folder_str or 'Detection' in folder_str:
+            folder_to_type[folder_str] = 'Detection'
+        elif 'wildcards' in folder_str or 'Wildcards' in folder_str:
+            folder_to_type[folder_str] = 'Wildcards'
+        elif 'Workflows' in folder_str:
+            folder_to_type[folder_str] = 'Workflows'
+        elif 'Other' in folder_str:
+            folder_to_type[folder_str] = 'Other'
+        else:
+            folder_to_type[folder_str] = 'Unknown'
+        
+        for root, dirs, files in os.walk(folder_str):
+            for file in files:
+                # Include different file types based on content type
+                if folder_to_type.get(folder_str) == 'Wildcards':
+                    # Wildcards are text files
+                    if file.endswith(('.txt', '.yaml', '.yml')):
+                        file_path = os.path.join(root, file)
+                        all_files.append((file_path, folder_to_type.get(folder_str, 'Unknown')))
+                elif folder_to_type.get(folder_str) == 'Workflows':
+                    # Workflows are JSON files
+                    if file.endswith(('.json', '.workflow')):
+                        file_path = os.path.join(root, file)
+                        all_files.append((file_path, folder_to_type.get(folder_str, 'Unknown')))
+                else:
+                    # Model files
+                    if file.endswith(('.safetensors', '.ckpt', '.pt', '.pth', '.vae', '.zip', '.th')):
+                        file_path = os.path.join(root, file)
+                        all_files.append((file_path, folder_to_type.get(folder_str, 'Unknown')))
+    
+    total_to_scan = len(all_files)
+    if total_to_scan == 0:
+        return gr.update(value='<div style="padding: 20px; text-align: center;">No model files found in selected directories.</div>')
+    
+    if progress:
+        progress(0, desc=f"Scanning {total_to_scan} model files...")
+    
+    # Scan each file
+    for idx, (file_path, content_type) in enumerate(all_files):
+        try:
+            if progress and idx % 10 == 0:
+                progress(idx / total_to_scan, desc=f"Scanning {idx}/{total_to_scan} files...")
+            
+            # Get file size
+            file_size = os.path.getsize(file_path)
+            
+            # Determine category based on content type
+            if content_type in ['Checkpoint', 'LORA']:
+                # For Checkpoints and LORAs, use baseModel classification
+                model_info = get_model_info_for_organization(file_path)
+                base_model = model_info.get('base_model', 'Unknown') if model_info else 'Unknown'
+                
+                # Normalize to folder name
+                normalized = normalize_base_model(base_model)
+                if not normalized:
+                    category = f'{content_type} (Root)'
+                else:
+                    category = f'{content_type} → {normalized}'
+            else:
+                # For other types, just use the content type
+                category = content_type
+            
+            # Update stats
+            model_stats[category]['count'] += 1
+            model_stats[category]['size'] += file_size
+            model_stats[category]['files'].append(os.path.basename(file_path))
+            
+            total_files += 1
+            total_size += file_size
+            scanned_files += 1
+            
+        except Exception as e:
+            print(f"[Dashboard] Error processing {file_path}: {e}")
+            continue
+    
+    if progress:
+        progress(1.0, desc="Generating dashboard...")
+    
+    # Format sizes
+    def format_size(size_bytes):
+        """Format bytes to human readable format"""
+        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+            if size_bytes < 1024.0:
+                return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.1f} PB"
+    
+    # Sort by size (descending)
+    sorted_stats = sorted(model_stats.items(), key=lambda x: x[1]['size'], reverse=True)
+    
+    # Generate HTML
+    html_parts = []
+    
+    # Header with total stats
+    html_parts.append(f'''
+    <div style="padding: 20px; font-family: Arial, sans-serif;">
+        <h2 style="margin: 0 0 20px 0; color: var(--body-text-color); text-align: center;">
+            📊 Model Collection Dashboard
+        </h2>
+        <div style="text-align: center; font-size: 18px; margin-bottom: 30px; padding: 15px; background: var(--block-background-fill); border-radius: 8px;">
+            <strong>{total_files} files ({format_size(total_size)}) → {len(model_stats)} categories</strong>
+        </div>
+    ''')
+    
+    # Table with breakdown
+    if sorted_stats:
+        html_parts.append('''
+        <table style="width: 100%; border-collapse: collapse; margin: 0 auto; max-width: 900px;">
+            <thead>
+                <tr style="background: var(--block-title-background-fill); border-bottom: 2px solid var(--border-color-primary);">
+                    <th style="padding: 12px; text-align: left; font-size: 14px;">Model Type</th>
+                    <th style="padding: 12px; text-align: center; font-size: 14px;">Files</th>
+                    <th style="padding: 12px; text-align: right; font-size: 14px;">Total Size</th>
+                    <th style="padding: 12px; text-align: right; font-size: 14px;">% of Total</th>
+                </tr>
+            </thead>
+            <tbody>
+        ''')
+        
+        for category, stats in sorted_stats:
+            percentage = (stats['size'] / total_size * 100) if total_size > 0 else 0
+            
+            # Create visual bar for percentage
+            bar_width = int(percentage)
+            bar_html = f'''
+            <div style="background: linear-gradient(90deg, var(--primary-500) 0%, var(--primary-400) 100%); 
+                        height: 6px; width: {bar_width}%; border-radius: 3px; margin-top: 4px;"></div>
+            '''
+            
+            html_parts.append(f'''
+                <tr style="border-bottom: 1px solid var(--border-color-primary);">
+                    <td style="padding: 12px; font-weight: bold; color: var(--body-text-color);">
+                        {category}
+                        {bar_html}
+                    </td>
+                    <td style="padding: 12px; text-align: center; color: var(--body-text-color-subdued);">
+                        {stats['count']}
+                    </td>
+                    <td style="padding: 12px; text-align: right; color: var(--body-text-color);">
+                        {format_size(stats['size'])}
+                    </td>
+                    <td style="padding: 12px; text-align: right; color: var(--body-text-color-subdued);">
+                        {percentage:.1f}%
+                    </td>
+                </tr>
+            ''')
+        
+        html_parts.append('''
+            </tbody>
+        </table>
+        ''')
+    
+    # Footer
+    html_parts.append(f'''
+        <div style="margin-top: 20px; text-align: center; font-size: 13px; color: var(--body-text-color-subdued);">
+            <em>Dashboard generated on {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</em>
+        </div>
+    </div>
+    ''')
+    
+    return gr.update(value=''.join(html_parts))
 
 def scan_finish():
     set_globals('reset')

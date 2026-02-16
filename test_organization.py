@@ -107,6 +107,7 @@ try:
     settings_to_check = [
         'civitai_neo_auto_organize',
         'civitai_neo_create_other_folder',
+        'civitai_neo_debug_organize',
         'civitai_neo_model_categories'
     ]
     

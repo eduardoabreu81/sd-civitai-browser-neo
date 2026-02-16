@@ -210,6 +210,11 @@ def on_ui_tabs():
     
     # Local Models tab should only scan Checkpoint and LORA folders
     local_scan_choices = ['Checkpoint', 'LORA']
+    
+    # Dashboard can scan all model types
+    dashboard_scan_choices = ['Checkpoint', 'LORA', 'TextualInversion', 'VAE', 'Controlnet', 
+                              'Upscaler', 'MotionModule', 'AestheticGradient', 'Poses', 
+                              'Detection', 'Wildcards', 'Workflows', 'Other']
 
     with gr.Blocks() as civitai_interface:
         ## Browser Tab
@@ -361,6 +366,40 @@ def on_ui_tabs():
                 undo_organization = gr.Button(value='↶ Undo Last Organization', interactive=True, visible=True, variant='secondary')
             with gr.Row():
                 undo_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+
+        ## Dashboard Tab
+        with gr.Tab(label='Dashboard', elem_id='dashboardTab'):
+            gr.Markdown('## 📊 Model Collection Statistics', elem_id='dashboard_header')
+            gr.Markdown('View disk usage statistics for your model collection organized by type.')
+            
+            with gr.Row():
+                dashboard_content_types = gr.CheckboxGroup(
+                    elem_id='dashboard_content_types', 
+                    label='Content types to analyze:', 
+                    choices=dashboard_scan_choices, 
+                    value=['Checkpoint', 'LORA']
+                )
+            
+            with gr.Row():
+                generate_dashboard = gr.Button(
+                    value='📊 Generate Dashboard', 
+                    interactive=True, 
+                    visible=True, 
+                    variant='primary'
+                )
+                refresh_dashboard = gr.Button(
+                    value='🔄 Refresh', 
+                    interactive=True, 
+                    visible=True
+                )
+            
+            with gr.Row():
+                dashboard_html = gr.HTML(value='''
+                    <div style="padding: 40px; text-align: center; color: var(--body-text-color-subdued);">
+                        <h3 style="margin: 0 0 10px 0;">Click "Generate Dashboard" to view statistics</h3>
+                        <p style="margin: 0;">This will scan your model directories and show disk usage by model type.</p>
+                    </div>
+                ''')
 
         def format_custom_subfolders():
             separator = '␞␞'
@@ -1156,6 +1195,18 @@ def on_ui_tabs():
             ]
         )
 
+        generate_dashboard.click(
+            fn=_file.generate_dashboard_statistics,
+            inputs=[dashboard_content_types],
+            outputs=[dashboard_html]
+        )
+
+        refresh_dashboard.click(
+            fn=_file.generate_dashboard_statistics,
+            inputs=[dashboard_content_types],
+            outputs=[dashboard_html]
+        )
+
         load_to_browser_outdated.click(
             fn=_file.load_to_browser,
             inputs=load_to_browser_inputs,
@@ -1605,6 +1656,16 @@ def on_ui_settings():
             section=organization,
             category_id=cat_id
         ).info('When disabled, unrecognized models will be placed in the root folder')
+    )
+    
+    shared.opts.add_option(
+        'civitai_neo_debug_organize',
+        shared.OptionInfo(
+            default=False,
+            label='Enable debug logs for organization system',
+            section=organization,
+            category_id=cat_id
+        ).info('Show detailed debug logs when organizing models. Useful for troubleshooting baseModel detection issues.')
     )
     
     shared.opts.add_option(
