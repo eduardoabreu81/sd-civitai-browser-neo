@@ -251,7 +251,7 @@ The Dashboard provides comprehensive insight into your model collection with det
 
 **For Checkpoints & LORAs:**
 - Shows baseModel categorization (Pony, SDXL, FLUX, etc.)
-- `→ Não classificado`: Files in root directory without organization
+- `→ Unorganized`: Files in root directory without organization
 - `→ Other`: Files in "Other" subfolder or unrecognized types
 
 **For Other Types:**
@@ -348,7 +348,7 @@ You can define your own categories in **Settings** → **Model Organization** us
 ##  Known Issues
 
 - Some models may not have `baseModel` metadata (download from CivitAI to get it)
-- Dashboard shows "Não classificado" for models without JSON metadata or in root folder
+- Dashboard shows "Unorganized" for models without JSON metadata or in root folder
 - Rollback only works for the last operation
 - Maximum 5 backups are kept (older ones are deleted)
 
