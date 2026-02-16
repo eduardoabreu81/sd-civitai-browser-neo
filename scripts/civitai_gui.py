@@ -219,6 +219,9 @@ def on_ui_tabs():
     with gr.Blocks() as civitai_interface:
         ## Browser Tab
         with gr.Tab(label='Browser', elem_id='browserTab'):
+            gr.Markdown('## 🔍 Browse CivitAI Models', elem_id='browser_header')
+            gr.Markdown('Search, discover, and download models directly from CivitAI.')
+            
             with gr.Row(elem_id='searchRow'):
                 with gr.Accordion(label='', open=False, elem_id=filterBox):
                     with gr.Row():
@@ -287,24 +290,44 @@ def on_ui_tabs():
 
         ## Update Tab
         with gr.Tab(label='Update Models', elem_id='updateTab'):
+            gr.Markdown('## 🔄 Update & Maintain Models', elem_id='update_header')
+            gr.Markdown('Keep your models up-to-date and manage metadata, previews, and tags.')
+            
             with gr.Row():
                 selected_tags = gr.CheckboxGroup(elem_id='selected_tags', label='Selected content types:', choices=scan_choices, value=['All'])
-            with gr.Row(elem_id='civitai_update_toggles'):
-                overwrite_toggle = gr.Checkbox(elem_id='overwrite_toggle', label='Overwrite any existing files (previews, HTMLs, tags, descriptions)', value=True, min_width=300)
-                skip_hash_toggle = gr.Checkbox(elem_id='skip_hash_toggle', label='One-Time Hash Generation for externally downloaded models', value=True, min_width=300)
-                do_html_gen = gr.Checkbox(elem_id='do_html_gen', label='Save HTML file for each model when updating info & tags', value=False, min_width=300)
+            
+            with gr.Accordion(label='🔧 Scan Options', open=False):
+                with gr.Row(elem_id='civitai_update_toggles'):
+                    overwrite_toggle = gr.Checkbox(elem_id='overwrite_toggle', label='Overwrite any existing files (previews, HTMLs, tags, descriptions)', value=True, min_width=300)
+                    skip_hash_toggle = gr.Checkbox(elem_id='skip_hash_toggle', label='One-Time Hash Generation for externally downloaded models', value=True, min_width=300)
+                    do_html_gen = gr.Checkbox(elem_id='do_html_gen', label='Save HTML file for each model when updating info & tags', value=False, min_width=300)
+            
+            gr.Markdown('---')
+            gr.Markdown('### 📝 Update Model Information')
+            gr.Markdown('Fetch and update metadata, tags, and descriptions from CivitAI.')
+            
             with gr.Row():
-                save_all_tags = gr.Button(value='Update model info & tags', interactive=True, visible=True)
+                save_all_tags = gr.Button(value='📝 Update model info & tags', interactive=True, visible=True, variant='primary')
                 cancel_all_tags = gr.Button(value='Cancel updating model info & tags', interactive=False, visible=False)
             with gr.Row():
                 tag_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+            
+            gr.Markdown('---')
+            gr.Markdown('### 🖼️ Update Model Previews')
+            gr.Markdown('Download and refresh preview images for your models.')
+            
             with gr.Row():
-                update_preview = gr.Button(value='Update model preview', interactive=True, visible=True)
+                update_preview = gr.Button(value='🖼️ Update model preview', interactive=True, visible=True, variant='primary')
                 cancel_update_preview = gr.Button(value='Cancel updating model previews', interactive=False, visible=False)
             with gr.Row():
                 preview_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+            
+            gr.Markdown('---')
+            gr.Markdown('### 🔍 Check for Updates')
+            gr.Markdown('Scan your collection for newer versions available on CivitAI.')
+            
             with gr.Row():
-                ver_search = gr.Button(value='Scan for available updates', interactive=True, visible=True)
+                ver_search = gr.Button(value='🔍 Scan for available updates', interactive=True, visible=True, variant='primary')
                 cancel_ver_search = gr.Button(value='Cancel updates scan', interactive=False, visible=False)
                 load_to_browser_outdated = gr.Button(value='Load outdated models to browser', interactive=False, visible=False)
             with gr.Row():
@@ -312,7 +335,9 @@ def on_ui_tabs():
 
         ## Queue Tab
         with gr.Tab(label='Download Queue', elem_id='queueTab'):
-
+            gr.Markdown('## 📥 Download Queue Manager', elem_id='queue_header')
+            gr.Markdown('Monitor and manage your active downloads. Drag items to reorder the queue.')
+            
             def get_style(size, left_border):
                 return f"flex-grow: {size};" + ('border-left: 1px solid var(--border-color-primary);' if left_border else '') + 'border-bottom: 1px solid var(--border-color-primary);padding: 5px 10px 5px 10px;width: 0;'
 
@@ -344,6 +369,10 @@ def on_ui_tabs():
                     overwrite_toggle_local = gr.Checkbox(elem_id='overwrite_toggle_local', label='Overwrite any existing files (previews, HTMLs, tags, descriptions)', value=True, min_width=300)
                     skip_hash_toggle_local = gr.Checkbox(elem_id='skip_hash_toggle_local', label='One-Time Hash Generation for externally downloaded models', value=True, min_width=300)
                     do_html_gen_local = gr.Checkbox(elem_id='do_html_gen_local', label='Save HTML file for each model when updating info & tags', value=False, min_width=300)
+            
+            gr.Markdown('---')
+            gr.Markdown('### 📋 Load Installed Models')
+            gr.Markdown('Scan and load information about all models currently installed on your system.')
             
             with gr.Row():
                 load_installed = gr.Button(value='📋 Load all installed models', interactive=True, visible=True, variant='primary')
@@ -395,9 +424,15 @@ def on_ui_tabs():
             
             with gr.Row():
                 dashboard_html = gr.HTML(value='''
-                    <div style="padding: 40px; text-align: center; color: var(--body-text-color-subdued);">
-                        <h3 style="margin: 0 0 10px 0;">Click "Generate Dashboard" to view statistics</h3>
-                        <p style="margin: 0;">This will scan your model directories and show disk usage by model type.</p>
+                    <div style="padding: 60px 20px; text-align: center; background: var(--block-background-fill); border-radius: 8px; margin: 20px 0;">
+                        <div style="font-size: 64px; margin-bottom: 20px; opacity: 0.6;">📊</div>
+                        <h3 style="margin: 0 0 15px 0; color: var(--body-text-color); font-size: 20px;">Ready to analyze your collection</h3>
+                        <p style="margin: 0 0 10px 0; color: var(--body-text-color-subdued); font-size: 15px;">
+                            Select the content types you want to analyze and click <strong>Generate Dashboard</strong>.
+                        </p>
+                        <p style="margin: 0; color: var(--body-text-color-subdued); font-size: 14px;">
+                            This will scan your model directories and show detailed disk usage statistics.
+                        </p>
                     </div>
                 ''')
 
