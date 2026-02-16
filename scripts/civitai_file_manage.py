@@ -2457,7 +2457,7 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
     import os
     from collections import defaultdict
     
-    if progress:
+    if progress is not None:
         progress(0, desc="Starting dashboard generation...")
     
     # Get content types to scan
@@ -2598,13 +2598,13 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
     if total_to_scan == 0:
         return gr.update(value='<div style="padding: 20px; text-align: center;">No model files found in selected directories.</div>')
     
-    if progress:
+    if progress is not None:
         progress(0, desc=f"Scanning {total_to_scan} model files...")
     
     # Scan each file
     for idx, (file_path, content_type) in enumerate(all_files):
         try:
-            if progress and idx % 10 == 0:
+            if progress is not None and idx % 10 == 0:
                 progress(idx / total_to_scan, desc=f"Scanning {idx}/{total_to_scan} files...")
             
             # Get file size
@@ -2639,7 +2639,7 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
             print(f"[Dashboard] Error processing {file_path}: {e}")
             continue
     
-    if progress:
+    if progress is not None:
         progress(1.0, desc="Generating dashboard...")
     
     # Format sizes
