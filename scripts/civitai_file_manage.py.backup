@@ -2455,7 +2455,6 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
     Returns HTML with detailed breakdown of files and sizes per folder
     """
     import os
-    import math
     from collections import defaultdict
     
     if progress is not None:
@@ -2580,9 +2579,193 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
                             total_size += file_size
                         except:
                             pass
+            for desc in ['ESRGAN', 'RealESRGAN', 'SwinIR', 'GFPGAN', 'BSRGAN']:
+                folder = _api.contenttype_folder('Upscaler', desc)
+                if folder:
+                    folders_to_check.append(folder)
+        elif content_type == 'MotionModule':
+            folder = _api.contenttype_folder('MotionModule')
+            if folder:
+                folders_to_check.append(folder)
+        elif content_type == 'AestheticGradient':
+            folder = _api.contenttype_folder('AestheticGradient')
+            if folder:
+                folders_to_check.append(folder)
+        elif content_type == 'Poses':
+            folder = _api.contenttype_folder('Poses')
+            if folder:
+                folders_to_check.append(folder)
+        elif content_type == 'Detection':
+            folder = _api.contenttype_folder('Detection')
+            if folder:
+                folders_to_check.append(folder)
+        elif content_type == 'Wildcards':
+            folder = _api.contenttype_folder('Wildcards')
+            if folder:
+                folders_to_check.append(folder)
+        elif content_type == 'Workflows':
+            folder = _api.contenttype_folder('Workflows')
+            if folder:
+                folders_to_check.append(folder)
+        elif content_type == 'Other':
+            folder = _api.contenttype_folder('Other')
+            if folder:
+                folders_to_check.append(folder)
     
-    if total_files == 0:
+    # Scan all folders
+    folder_to_type = {}  # Map folder path to content type
+    for folder in folders_to_check:
+        if not folder or not os.path.isdir(str(folder)):
+            continue
+        folder_str = str(folder)
+        # Detect content type from folder path
+        if 'Stable-diffusion' in folder_str or 'Checkpoint' in folder_str:
+            folder_to_type[folder_str] = 'Checkpoint'
+        elif 'Lora' in folder_str or 'LORA' in folder_str:
+            folder_to_type[folder_str] = 'LORA'
+        elif 'embeddings' in folder_str or 'TextualInversion' in folder_str:
+            folder_to_type[folder_str] = 'TextualInversion'
+        elif 'VAE' in folder_str:
+            folder_to_type[folder_str] = 'VAE'
+        elif 'ControlNet' in folder_str or 'Controlnet' in folder_str:
+            folder_to_type[folder_str] = 'ControlNet'
+        elif 'ESRGAN' in folder_str:
+            folder_to_type[folder_str] = 'Upscaler (ESRGAN)'
+        elif 'RealESRGAN' in folder_str:
+            folder_to_type[folder_str] = 'Upscaler (RealESRGAN)'
+        elif 'SwinIR' in folder_str:
+            folder_to_type[folder_str] = 'Upscaler (SwinIR)'
+        elif 'GFPGAN' in folder_str:
+            folder_to_type[folder_str] = 'Upscaler (GFPGAN)'
+        elif 'BSRGAN' in folder_str:
+            folder_to_type[folder_str] = 'Upscaler (BSRGAN)'
+        elif 'animatediff' in folder_str or 'MotionModule' in folder_str:
+            folder_to_type[folder_str] = 'MotionModule'
+        elif 'aesthetic' in folder_str or 'AestheticGradient' in folder_str:
+            folder_to_type[folder_str] = 'AestheticGradient'
+        elif 'Poses' in folder_str:
+            folder_to_type[folder_str] = 'Poses'
+        elif 'adetailer' in folder_str or 'Detection' in folder_str:
+            folder_to_type[folder_str] = 'Detection'
+        elif 'wildcards' in folder_str or 'Wildcards' in folder_str:
+            folder_to_type[folder_str] = 'Wildcards'
+        elif 'Workflows' in folder_str:
+            folder_to_type[folder_str] = 'Workflows'
+        elif 'Other' in folder_str:
+            folder_to_type[folder_str] = 'Other'
+        else:
+            folder_to_type[folder_str] = 'Unknown'
+        
+        for root, dirs, files in os.walk(folder_str):
+            for file in files:
+                # Include different file types based on content type
+                if folder_to_type.get(folder_str) == 'Wildcards':
+                    # Wildcards are text files
+                    if file.endswith(('.txt', '.yaml', '.yml')):
+                        file_path = os.path.join(root, file)
+                        all_files.append((file_path, folder_to_type.get(folder_str, 'Unknown')))
+                elif folder_to_type.get(folder_str) == 'Workflows':
+                    # Workflows are JSON files
+                    if file.endswith(('.json', '.workflow')):
+                        file_path = os.path.join(root, file)
+                        all_files.append((file_path, folder_to_type.get(folder_str, 'Unknown')))
+                else:
+                    # Model files
+                    if file.endswith(('.safetensors', '.ckpt', '.pt', '.pth', '.vae', '.zip', '.th')):
+                        file_path = os.path.join(root, file)
+                        all_files.append((file_path, folder_to_type.get(folder_str, 'Unknown')))
+    
+    total_to_scan = len(all_files)
+    if total_to_scan == 0:
         return gr.update(value='<div style="padding: 20px; text-align: center;">No model files found in selected directories.</div>')
+    
+    if progress is not None:
+        progress(0, desc=f"Scanning {total_to_scan} model files...")
+    
+    # Scan each file
+    for idx, (file_path, content_type) in enumerate(all_files):
+        try:
+            if progress is not None and idx % 10 == 0:
+                progress(idx / total_to_scan, desc=f"Scanning {idx}/{total_to_scan} files...")
+            
+            # Get file size
+            file_size = os.path.getsize(file_path)
+            
+            # Determine category based on content type
+            if content_type in ['Checkpoint', 'LORA']:
+                # For Checkpoints and LORAs, use baseModel classification
+                base_model_from_json, model_name = get_model_info_for_organization(file_path)
+                base_model = base_model_from_json
+                is_in_root = False
+                detected_from = "json"
+                
+                # Fallback: detect from folder path if no baseModel in JSON
+                if not base_model:
+                    # Try to detect subfolder (e.g., /Stable-diffusion/Pony/ -> Pony)
+                    path_parts = file_path.replace('\\', '/').split('/')
+                    # Find the content type folder index
+                    for i, part in enumerate(path_parts):
+                        if content_type == 'Checkpoint' and ('Stable-diffusion' in part or 'Checkpoint' in part):
+                            # Check if there's a subfolder after the content type folder
+                            if i + 1 < len(path_parts) - 1:  # -1 to exclude the filename
+                                subfolder = path_parts[i + 1]
+                                base_model = subfolder
+                                detected_from = "folder"
+                            else:
+                                # File is directly in root folder
+                                is_in_root = True
+                            break
+                        elif content_type == 'LORA' and ('Lora' in part or 'LORA' in part):
+                            # Check if there's a subfolder after the content type folder
+                            if i + 1 < len(path_parts) - 1:  # -1 to exclude the filename
+                                subfolder = path_parts[i + 1]
+                                base_model = subfolder
+                                detected_from = "folder"
+                            else:
+                                # File is directly in root folder
+                                is_in_root = True
+                            break
+                
+                # Debug: print first 10 detections
+                if idx < 10:
+                    print(f"[Dashboard Debug] {os.path.basename(file_path)}: base_model='{base_model}' (from {detected_from})")
+                
+                # Create category
+                if is_in_root:
+                    # File is directly in root (no subfolder)
+                    category = f'{content_type} → Não classificado'
+                else:
+                    # Normalize to folder name
+                    normalized = normalize_base_model(base_model)
+                    if not normalized:
+                        # normalize_base_model returned None - arquivo no raiz pela configuração
+                        category = f'{content_type} → Não classificado'
+                    else:
+                        # normalized pode ser "Other", "Pony", "SDXL", etc.
+                        category = f'{content_type} → {normalized}'
+            else:
+                # For other types, just use the content type
+                category = content_type
+                        category = f'{content_type} → Não classificado'
+                    else:
+                        # normalized pode ser "Other", "Pony", "SDXL", etc.
+                        category = f'{content_type} → {normalized}'
+            else:
+                # For other types, just use the content type
+                category = content_type
+            
+            # Update stats
+            model_stats[category]['count'] += 1
+            model_stats[category]['size'] += file_size
+            model_stats[category]['files'].append(os.path.basename(file_path))
+            
+            total_files += 1
+            total_size += file_size
+            scanned_files += 1
+            
+        except Exception as e:
+            print(f"[Dashboard] Error processing {file_path}: {e}")
+            continue
     
     if progress is not None:
         progress(1.0, desc="Generating dashboard...")
@@ -2613,111 +2796,16 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
         </div>
     ''')
     
-    # Pie chart
-    if sorted_stats:
-        # Generate pie chart using SVG
-        pie_colors = [
-            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
-            '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0', '#FF6384',
-            '#36A2EB', '#FFCE56', '#FF9F40', '#9966FF', '#C9CBCF'
-        ]
-        
-        # Prepare data for top categories (show top 8, group rest as "Other")
-        top_categories = sorted_stats[:8]
-        other_size = sum(stats['size'] for _, stats in sorted_stats[8:])
-        other_count = sum(stats['count'] for _, stats in sorted_stats[8:])
-        
-        if len(sorted_stats) > 8 and other_size > 0:
-            chart_data = top_categories + [('Others', {'size': other_size, 'count': other_count})]
-        else:
-            chart_data = sorted_stats
-        
-        # Calculate angles for pie slices
-        total = sum(stats['size'] for _, stats in chart_data)
-        angles = []
-        current_angle = 0
-        
-        for category, stats in chart_data:
-            percentage = (stats['size'] / total * 100) if total > 0 else 0
-            angle = (stats['size'] / total * 360) if total > 0 else 0
-            angles.append((category, percentage, current_angle, current_angle + angle, stats))
-            current_angle += angle
-        
-        # Generate SVG pie chart
-        svg_parts = []
-        svg_parts.append('''
-        <div style="display: flex; justify-content: center; margin: 30px 0; flex-wrap: wrap; gap: 40px;">
-            <div style="position: relative;">
-                <svg viewBox="0 0 200 200" style="width: 300px; height: 300px; transform: rotate(-90deg);">
-        ''')
-        
-        for i, (category, percentage, start_angle, end_angle, stats) in enumerate(angles):
-            if percentage < 0.1:  # Skip very small slices
-                continue
-            
-            # Convert angles to radians
-            start_rad = start_angle * math.pi / 180
-            end_rad = end_angle * math.pi / 180
-            
-            # Calculate arc path
-            x1 = 100 + 90 * math.cos(start_rad)
-            y1 = 100 + 90 * math.sin(start_rad)
-            x2 = 100 + 90 * math.cos(end_rad)
-            y2 = 100 + 90 * math.sin(end_rad)
-            
-            large_arc = 1 if (end_angle - start_angle) > 180 else 0
-            
-            color = pie_colors[i % len(pie_colors)]
-            
-            svg_parts.append(f'''
-                <path d="M 100 100 L {x1} {y1} A 90 90 0 {large_arc} 1 {x2} {y2} Z"
-                      fill="{color}" stroke="var(--block-background-fill)" stroke-width="2"
-                      style="transition: opacity 0.3s; cursor: pointer;"
-                      onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
-                    <title>{category}: {format_size(stats['size'])} ({percentage:.1f}%)</title>
-                </path>
-            ''')
-        
-        svg_parts.append('''
-                </svg>
-            </div>
-            <div style="display: flex; flex-direction: column; justify-content: center; gap: 8px;">
-        ''')
-        
-        # Legend
-        for i, (category, percentage, _, _, stats) in enumerate(angles):
-            if percentage < 0.1:
-                continue
-            color = pie_colors[i % len(pie_colors)]
-            svg_parts.append(f'''
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <div style="width: 20px; height: 20px; background: {color}; border-radius: 3px; flex-shrink: 0;"></div>
-                    <div style="color: var(--body-text-color); font-size: 13px;">
-                        <strong>{category}</strong><br>
-                        <span style="color: var(--body-text-color-subdued); font-size: 12px;">
-                            {format_size(stats['size'])} ({percentage:.1f}%)
-                        </span>
-                    </div>
-                </div>
-            ''')
-        
-        svg_parts.append('''
-            </div>
-        </div>
-        ''')
-        
-        html_parts.append(''.join(svg_parts))
-    
     # Table with breakdown
     if sorted_stats:
         html_parts.append('''
         <table style="width: 100%; border-collapse: collapse; margin: 0 auto; max-width: 900px;">
             <thead>
                 <tr style="background: var(--block-title-background-fill); border-bottom: 2px solid var(--border-color-primary);">
-                    <th style="padding: 12px; text-align: left; font-size: 14px;">MODEL TYPE</th>
-                    <th style="padding: 12px; text-align: center; font-size: 14px;">FILES</th>
-                    <th style="padding: 12px; text-align: right; font-size: 14px;">TOTAL SIZE</th>
-                    <th style="padding: 12px; text-align: right; font-size: 14px;">% OF TOTAL</th>
+                    <th style="padding: 12px; text-align: left; font-size: 14px;">Model Type</th>
+                    <th style="padding: 12px; text-align: center; font-size: 14px;">Files</th>
+                    <th style="padding: 12px; text-align: right; font-size: 14px;">Total Size</th>
+                    <th style="padding: 12px; text-align: right; font-size: 14px;">% of Total</th>
                 </tr>
             </thead>
             <tbody>
@@ -2765,7 +2853,6 @@ def generate_dashboard_statistics(selected_types, progress=gr.Progress() if queu
     ''')
     
     return gr.update(value=''.join(html_parts))
-
 
 def scan_finish():
     set_globals('reset')
