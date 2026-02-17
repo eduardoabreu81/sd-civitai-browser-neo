@@ -36,6 +36,69 @@
     box-shadow: 0 0 2px 2px aquamarine;
 }
 
+/* --- Card Legend --- */
+.card-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 18px;
+    padding: 8px 14px;
+    margin-bottom: 6px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    font-size: 0.78em;
+    color: rgba(255, 255, 255, 0.75);
+    user-select: none;
+    line-height: 1;
+}
+.card-legend .legend-title {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.45);
+    margin-right: 4px;
+}
+.card-legend .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+.card-legend .legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 2px solid transparent;
+}
+.card-legend .legend-dot.not-installed {
+    border-color: rgba(255, 255, 255, 0.2);
+    background: transparent;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+.card-legend .legend-dot.installed {
+    border-color: aquamarine;
+    background: transparent;
+    box-shadow: 0 0 4px 1px rgba(127, 255, 212, 0.5);
+}
+.card-legend .legend-dot.outdated {
+    border-color: orange;
+    background: transparent;
+    box-shadow: 0 0 4px 1px rgba(255, 165, 0, 0.5);
+}
+.card-legend .legend-dot.early-access {
+    border-color: gold;
+    background: transparent;
+    box-shadow: 0 0 4px 1px rgba(255, 215, 0, 0.5);
+}
+.card-legend .legend-separator {
+    width: 1px;
+    height: 14px;
+    background: rgba(255, 255, 255, 0.15);
+    margin: 0 2px;
+}
+
 .civmodelcard img,
 .civmodelcard .video-bg {
     width: 100%;
