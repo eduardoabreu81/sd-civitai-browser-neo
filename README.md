@@ -13,7 +13,8 @@ Modern fork of sd-civitai-browser-plus optimized for Forge Neo with auto-organiz
 ## 📋 Table of Contents
 
 - [Neo Versioning](#-neo-versioning)
-- [Neo Release History](#-neo-release-history)
+- [What's New](#-whats-new--v040)
+- [SD Civitai Browser Neo Release Story](#-sd-civitai-browser-neo-release-story)
 - [Roadmap](#%EF%B8%8F-roadmap)
 - [What's New in Neo?](#-whats-new-in-neo)
 - [Features](#-features)
@@ -42,15 +43,26 @@ Examples:
 
 ---
 
-## 🧾 Neo Release History
+## 🆕 What's New — v0.4.0
 
-### v0.4.0 (In Development)
+> **Update Intelligence** — smarter update detection, audit trail, and retention control.
+
+- **Dashboard update summary banner** — after running a scan, the Dashboard shows a live banner: ✅ green (all up to date) or ⚠️ orange with per-type breakdown (e.g. *Checkpoint: 2, LORA: 5*)
+- **Batch update from cards** — outdated cards (orange border) now show a **checkbox** instead of a delete button, enabling multi-select for batch download via the existing queue pipeline
+- **Retention policy** — new setting in *Model Organization*: `keep` both files, `move to _Trash` (subfolder next to old file), or `replace` (delete old before downloading new)
+- **Audit log** — every update scan and every retention action is appended to `neo_update_audit.jsonl` at the extension root for traceability
+
+---
+
+## 📖 SD Civitai Browser Neo Release Story
+
+### v0.4.0
 > **Theme: Update Intelligence** — smarter update workflow, Dashboard integration, retention policy, audit log.
 
-- [ ] Show update scan summary in Dashboard (outdated count per model type)
-- [ ] Single-model and batch update actions directly from cards (reuse existing queue pipeline)
-- [ ] Retention policy for old versions after update: `keep`, `move to _Trash`, or `replace`
-- [ ] Operation audit log for update actions (same safety model as organization operations)
+- [x] Dashboard update summary banner (outdated count per model type, timestamp, per-type pill breakdown)
+- [x] Batch update from cards: outdated cards now show checkboxes for multi-select download
+- [x] Retention policy for old versions: `keep`, `move to _Trash`, or `replace` (Settings → Model Organization)
+- [x] Audit log: `neo_update_audit.jsonl` — records every scan result and retention action
 
 ### v0.3.2
 - Added **card color legend** bar above the browser grid — always-visible reference for border colors (not installed, installed, update available, Early Access)
@@ -86,11 +98,11 @@ Examples:
 
 ## 🗺️ Roadmap
 
-### v0.4.0 — Update Intelligence *(in progress)*
-- Dashboard update summary (outdated count per type, integrated without replacing Update tab)
-- Single + batch update actions from card results
-- Old version retention policy (`keep` / `move to _Trash` / `replace`)
-- Audit log for update operations
+### v0.4.0 — Update Intelligence *(released)*
+- Dashboard update summary banner (outdated count per type)
+- Outdated cards show checkbox for batch update selection
+- Retention policy: `keep` / `move to _Trash` / `replace`
+- `neo_update_audit.jsonl` audit log
 
 ### v0.5.0 — Dashboard as Console *(planned)*
 - Export dashboard data to CSV / JSON
