@@ -2884,11 +2884,11 @@ def generate_dashboard_statistics(selected_types, hide_empty_categories=True, pr
 def scan_finish():
     set_globals('reset')
     return (
-        gr.update(interactive=no_update, visible=no_update),
-        gr.update(interactive=no_update, visible=no_update),
-        gr.update(interactive=no_update, visible=no_update),
-        gr.update(interactive=no_update, visible=no_update),
-        gr.update(interactive=no_update, visible=False),
+        gr.update(interactive=True, visible=True),
+        gr.update(interactive=True, visible=True),
+        gr.update(interactive=True, visible=True),
+        gr.update(interactive=True, visible=True),
+        gr.update(interactive=True, visible=True),
         gr.update(interactive=False, visible=False),
         gr.update(interactive=not no_update, visible=not no_update)
     )

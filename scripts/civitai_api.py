@@ -1,4 +1,5 @@
 import urllib.parse
+import time
 import requests
 import platform
 import json
@@ -1558,44 +1559,71 @@ def get_headers(referer=None, no_api=None):
 def request_civit_api(api_url=None, skip_error_check=False):
     headers = get_headers()
     proxies, ssl = get_proxies()
-    try:
-        response = requests.get(api_url, headers=headers, timeout=(60, 30), proxies=proxies, verify=ssl)
-        if not response.text or response.text.strip() == '':
-            print(f"CivitAI API returned empty response for: {api_url}")
-            return 'error'
+    max_attempts = 3
+    base_backoff_seconds = 2
 
-        if skip_error_check:
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = requests.get(api_url, headers=headers, timeout=(60, 30), proxies=proxies, verify=ssl)
+            if not response.text or response.text.strip() == '':
+                print(f"CivitAI API returned empty response for: {api_url}")
+                return 'error'
+
+            if skip_error_check:
+                response.encoding = 'utf-8'
+                try:
+                    data = json.loads(response.text)
+                    return data
+                except json.JSONDecodeError as e:
+                    print(f"CivitAI API: JSON decode error - {e}")
+                    return 'error'
+
+            response.raise_for_status()
             response.encoding = 'utf-8'
             try:
                 data = json.loads(response.text)
-                return data
-            except json.JSONDecodeError as e:
-                print(f"CivitAI API: JSON decode error - {e}")
-                return 'error'
+            except json.JSONDecodeError:
+                print(response.text)
+                print('The CivitAI servers are currently offline. Please try again later.')
+                return 'offline'
+            return data
 
-        response.raise_for_status()
-    except requests.exceptions.HTTPError as e:
-        if e.response.status_code == 404:
-            print(f"Model version not found (404): {api_url}")
-            return 'not_found'
-        else:
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 404:
+                print(f"Model version not found (404): {api_url}")
+                return 'not_found'
             print(f"HTTP Error {e.response.status_code}: {e}")
             return 'error'
-    except requests.exceptions.Timeout as e:
-        print('The request timed out. Please try again later.')
-        return 'timeout'
-    except requests.exceptions.RequestException as e:
-        print(f"Error: {e}")
-        return 'error'
-    else:
-        response.encoding = 'utf-8'
-        try:
-            data = json.loads(response.text)
-        except json.JSONDecodeError:
-            print(response.text)
-            print('The CivitAI servers are currently offline. Please try again later.')
-            return 'offline'
-    return data
+
+        except requests.exceptions.Timeout:
+            if attempt < max_attempts:
+                wait_time = base_backoff_seconds * attempt
+                print(f"Request timed out (attempt {attempt}/{max_attempts}). Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+                continue
+            print('The request timed out. Please try again later.')
+            return 'timeout'
+
+        except requests.exceptions.RequestException as e:
+            error_text = str(e)
+            dns_resolution_error = (
+                'NameResolutionError' in error_text
+                or 'Failed to resolve' in error_text
+                or 'Temporary failure in name resolution' in error_text
+            )
+
+            if dns_resolution_error and attempt < max_attempts:
+                wait_time = base_backoff_seconds * attempt
+                print(f"DNS resolution failed (attempt {attempt}/{max_attempts}). Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+                continue
+
+            print(f"Error: {e}")
+            if dns_resolution_error:
+                return 'dns_error'
+            return 'error'
+
+    return 'error'
 
 ## === ANXETY EDITs ===
 def api_error_msg(input_string):
@@ -1605,16 +1633,18 @@ def api_error_msg(input_string):
     elif input_string == 'path_not_found':
         return div + 'Local model not found.<br>Could not locate the model path.</div>'
     elif input_string == 'timeout':
-        return div + 'The CivitAI-API has timed out, please try again.<br>The servers might be too busy or down if the issue persists.'
+        return div + 'The CivitAI-API has timed out, please try again.<br>The servers might be too busy or down if the issue persists.</div>'
     elif input_string == 'offline':
-        return div + 'The CivitAI servers are currently offline.<br>Please try again later.'
+        return div + 'The CivitAI servers are currently offline.<br>Please try again later.</div>'
     elif input_string == 'no_items':
-        return div + 'Failed to retrieve any models from CivitAI<br>The servers might be too busy or down if the issue persists.'
+        return div + 'Failed to retrieve any models from CivitAI<br>The servers might be too busy or down if the issue persists.</div>'
     elif input_string == 'invalid_hash':
         return div + 'Invalid SHA256 hash format.<br>Please enter a valid 64-character hexadecimal hash.</div>'
     elif input_string == 'sha256_not_found':
         return div + 'No model found with this SHA256 hash.<br>The model might not exist on CivitAI or the hash might be incorrect.</div>'
     elif input_string == 'user_not_found':
-        return div + 'No models found for this user on CivitAI.<br>Please check the correctness of the user name.'
+        return div + 'No models found for this user on CivitAI.<br>Please check the correctness of the user name.</div>'
+    elif input_string == 'dns_error':
+        return div + 'Temporary DNS resolution failure while contacting CivitAI.<br>Please check your network/DNS and try again in a few seconds.</div>'
     else:
-        return div + 'The CivitAI-API failed to respond due to an error.<br>Check the logs for more details.'
+        return div + 'The CivitAI-API failed to respond due to an error.<br>Check the logs for more details.</div>'
