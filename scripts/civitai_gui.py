@@ -258,6 +258,19 @@ def on_ui_tabs():
             with gr.Row(elem_id='select_all_models_container'):
                 select_all = gr.Button(value='Select All', elem_id='select_all_models', visible=False)
             with gr.Row():
+                gr.HTML(value=(
+                    '<div class="card-legend">'
+                    '<span class="legend-title">Legend:</span>'
+                    '<span class="legend-item"><span class="legend-dot not-installed"></span>Not installed</span>'
+                    '<span class="legend-separator"></span>'
+                    '<span class="legend-item"><span class="legend-dot installed"></span>Installed &amp; up to date</span>'
+                    '<span class="legend-separator"></span>'
+                    '<span class="legend-item"><span class="legend-dot outdated"></span>Update available</span>'
+                    '<span class="legend-separator"></span>'
+                    '<span class="legend-item"><span class="legend-dot early-access"></span>Early Access (paid)</span>'
+                    '</div>'
+                ))
+            with gr.Row():
                 list_html = gr.HTML(value='<div style="font-size: 24px; text-align: center; margin: 50px;">Click the search icon to load models.<br>Use the filter icon to filter results.</div>')
             with gr.Row():
                 download_progress = gr.HTML(value='<div style="min-height: 0px;"></div>', elem_id='DownloadProgress')
