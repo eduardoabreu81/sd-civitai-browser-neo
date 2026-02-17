@@ -12,6 +12,9 @@ Modern fork of sd-civitai-browser-plus optimized for Forge Neo with auto-organiz
 
 ## 📋 Table of Contents
 
+- [Neo Versioning](#-neo-versioning)
+- [Neo Release History](#-neo-release-history)
+- [v0.4 Readiness Check](#-v04-readiness-check)
 - [What's New in Neo?](#-whats-new-in-neo)
 - [Features](#-features)
 - [Installation](#-installation)
@@ -20,6 +23,73 @@ Modern fork of sd-civitai-browser-plus optimized for Forge Neo with auto-organiz
 - [Supported Model Types](#-supported-model-types)
 - [Settings](#%EF%B8%8F-settings)
 - [Credits](#-credits)
+
+---
+
+## 🔢 Neo Versioning
+
+Neo uses semantic versioning with this format:
+
+- `vX.Y.Z`
+- `X` = Major updates (breaking changes or major architecture shifts)
+- `Y` = Minor updates (new features and UX improvements)
+- `Z` = Bug fixes, regressions, and stability patches
+
+Examples:
+- `v1.0.0`: First stable major release
+- `v0.4.0`: New feature set, backward-compatible
+- `v0.4.3`: Bug-fix release on top of `v0.4.x`
+
+---
+
+## 🧾 Neo Release History
+
+### v0.3.0 (Current)
+- Dashboard UX polish completed
+- Added **Hide empty categories (0 files)** toggle
+- Added scan summary metrics: folders scanned, scan duration, skipped files, read errors
+- Improved dashboard state messages for empty selection and no matching files
+
+### v0.2.1
+- Standardized Dashboard output to English-only labels and documentation
+- Moved dashboard debug logs behind debug mode (`civitai_neo_debug_organize`)
+- Fixed dashboard runtime regression (`print()` signature issue in Forge context)
+
+### v0.2.0
+- Reworked Dashboard scan logic to use real folder structure for Checkpoint/LORA categorization
+- Fixed incorrect category aggregation (models being grouped into wrong buckets)
+- Added pie chart visualization with legend and percentage breakdown
+- Added `All` selection behavior for dashboard content type scan
+
+### v0.1.0
+- Forge Neo-focused baseline
+- Gradio 4 migration
+- Smart auto-organization system with backup and rollback
+- Extended architecture support (FLUX, Pony, Illustrious, Wan, Qwen, Z-Image, Lumina, etc.)
+
+---
+
+## ✅ v0.4 Readiness Check
+
+Validated against current code to avoid redundant implementation.
+
+### Already implemented (reuse, do not rebuild)
+- **Installed/outdated model detection on cards** (`civmodelcardinstalled`, `civmodelcardoutdated`) in `scripts/civitai_api.py`
+- **Update scan workflow** in `Update Models` tab (`Scan for available updates` + load outdated models)
+- **Version-aware update matching** with family-aware comparison in `version_match()`
+- **SHA256-based matching support** and normalization utilities
+- **Queue/download flow already integrated** for follow-up update actions
+
+### Gaps for v0.4 (safe incremental scope)
+- Integrate update scan results into Dashboard summary view (without replacing existing Update tab flow)
+- Add explicit update actions from results (single model + batch) using existing queue pipeline
+- Add optional retention policy for old versions after update (`keep`, `move to _Trash`, or `replace`)
+- Add operation logging for update actions into the same safety/audit model used by organization operations
+
+### Anti-duplication guardrails for v0.4
+- Reuse `version_match()` and existing installed/outdated status classes
+- Reuse current API/queue paths; do not introduce a second update pipeline
+- Add orchestration and UI composition only (minimal new core logic)
 
 ---
 
