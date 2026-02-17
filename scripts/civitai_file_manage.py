@@ -42,6 +42,7 @@ gl.init()
 
 css_path = Path(__file__).resolve().parents[1] / 'style_html.css'
 no_update = False
+last_update_scan = None  # Stores last update scan results for Dashboard summary
 from_tag = False
 from_ver = False
 from_installed = False
@@ -1200,10 +1201,11 @@ def version_match(file_paths, api_response, log=False):
             elif log:
                 print(f"[LOG] '{model_name}': up-to-date ({max_inst} >= {max_avail})")
 
+        model_type = model.get('type', 'Unknown')
         if has_outdated:
-            outdated_models.append((f"&ids={model_id}", model_name))
+            outdated_models.append((f"&ids={model_id}", model_name, model_type))
         else:
-            updated_models.append((f"&ids={model_id}", model_name))
+            updated_models.append((f"&ids={model_id}", model_name, model_type))
 
     return updated_models, outdated_models
 
@@ -1421,6 +1423,20 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
 
         all_model_ids = [model[0] for model in outdated_set]
         all_model_names = [model[1] for model in outdated_set]
+
+        # Store for Dashboard update summary
+        import datetime as _dt
+        global last_update_scan
+        _by_type = {}
+        for _entry in outdated_set:
+            _mtype = _entry[2] if len(_entry) > 2 else 'Unknown'
+            _by_type.setdefault(_mtype, []).append(_entry[1])
+        last_update_scan = {
+            'outdated_by_type': _by_type,
+            'outdated_count': len(outdated_set),
+            'updated_count': len(updated_set),
+            'scanned_at': _dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        }
 
         for model_name in all_model_names:
             print(f'"{model_name}" is currently outdated.')
@@ -2694,7 +2710,48 @@ def generate_dashboard_statistics(selected_types, hide_empty_categories=True, pr
             </div>
         </div>
     ''')
-    
+
+    # Update scan summary banner (populated by the last "Scan for available updates" run)
+    if last_update_scan:
+        _outdated_count = last_update_scan['outdated_count']
+        _updated_count  = last_update_scan['updated_count']
+        _scanned_at     = last_update_scan['scanned_at']
+        _by_type        = last_update_scan['outdated_by_type']
+
+        if _outdated_count == 0:
+            _banner_bg     = 'rgba(75, 192, 75, 0.12)'
+            _banner_border = 'rgba(75, 192, 75, 0.4)'
+            _banner_icon   = '&#x2705;'
+            _banner_summary = f'All {_updated_count} scanned models are up to date.'
+            _type_breakdown = ''
+        else:
+            _banner_bg     = 'rgba(255, 165, 0, 0.12)'
+            _banner_border = 'rgba(255, 165, 0, 0.5)'
+            _banner_icon   = '&#x26A0;&#xFE0F;'
+            _s = '' if _outdated_count == 1 else 's'
+            _banner_summary = f'{_outdated_count} model{_s} with updates available ({_updated_count} up to date).'
+            _type_pills = ''.join(
+                f'<span style="padding: 3px 10px; background: rgba(255,165,0,0.2); border-radius: 12px; font-size: 12px;">'
+                f'<strong>{_t}</strong>: {len(_names)}</span>'
+                for _t, _names in sorted(_by_type.items())
+            )
+            _type_breakdown = f'<div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;">{_type_pills}</div>'
+
+        html_parts.append(f'''
+        <div style="margin: 0 auto 20px auto; padding: 14px 18px; background: {_banner_bg}; border: 1px solid {_banner_border};
+                    border-radius: 10px; max-width: 900px;">
+            <div style="display: flex; align-items: flex-start; gap: 12px; font-size: 14px;">
+                <span style="font-size: 22px; line-height: 1.2;">{_banner_icon}</span>
+                <div>
+                    <strong>Update Scan Results</strong>
+                    <span style="color: var(--body-text-color-subdued); font-size: 12px; margin-left: 8px;">as of {_scanned_at}</span><br>
+                    <span style="color: var(--body-text-color-subdued);">{_banner_summary}</span>
+                    {_type_breakdown}
+                </div>
+            </div>
+        </div>
+        ''')
+
     # Pie chart - Always show when there's data
     if sorted_stats and len(sorted_stats) > 0:
         try:
