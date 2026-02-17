@@ -167,6 +167,23 @@
     pointer-events: auto;
 }
 
+/* Outdated card: delete button + checkbox stacked */
+.outdated-card-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    pointer-events: auto;
+}
+.outdated-card-actions .delete-model-btn {
+    position: relative;
+    top: auto;
+    right: auto;
+}
+.outdated-card-actions .checkbox-container {
+    position: relative;
+}
+
 .delete-model-btn {
     position: absolute;
     top: 0;

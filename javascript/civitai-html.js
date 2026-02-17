@@ -60,6 +60,10 @@ function updateCardSize(width, height) {
     var badgeDisplay = width < 11 ? 'none !important' : 'flex !important';
     addOrUpdateRule(styleSheet, '.model-type-badge', `display: ${badgeDisplay}`);
     addOrUpdateRule(styleSheet, '.nsfw-badge', `display: ${badgeDisplay}`);
+
+    // Hide outdated-card delete button when tile size is less than 11 (same threshold as badges)
+    var outdatedDeleteDisplay = width < 11 ? 'none !important' : 'flex !important';
+    addOrUpdateRule(styleSheet, '.outdated-card-actions .delete-model-btn', `display: ${outdatedDeleteDisplay}`);
 }
 
 // Updates site with css insertions
