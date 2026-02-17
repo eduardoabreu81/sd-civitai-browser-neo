@@ -14,7 +14,7 @@ Modern fork of sd-civitai-browser-plus optimized for Forge Neo with auto-organiz
 
 - [Neo Versioning](#-neo-versioning)
 - [Neo Release History](#-neo-release-history)
-- [v0.4 Readiness Check](#-v04-readiness-check)
+- [Roadmap](#%EF%B8%8F-roadmap)
 - [What's New in Neo?](#-whats-new-in-neo)
 - [Features](#-features)
 - [Installation](#-installation)
@@ -44,7 +44,22 @@ Examples:
 
 ## 🧾 Neo Release History
 
-### v0.3.0 (Current)
+### v0.4.0 (In Development)
+> **Theme: Update Intelligence** — smarter update workflow, Dashboard integration, retention policy, audit log.
+
+- [ ] Show update scan summary in Dashboard (outdated count per model type)
+- [ ] Single-model and batch update actions directly from cards (reuse existing queue pipeline)
+- [ ] Retention policy for old versions after update: `keep`, `move to _Trash`, or `replace`
+- [ ] Operation audit log for update actions (same safety model as organization operations)
+
+### v0.3.2
+- Added **card color legend** bar above the browser grid — always-visible reference for border colors (not installed, installed, update available, Early Access)
+
+### v0.3.1
+- Fixed transient DNS failures: `request_civit_api()` now retries up to 3 times with 2 s backoff; persistent failure returns a clear DNS error message in the UI
+- Fixed **Model Organization** button disappearing after any scan failure — all action buttons now always restored on `scan_finish()`
+
+### v0.3.0
 - Dashboard UX polish completed
 - Added **Hide empty categories (0 files)** toggle
 - Added scan summary metrics: folders scanned, scan duration, skipped files, read errors
@@ -69,27 +84,28 @@ Examples:
 
 ---
 
-## ✅ v0.4 Readiness Check
+## 🗺️ Roadmap
 
-Validated against current code to avoid redundant implementation.
+### v0.4.0 — Update Intelligence *(in progress)*
+- Dashboard update summary (outdated count per type, integrated without replacing Update tab)
+- Single + batch update actions from card results
+- Old version retention policy (`keep` / `move to _Trash` / `replace`)
+- Audit log for update operations
 
-### Already implemented (reuse, do not rebuild)
-- **Installed/outdated model detection on cards** (`civmodelcardinstalled`, `civmodelcardoutdated`) in `scripts/civitai_api.py`
-- **Update scan workflow** in `Update Models` tab (`Scan for available updates` + load outdated models)
-- **Version-aware update matching** with family-aware comparison in `version_match()`
-- **SHA256-based matching support** and normalization utilities
-- **Queue/download flow already integrated** for follow-up update actions
+### v0.5.0 — Dashboard as Console *(planned)*
+- Export dashboard data to CSV / JSON
+- Top models ranking per type (by folder count / size)
+- Orphan folder detection (local files with no CivitAI match)
 
-### Gaps for v0.4 (safe incremental scope)
-- Integrate update scan results into Dashboard summary view (without replacing existing Update tab flow)
-- Add explicit update actions from results (single model + batch) using existing queue pipeline
-- Add optional retention policy for old versions after update (`keep`, `move to _Trash`, or `replace`)
-- Add operation logging for update actions into the same safety/audit model used by organization operations
+### v0.6.0 — Advanced Curation *(planned)*
+- Favorite / ban creators directly in the UI
+- Saved search presets
+- "Hide banned" toggle in browser listing
 
-### Anti-duplication guardrails for v0.4
-- Reuse `version_match()` and existing installed/outdated status classes
-- Reuse current API/queue paths; do not introduce a second update pipeline
-- Add orchestration and UI composition only (minimal new core logic)
+### v1.0.0 — First Stable Release *(planned)*
+- All known regressions resolved
+- Public documentation finalized
+- Full Forge Neo compatibility guarantee
 
 ---
 
