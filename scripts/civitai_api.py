@@ -367,9 +367,9 @@ def model_list_html(json_data):
             f'<div class="badges-container">{model_type_badge}{nsfw_badge}</div>'
         )
 
-        # Show delete button if installed, otherwise show checkbox
-        if installstatus in ['civmodelcardinstalled', 'civmodelcardoutdated']:
-            # Delete button for installed models
+        # Show delete button for up-to-date installed models; checkbox for outdated (batch update) and non-installed (fresh download)
+        if installstatus == 'civmodelcardinstalled':
+            # Delete button for up-to-date installed models
             sha256_attr = f'data-sha256="{installed_file_sha256}"' if installed_file_sha256 else ''
             card_html += (
                 f'<div class="delete-button-container">'
@@ -382,7 +382,7 @@ def model_list_html(json_data):
                 f'</div>'
             )
         else:
-            # Checkbox for non-installed models
+            # Checkbox for outdated models (select for update) and non-installed models (select for download)
             card_html += (
                 f'<div class="checkbox-container">'
                 f'<input type="checkbox" class="model-checkbox" id="checkbox-{model_string}" '

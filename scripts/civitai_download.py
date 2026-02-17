@@ -476,7 +476,7 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
             return
 
         if os.path.exists(file_path):
-            os.remove(file_path)
+            _file.handle_existing_model_file(file_path)
 
         if disable_dns:
             dns = 'false'

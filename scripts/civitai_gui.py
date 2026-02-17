@@ -1737,7 +1737,19 @@ def on_ui_settings():
             category_id=cat_id
         ).info('Show detailed debug logs when organizing models. Useful for troubleshooting baseModel detection issues.')
     )
-    
+
+    shared.opts.add_option(
+        'civitai_neo_update_retention',
+        shared.OptionInfo(
+            default='replace',
+            label='Old version retention policy after model update',
+            component=gr.Radio,
+            component_args=lambda: {'choices': ['keep', 'move to _Trash', 'replace']},
+            section=organization,
+            category_id=cat_id
+        ).info("'keep' both files, 'move to _Trash' (subfolder next to old file), or 'replace' (delete old before downloading new)")
+    )
+
     shared.opts.add_option(
         'civitai_neo_model_categories',
         shared.OptionInfo(

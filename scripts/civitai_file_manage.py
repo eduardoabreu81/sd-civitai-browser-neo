@@ -53,6 +53,51 @@ except AttributeError:
 except:
     queue = True
 
+
+def append_update_audit_log(action, details):
+    """
+    Append one line to the JSONL audit log at the extension root.
+    Each line is a standalone JSON object: { timestamp, action, ...details }
+    """
+    log_path = Path(__file__).resolve().parents[1] / 'neo_update_audit.jsonl'
+    entry = {'timestamp': __import__('datetime').datetime.now().isoformat(), 'action': action, **details}
+    try:
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+    except Exception as e:
+        print(f'[Audit] Failed to write audit log: {e}')
+
+
+def handle_existing_model_file(file_path):
+    """
+    Apply the retention policy before downloading a new version of a model file.
+    Policies (civitai_neo_update_retention setting):
+      'keep'         — do nothing; old and new file co-exist (only if filenames differ)
+      'move to _Trash' — move old file into a _Trash/ subfolder next to it
+      'replace'      — delete old file (historical default)
+    """
+    if not os.path.exists(file_path):
+        return
+    policy = getattr(opts, 'civitai_neo_update_retention', 'replace')
+    if policy == 'keep':
+        return
+    elif policy == 'move to _Trash':
+        parent = os.path.dirname(file_path)
+        trash_dir = os.path.join(parent, '_Trash')
+        os.makedirs(trash_dir, exist_ok=True)
+        dest = os.path.join(trash_dir, os.path.basename(file_path))
+        if os.path.exists(dest):
+            stamp = __import__('datetime').datetime.now().strftime('%Y%m%d_%H%M%S')
+            base, ext = os.path.splitext(os.path.basename(file_path))
+            dest = os.path.join(trash_dir, f'{base}_{stamp}{ext}')
+        shutil.move(file_path, dest)
+        print(f'[Retention] Moved old model file to _Trash: {dest}')
+        append_update_audit_log('retention_trash', {'old_file': file_path, 'dest': dest})
+    else:  # 'replace' (default)
+        os.remove(file_path)
+        append_update_audit_log('retention_replace', {'old_file': file_path})
+
+
 def delete_model(delete_finish=None, model_filename=None, model_string=None, list_versions=None, sha256=None, selected_list=None, model_ver=None, model_json=None):
     deleted = False
     model_id = None
@@ -1437,6 +1482,11 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
             'updated_count': len(updated_set),
             'scanned_at': _dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         }
+        append_update_audit_log('update_scan', {
+            'outdated_count': len(outdated_set),
+            'updated_count': len(updated_set),
+            'outdated_by_type': {k: len(v) for k, v in _by_type.items()},
+        })
 
         for model_name in all_model_names:
             print(f'"{model_name}" is currently outdated.')
