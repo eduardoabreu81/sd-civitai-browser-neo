@@ -25,20 +25,21 @@ def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, sn, es, ss, ts):
     config = cmd_opts.ui_config_file
 
     # Create a dictionary to map the settings to their respective variables
+    # NOTE: prefix must match the elem_id returned in on_ui_tabs() → 'civitai_interface_neo'
     settings_map = {
-        'civitai_interface/Search type:/value': ust,
-        'civitai_interface/Content type:/value': ct,
-        'civitai_interface/Time period:/value': pt,
-        'civitai_interface/Sort by:/value': st,
-        'civitai_interface/Base model:/value': bf,
-        'civitai_interface/Save info after download/value': cj,
-        'civitai_interface/Divide cards by date/value': False,  # This is a toggle, so its state does not matter here
-        'civitai_interface/Liked models only/value': ol,
-        'civitai_interface/Hide installed models/value': hi,
-        'civitai_interface/NSFW content/value': sn,
-        'civitai_interface/Exact search/value': es,
-        'civitai_interface/Tile size:/value': ss,
-        'civitai_interface/Tile count:/value': ts
+        'civitai_interface_neo/Search type:/value': ust,
+        'civitai_interface_neo/Content type:/value': ct,
+        'civitai_interface_neo/Time period:/value': pt,
+        'civitai_interface_neo/Sort by:/value': st,
+        'civitai_interface_neo/Base model:/value': bf,
+        'civitai_interface_neo/Save info after download/value': cj,
+        'civitai_interface_neo/Divide cards by date/value': False,  # This is a toggle, so its state does not matter here
+        'civitai_interface_neo/Liked models only/value': ol,
+        'civitai_interface_neo/Hide installed models/value': hi,
+        'civitai_interface_neo/NSFW content/value': sn,
+        'civitai_interface_neo/Exact search/value': es,
+        'civitai_interface_neo/Tile size:/value': ss,
+        'civitai_interface_neo/Tile count:/value': ts
     }
 
     # Load the current contents of the config file into a dictionary
@@ -204,6 +205,8 @@ def on_ui_tabs():
     else:
         toggle4 = 'toggle4L' if lobe_directory else 'toggle4'
         show_only_liked = False
+
+    sync_card_delete_enabled = bool(getattr(opts, 'civitai_neo_sync_card_delete', True))
 
     content_choices = _file.get_content_choices()
     scan_choices = _file.get_content_choices(scan_choices=True)
@@ -511,6 +514,8 @@ def on_ui_tabs():
         delete_trigger_sha256 = gr.Textbox(elem_id='sha256', visible=False)
         delete_trigger_btn = gr.Button(elem_id='delete_trigger_btn', visible=False)
         delete_trigger_finish = gr.Textbox(visible=False)
+        # Hidden: controls whether card delete btn syncs with selected version
+        sync_card_delete_cb = gr.Checkbox(value=sync_card_delete_enabled, visible=False)
 
         def ToggleDate(toggle_date):
             gl.sortNewest = toggle_date
@@ -740,6 +745,13 @@ def on_ui_tabs():
                 install_path,
                 sub_folder
             ]
+        )
+
+        # Sync card delete button visibility with selected version (if setting enabled)
+        list_versions.select(
+            fn=None,
+            inputs=[list_versions, sync_card_delete_cb],
+            _js='(ver, enabled) => syncCardDeleteBtnOnCard(ver, enabled)'
         )
 
         file_list.input(
@@ -1748,6 +1760,16 @@ def on_ui_settings():
             section=organization,
             category_id=cat_id
         ).info("'keep' both files, 'move to _Trash' (subfolder next to old file), or 'replace' (delete old before downloading new)")
+    )
+
+    shared.opts.add_option(
+        'civitai_neo_sync_card_delete',
+        shared.OptionInfo(
+            default=True,
+            label='Sync card delete button visibility with selected version',
+            section=organization,
+            category_id=cat_id
+        ).info('When enabled, the delete shortcut on outdated cards hides automatically if the selected version in the panel is not the installed one. Requires UI reload.')
     )
 
     shared.opts.add_option(
