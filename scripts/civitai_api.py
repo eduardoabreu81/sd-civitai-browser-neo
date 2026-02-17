@@ -367,9 +367,10 @@ def model_list_html(json_data):
             f'<div class="badges-container">{model_type_badge}{nsfw_badge}</div>'
         )
 
-        # Show delete button for up-to-date installed models; checkbox for outdated (batch update) and non-installed (fresh download)
+        # Show delete button for up-to-date installed models;
+        # For outdated: both delete (hidden below tile size 11) + checkbox stacked
+        # For non-installed: checkbox only
         if installstatus == 'civmodelcardinstalled':
-            # Delete button for up-to-date installed models
             sha256_attr = f'data-sha256="{installed_file_sha256}"' if installed_file_sha256 else ''
             card_html += (
                 f'<div class="delete-button-container">'
@@ -381,8 +382,28 @@ def model_list_html(json_data):
                 f'</button>'
                 f'</div>'
             )
+        elif installstatus == 'civmodelcardoutdated':
+            # Both delete (hides at tile < 11) + checkbox for batch update selection
+            sha256_attr = f'data-sha256="{installed_file_sha256}"' if installed_file_sha256 else ''
+            card_html += (
+                f'<div class="outdated-card-actions">'
+                f'<button class="delete-model-btn" {sha256_attr} data-model-name="{model_name_js}" '
+                f'onclick="deleteInstalledModel(event, \'{model_name_js}\', \'{installed_file_sha256 or ""}\')" title="Delete model">'
+                f'<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor">'
+                f'<path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>'
+                f'</svg>'
+                f'</button>'
+                f'<div class="checkbox-container">'
+                f'<input type="checkbox" class="model-checkbox" id="checkbox-{model_string}" '
+                f'onchange="multi_model_select(\'{model_string}\', \'{item["type"]}\', this.checked)">'
+                f'<label for="checkbox-{model_string}" class="custom-checkbox">'
+                f'<span class="checkbox-checkmark"></span>'
+                f'</label>'
+                f'</div>'
+                f'</div>'
+            )
         else:
-            # Checkbox for outdated models (select for update) and non-installed models (select for download)
+            # Non-installed: checkbox for batch download
             card_html += (
                 f'<div class="checkbox-container">'
                 f'<input type="checkbox" class="model-checkbox" id="checkbox-{model_string}" '
