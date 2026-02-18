@@ -51,25 +51,32 @@ Examples:
 
 ## 🆕 What's New — v0.4.3
 
-> **Organization Validator** — validate + fix misplaced models without running a full re-organize.
+> **Organization Validator + Metadata Reliability** — validate + fix misplaced models, guaranteed correct version metadata.
 
 - **Organization Validator** — new button in Local Models tab scans your Checkpoint/LORA folders and reports which models are in the wrong subfolder (based on `.json` metadata), which are correctly placed, and which have no metadata. Read-only by default ⭐
 - **Fix misplaced files** — after validation, a "✅ Fix misplaced files" button appears to move only the flagged models to their correct subfolders. Creates a backup automatically; fully undoable via the "↶ Undo Fix" button inline ⭐
 - **NoobAI support** — new category added to organization system; models tagged `NoobAI` on CivitAI now go to `NoobAI/` instead of `Other/` ⭐
 - **Fix: `"sd version"` now stores raw CivitAI value** — metadata files no longer save the normalized folder name (e.g. `"Other"`) — stores the original API string (e.g. `"NoobAI"`) ⭐
+- **`.api_info.json` always created on model info save** — removed the opt-in guard; every "Save Model Info" now always creates/updates `.api_info.json` using the `by-hash` CivitAI endpoint (cleanest source of truth) ⭐
+- **Auto-fetch `.api_info.json` by SHA256 during validation** — if the file is missing, the validator fetches and saves it on-the-fly via `GET /api/v1/model-versions/by-hash/{sha256}`, then patches the `.json` with the correct `baseModel` ⭐
+- **SHA256 computed on-the-fly when not cached** — when scanning models, if `sha256` is absent from `.json`, it is computed from the actual file and saved immediately; this ensures `find_model_version_by_sha256()` is always used for exact version matching, eliminating wrong-version mismatches from filename-only lookups ⭐
 
 ---
 
 ## 📖 SD Civitai Browser Neo Release Story
 
 ### v0.4.3
-> **Theme: Organization Validator** — validate + fix misplaced models.
+> **Theme: Organization Validator + Metadata Reliability** — validate + fix misplaced models, guaranteed correct version metadata.
 
 - [x] New "🔍 Validate organization" button in Local Models tab — read-only scan showing correct / misplaced / no-metadata counts with a per-file table
 - [x] "✅ Fix misplaced files" button appears after validation — moves only flagged models to correct subfolders, saves a backup first
 - [x] "↶ Undo Fix" button appears after fix — reverts changes inline, no need to scroll to Undo section
 - [x] NoobAI added as new organization category (folder `NoobAI/`)
 - [x] Fix: `"sd version"` in `.json` now saves the raw CivitAI API value, not the normalized folder name — prevents future mis-categorization
+- [x] Fix: validator now uses `.api_info.json` as sole source of truth for organization — ignores stale `"sd version": "Other"` in `.json`
+- [x] `.api_info.json` now always created on "Save Model Info" — removed opt-in guard, uses `by-hash` endpoint for exact version data
+- [x] Auto-fetch `.api_info.json` by SHA256 during validation — saves it on-the-fly and patches `.json` `baseModel` if file is missing
+- [x] SHA256 computed on-the-fly in `file_scan` when not cached in `.json` — ensures exact version match via hash instead of fragile filename lookup
 
 ### v0.4.2
 > **Theme: Bug Fix Patch** — crash fixes, trigger words in overlay, line ending normalization.
