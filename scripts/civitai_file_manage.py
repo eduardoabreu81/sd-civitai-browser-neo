@@ -1855,61 +1855,87 @@ def normalize_base_model(base_model):
     _debug_log("Returning 'Other'")
     return 'Other'
 
-def get_model_info_for_organization(file_path):
+def _fetch_api_info_by_hash(file_path, api_info_file):
     """
-    Get model info from .api_info.json ONLY for organization purposes.
-    
-    Only the official CivitAI API response (.api_info.json) is used as source
-    of truth.  The local .json file is intentionally ignored here because its
-    "sd version" field may contain stale or normalised values (e.g. "Other")
-    written by older versions of the extension, which would cause correctly-
-    placed files to be flagged as misplaced.
-    
-    Returns tuple: (base_model_type, model_name)
-    If no .api_info.json found or no baseModel in it, returns (None, model_name)
-    → the validator shows ⚠️ (no metadata) instead of moving the file.
+    Fetch model version info from CivitAI API using the file's SHA256 hash
+    and save it as .api_info.json.
+
+    Uses endpoint: GET /api/v1/model-versions/by-hash/{sha256}
+    The response contains 'baseModel' at the root level — ideal for organization.
+
+    Returns the parsed data dict on success, or None on failure.
     """
     model_name = os.path.basename(file_path)
-    base_name = os.path.splitext(file_path)[0]
-    
-    _debug_log(f"Checking metadata for: {model_name}")
-    
-    api_info_file = base_name + '.api_info.json'
-    _debug_log(f"Trying: {os.path.basename(api_info_file)}")
-    
-    if not os.path.exists(api_info_file):
-        _debug_log(f"⚠️ No .api_info.json for: {model_name}")
-        print(f"[CivitAI Browser Neo] ⚠️ No .api_info.json for: {model_name} - Use 'Update Model Information' to fetch metadata")
-        return None, model_name
-    
+    _debug_log(f"Fetching .api_info.json by SHA256 for: {model_name}")
+
+    file_hash = _file.get_model_hash(file_path, hash_type='SHA256')
+    if not file_hash:
+        _debug_log(f"Could not compute SHA256 for: {model_name}")
+        return None
+
+    normalized = _api.normalize_sha256(file_hash)
+    if not normalized:
+        _debug_log(f"Invalid SHA256 for: {model_name}")
+        return None
+
+    api_url = f"https://civitai.com/api/v1/model-versions/by-hash/{normalized}"
+    _debug_log(f"API call: {api_url}")
+
     try:
-        data = _api.safe_json_load(api_info_file)
-        if not data:
-            _debug_log(f"⚠️ Empty .api_info.json for: {model_name}")
-            return None, model_name
-        
-        base_model = None
-        
-        # 1. Direct 'baseModel' field (version-level API response)
-        if 'baseModel' in data:
-            base_model = data.get('baseModel', '')
-            if base_model:
-                _debug_log(f"Found from data['baseModel']: '{base_model}'")
-        
-        # 2. Nested model.baseModel
-        if not base_model and 'model' in data:
-            base_model = data.get('model', {}).get('baseModel', '')
-            if base_model:
-                _debug_log(f"Found from data['model']['baseModel']: '{base_model}'")
-        
-        # 3. modelVersions array — try to match by SHA256, fall back to index 0
-        if not base_model and 'modelVersions' in data:
-            versions = data.get('modelVersions', [])
-            _debug_log(f"Found modelVersions array with {len(versions)} versions")
-            if versions:
+        headers = _api.get_headers()
+        proxies, ssl = _api.get_proxies()
+        response = requests.get(api_url, headers=headers, timeout=(60, 30), proxies=proxies, verify=ssl)
+
+        if response.status_code == 200:
+            data = response.json()
+            if 'error' in data:
+                _debug_log(f"API returned error for {model_name}: {data.get('error')}")
+                return None
+            # Save the fresh data as .api_info.json (overwrites any stale/wrong file)
+            _api.safe_json_save(api_info_file, data)
+            print(f"[CivitAI Browser Neo] ✅ Fetched and saved .api_info.json for: {model_name}")
+            return data
+        elif response.status_code == 404:
+            _debug_log(f"Model not found on CivitAI for hash {normalized} ({model_name})")
+            return None
+        else:
+            _debug_log(f"API returned HTTP {response.status_code} for: {model_name}")
+            return None
+
+    except Exception as e:
+        _debug_log(f"Error fetching API info for {model_name}: {e}")
+        return None
+
+
+def _extract_base_model_from_api_data(data, file_path=None):
+    """
+    Extract baseModel string from a CivitAI API response dict.
+    Checks fields in priority order:
+      1. data['baseModel']           ← by-hash / model-versions endpoint
+      2. data['model']['baseModel']
+      3. data['modelVersions']       ← SHA256-matched or first version
+      4. data['version']['baseModel']
+    Returns the raw baseModel string or '' if not found.
+    """
+    model_name = os.path.basename(file_path) if file_path else '?'
+
+    base_model = data.get('baseModel', '')
+    if base_model:
+        _debug_log(f"Found from data['baseModel']: '{base_model}'")
+        return base_model
+
+    base_model = data.get('model', {}).get('baseModel', '')
+    if base_model:
+        _debug_log(f"Found from data['model']['baseModel']: '{base_model}'")
+        return base_model
+
+    if 'modelVersions' in data:
+        versions = data.get('modelVersions', [])
+        _debug_log(f"Found modelVersions array with {len(versions)} versions")
+        if versions:
+            matched_version = None
+            if file_path:
                 file_hash = _file.get_model_hash(file_path, hash_type='SHA256')
-                matched_version = None
-                
                 if file_hash:
                     _debug_log(f"Model SHA256: {file_hash}")
                     for version in versions:
@@ -1920,30 +1946,70 @@ def get_model_info_for_organization(file_path):
                                 break
                         if matched_version:
                             break
-                
-                target_version = matched_version if matched_version else versions[0]
-                base_model = target_version.get('baseModel', '')
-                if base_model:
-                    label = f"MATCHED modelVersion['{target_version.get('name')}']" if matched_version else "modelVersions[0]"
-                    _debug_log(f"Found from {label}: '{base_model}'")
-        
-        # 4. version.baseModel
-        if not base_model and 'version' in data:
-            base_model = data.get('version', {}).get('baseModel', '')
+            target_version = matched_version if matched_version else versions[0]
+            base_model = target_version.get('baseModel', '')
             if base_model:
-                _debug_log(f"Found from data['version']['baseModel']: '{base_model}'")
-        
+                label = f"MATCHED modelVersion['{target_version.get('name')}']" if matched_version else "modelVersions[0]"
+                _debug_log(f"Found from {label}: '{base_model}'")
+                return base_model
+
+    base_model = data.get('version', {}).get('baseModel', '')
+    if base_model:
+        _debug_log(f"Found from data['version']['baseModel']: '{base_model}'")
+        return base_model
+
+    return ''
+
+
+def get_model_info_for_organization(file_path):
+    """
+    Get model info for organization purposes.
+
+    Source-of-truth priority:
+      1. Existing .api_info.json  — read and extract baseModel
+      2. CivitAI API by SHA256    — if .api_info.json is missing or has no
+                                    baseModel, fetch via by-hash endpoint,
+                                    save as .api_info.json, then extract
+
+    The local .json file is intentionally ignored because its "sd version"
+    field may contain stale/normalised values (e.g. "Other") written by older
+    extension versions, which would cause correctly-placed files to be flagged.
+
+    Returns tuple: (base_model_type, model_name)
+    Returns (None, model_name) when metadata is unavailable even after API call.
+    """
+    model_name = os.path.basename(file_path)
+    base_name = os.path.splitext(file_path)[0]
+
+    _debug_log(f"Checking metadata for: {model_name}")
+
+    api_info_file = base_name + '.api_info.json'
+
+    # --- Step 1: try existing .api_info.json ---
+    if os.path.exists(api_info_file):
+        _debug_log(f"Found existing .api_info.json for: {model_name}")
+        try:
+            data = _api.safe_json_load(api_info_file)
+            if data:
+                base_model = _extract_base_model_from_api_data(data, file_path)
+                if base_model:
+                    _debug_log(f"SUCCESS! Final baseModel: '{base_model}' from existing .api_info.json")
+                    return base_model, model_name
+                _debug_log(f"No baseModel in existing .api_info.json — will fetch from API")
+        except Exception as e:
+            _debug_log(f"Error reading {api_info_file}: {e}")
+
+    # --- Step 2: fetch from CivitAI API by SHA256 ---
+    _debug_log(f"No usable .api_info.json for {model_name} — fetching from CivitAI by hash...")
+    data = _fetch_api_info_by_hash(file_path, api_info_file)
+    if data:
+        base_model = _extract_base_model_from_api_data(data, file_path)
         if base_model:
-            _debug_log(f"SUCCESS! Final baseModel: '{base_model}' from {os.path.basename(api_info_file)}")
+            _debug_log(f"SUCCESS! Final baseModel: '{base_model}' from API (by hash)")
             return base_model, model_name
-        
-        _debug_log(f"⚠️ No baseModel found in .api_info.json for: {model_name}")
-        print(f"[CivitAI Browser Neo] ⚠️ No baseModel in .api_info.json for: {model_name}")
-        return None, model_name
-    
-    except Exception as e:
-        _debug_log(f"Error reading {api_info_file}: {e}")
-        return None, model_name
+
+    print(f"[CivitAI Browser Neo] ⚠️ Could not determine baseModel for: {model_name}")
+    return None, model_name
 
 def analyze_organization_plan(folders, progress=None):
     """
