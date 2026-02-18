@@ -145,7 +145,7 @@ def delete_model(delete_finish=None, model_filename=None, model_string=None, lis
 
                     if file_sha256 == sha256_upper:
                         use_trash = getattr(opts, 'civitai_neo_delete_to_trash', True)
-                        unpack_list = data.get('unpackList', [])
+                        unpack_list = data.get('unpackList', []) if data else []
                         for unpacked_file in unpack_list:
                             unpacked_file_path = os.path.join(root, unpacked_file)
                             if os.path.isfile(unpacked_file_path):
