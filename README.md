@@ -118,12 +118,6 @@ Examples:
 
 ## 🗺️ Roadmap
 
-### v0.4.1 — UX Polish *(released)*
-- Trigger words → txt2img button, Shift+click append, send2trash setting, filename 246-byte limit, search settings persist
-
-### v0.4.0 — Update Intelligence *(released)*
-- Dashboard update banner, batch update cards, retention policy, audit log
-
 ### v0.5.0 — Dashboard as Console *(planned)*
 - Export dashboard data to CSV / JSON
 - Top models ranking per type (by folder count / size)
