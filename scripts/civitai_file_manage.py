@@ -1857,11 +1857,15 @@ def normalize_base_model(base_model):
 
 def _fetch_api_info_by_hash(file_path, api_info_file):
     """
-    Fetch model version info from CivitAI API using the file's SHA256 hash
-    and save it as .api_info.json.
+    Fetch model version info from CivitAI API using the file's SHA256 hash.
 
     Uses endpoint: GET /api/v1/model-versions/by-hash/{sha256}
-    The response contains 'baseModel' at the root level — ideal for organization.
+    The response contains 'baseModel' at the root level — the cleanest source.
+
+    On success:
+      - Saves (overwrites) the .api_info.json with the fresh API response
+      - Also patches the .json file's "sd version" field with the correct raw
+        baseModel value (fixes any stale/normalised values from older releases)
 
     Returns the parsed data dict on success, or None on failure.
     """
@@ -1891,10 +1895,28 @@ def _fetch_api_info_by_hash(file_path, api_info_file):
             if 'error' in data:
                 _debug_log(f"API returned error for {model_name}: {data.get('error')}")
                 return None
-            # Save the fresh data as .api_info.json (overwrites any stale/wrong file)
+
+            # 1. Save fresh data as .api_info.json (overwrites any stale/wrong file)
             _api.safe_json_save(api_info_file, data)
             print(f"[CivitAI Browser Neo] ✅ Fetched and saved .api_info.json for: {model_name}")
+
+            # 2. Also patch "sd version" in the .json sidecar with the correct raw value
+            #    so the .json is also self-consistent and usable offline in the future
+            base_model = data.get('baseModel', '')
+            if base_model:
+                json_file = os.path.splitext(file_path)[0] + '.json'
+                if os.path.exists(json_file):
+                    try:
+                        content = _api.safe_json_load(json_file) or {}
+                        if content.get('sd version') != base_model:
+                            content['sd version'] = base_model
+                            _api.safe_json_save(json_file, content)
+                            _debug_log(f"Patched 'sd version' → '{base_model}' in {os.path.basename(json_file)}")
+                    except Exception as patch_err:
+                        _debug_log(f"Could not patch .json for {model_name}: {patch_err}")
+
             return data
+
         elif response.status_code == 404:
             _debug_log(f"Model not found on CivitAI for hash {normalized} ({model_name})")
             return None
@@ -2007,6 +2029,22 @@ def get_model_info_for_organization(file_path):
         if base_model:
             _debug_log(f"SUCCESS! Final baseModel: '{base_model}' from API (by hash)")
             return base_model, model_name
+
+    # --- Step 3: offline fallback — .json sidecar "sd version" field ---
+    # Used only when API is unreachable or the model was deleted from CivitAI.
+    # "Other" is explicitly rejected: it was the old buggy default value and
+    # does not represent a real/confirmed base model type.
+    json_file = os.path.splitext(file_path)[0] + '.json'
+    if os.path.exists(json_file):
+        try:
+            content = _api.safe_json_load(json_file) or {}
+            sd_version = content.get('sd version', '')
+            if sd_version and sd_version.upper() != 'OTHER':
+                _debug_log(f"Offline fallback: using 'sd version'='{sd_version}' from .json")
+                print(f"[CivitAI Browser Neo] ⚠️ Using offline .json fallback for: {model_name} (API unavailable)")
+                return sd_version, model_name
+        except Exception as e:
+            _debug_log(f"Error reading .json fallback for {model_name}: {e}")
 
     print(f"[CivitAI Browser Neo] ⚠️ Could not determine baseModel for: {model_name}")
     return None, model_name
