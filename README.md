@@ -21,7 +21,7 @@ Modern fork of sd-civitai-browser-plus optimized for Forge Neo with auto-organiz
 ## 📋 Table of Contents
 
 - [Neo Versioning](#-neo-versioning)
-- [What's New](#-whats-new--v042)
+- [What's New](#-whats-new--v043)
 - [SD Civitai Browser Neo Release Story](#-sd-civitai-browser-neo-release-story)
 - [Roadmap](#%EF%B8%8F-roadmap)
 - [Features](#-features)
@@ -49,18 +49,23 @@ Examples:
 
 ---
 
-## 🆕 What's New — v0.4.2
+## 🆕 What's New — v0.4.3
 
-> **Bug Fix Patch** — crash fixes, trigger words in overlay, line ending normalization.
+> **Organization Validator** — validate + fix misplaced models without running a full re-organize.
 
-- **"➕ Add to prompt" in model overlay** — trigger words button now appears inside the popup that opens when clicking the CivitAI icon on txt2img/img2img model cards, with auto-close after sending
-- **Fix: delete model crash** — `AttributeError` when deleting a model whose `.json` had no `sha256` field is now handled safely
-- **Fix: auto-organize download crash** — `UnboundLocalError` on `from_batch` when auto-organize was enabled during batch downloads
-- **Fix: `.gitattributes`** — added to enforce LF line endings across all text files, preventing CRLF warnings on Windows
+- **Organization Validator** — new button in Local Models tab scans your Checkpoint/LORA folders and reports which models are in the wrong subfolder (based on `.json` metadata), which are correctly placed, and which have no metadata. Read-only by default ⭐
+- **Fix misplaced files** — after validation, a "✅ Fix misplaced files" button appears to move only the flagged models to their correct subfolders. Creates a backup automatically; fully undoable via the existing "↶ Undo" button ⭐
 
 ---
 
 ## 📖 SD Civitai Browser Neo Release Story
+
+### v0.4.3
+> **Theme: Organization Validator** — validate + fix misplaced models.
+
+- [x] New "🔍 Validate organization" button in Local Models tab — read-only scan showing correct / misplaced / no-metadata counts with a per-file table
+- [x] "✅ Fix misplaced files" button appears after validation — moves only flagged models to correct subfolders, saves a backup first
+- [x] Fix is fully undoable via the existing "↶ Undo Last Organization" button
 
 ### v0.4.2
 > **Theme: Bug Fix Patch** — crash fixes, trigger words in overlay, line ending normalization.
@@ -183,8 +188,10 @@ Examples:
 
 - **Organize new downloads automatically** into subfolders by base model type (SDXL/, Pony/, FLUX/, etc.)
 - **Organize existing models** in one click from the Update Models tab
+- **Validate organization** — read-only scan that checks every model against its `.json` metadata and reports ✅ correct / ❌ misplaced / ⚠️ no-metadata, with a per-file table ⭐
+- **Fix misplaced files** — after validation, move only the flagged models to their correct subfolders in one click; backup created automatically ⭐
 - **Backup before organizing** — automatic snapshot of current folder structure
-- **One-click rollback** — restore previous structure at any time (keeps last 5 backups)
+- **One-click rollback** — restore previous structure at any time (keeps last 5 backups); also reverts fixes applied by the validator
 - **Custom category patterns** — define your own base model → folder mapping in Settings (JSON)
 - **Associated files moved together** — `.json`, `.png`, `.preview.png`, `.txt` files travel with the model
 
