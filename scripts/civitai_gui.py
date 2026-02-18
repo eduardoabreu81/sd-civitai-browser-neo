@@ -288,7 +288,9 @@ def on_ui_tabs():
                     sub_folder = gr.Dropdown(label='Sub folder:', choices=[], interactive=False, value=None)
             with gr.Row():
                 with gr.Column(scale=4):
-                    trained_tags = gr.Textbox(label='Trained tags (if any):', value=None, interactive=False, lines=1)
+                    with gr.Row():
+                        trained_tags = gr.Textbox(label='Trained tags (if any):', value=None, interactive=False, lines=1, scale=6)
+                        send_tags_btn = gr.Button(value='➕ Add to prompt', scale=1, min_width=120, interactive=False)
                 with gr.Column(scale=2, elem_id='spanWidth'):
                     base_model = gr.Textbox(label='Base model: ', value=None, interactive=False, lines=1, elem_id='baseMdl')
                     model_filename = gr.Textbox(label='Model filename:', interactive=False, value=None)
@@ -745,6 +747,18 @@ def on_ui_tabs():
                 install_path,
                 sub_folder
             ]
+        )
+
+        trained_tags.change(
+            fn=lambda v: gr.update(interactive=bool(v and v.strip())),
+            inputs=[trained_tags],
+            outputs=[send_tags_btn]
+        )
+
+        send_tags_btn.click(
+            fn=None,
+            inputs=[trained_tags],
+            _js='(tags) => sendTagsToPrompt(tags)'
         )
 
         # Sync card delete button visibility with selected version (if setting enabled)
@@ -1560,6 +1574,16 @@ def on_ui_settings():
             section=browser,
             category_id=cat_id
         ).info('Shows debug information in console for API calls and file operations. Requires UI reload')
+    )
+
+    shared.opts.add_option(
+        'civitai_neo_delete_to_trash',
+        shared.OptionInfo(
+            default=True,
+            label='Move deleted models to system Trash instead of permanently deleting',
+            section=browser,
+            category_id=cat_id
+        ).info('When enabled, deleted models are sent to the OS recycle bin/trash. Disable for permanent deletion.')
     )
 
     ## Download Options

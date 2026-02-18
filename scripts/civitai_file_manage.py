@@ -144,23 +144,32 @@ def delete_model(delete_finish=None, model_filename=None, model_string=None, lis
                         file_sha256 = '0'
 
                     if file_sha256 == sha256_upper:
+                        use_trash = getattr(opts, 'civitai_neo_delete_to_trash', True)
                         unpack_list = data.get('unpackList', [])
                         for unpacked_file in unpack_list:
                             unpacked_file_path = os.path.join(root, unpacked_file)
                             if os.path.isfile(unpacked_file_path):
-                                try:
-                                    send2trash(unpacked_file_path)
-                                    print(f"File moved to trash based on unpackList: {unpacked_file_path}")
-                                except:
+                                if use_trash:
+                                    try:
+                                        send2trash(unpacked_file_path)
+                                        print(f"File moved to trash based on unpackList: {unpacked_file_path}")
+                                    except:
+                                        os.remove(unpacked_file_path)
+                                        print(f"File deleted based on unpackList: {unpacked_file_path}")
+                                else:
                                     os.remove(unpacked_file_path)
                                     print(f"File deleted based on unpackList: {unpacked_file_path}")
 
                         base_name, _ = os.path.splitext(file)
                         if os.path.isfile(file_path):
-                            try:
-                                send2trash(file_path)
-                                print(f"Model moved to trash based on SHA-256: {file_path}")
-                            except:
+                            if use_trash:
+                                try:
+                                    send2trash(file_path)
+                                    print(f"Model moved to trash based on SHA-256: {file_path}")
+                                except:
+                                    os.remove(file_path)
+                                    print(f"Model deleted based on SHA-256: {file_path}")
+                            else:
                                 os.remove(file_path)
                                 print(f"Model deleted based on SHA-256: {file_path}")
                             delete_associated_files(root, base_name)
@@ -176,10 +185,15 @@ def delete_model(delete_finish=None, model_filename=None, model_string=None, lis
                 if filename_to_delete == current_file_name or aria2_file == file:
                     path_file = os.path.join(root, file)
                     if os.path.isfile(path_file):
-                        try:
-                            send2trash(path_file)
-                            print(f"Model moved to trash based on filename: {path_file}")
-                        except:
+                        use_trash = getattr(opts, 'civitai_neo_delete_to_trash', True)
+                        if use_trash:
+                            try:
+                                send2trash(path_file)
+                                print(f"Model moved to trash based on filename: {path_file}")
+                            except:
+                                os.remove(path_file)
+                                print(f"Model deleted based on filename: {path_file}")
+                        else:
                             os.remove(path_file)
                             print(f"Model deleted based on filename: {path_file}")
                         delete_associated_files(root, current_file_name)

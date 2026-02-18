@@ -838,6 +838,14 @@ def cleaned_name(file_name):
     clean_name = re.sub(illegal_chars_pattern, '', name)
     clean_name = re.sub(r'\s+', ' ', clean_name.strip())
 
+    # Limit to 246 bytes (UTF-8) to avoid filesystem limits on Linux (ext4 max: 255 bytes)
+    # Reserve bytes for the extension
+    ext_bytes = len(extension.encode('utf-8'))
+    max_name_bytes = 246 - ext_bytes
+    name_encoded = clean_name.encode('utf-8')
+    if len(name_encoded) > max_name_bytes:
+        clean_name = name_encoded[:max_name_bytes].decode('utf-8', errors='ignore').rstrip()
+
     return f"{clean_name}{extension}"
 
 def fetch_and_process_image(image_url):

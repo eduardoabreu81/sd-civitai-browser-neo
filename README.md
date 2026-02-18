@@ -176,54 +176,115 @@ Get comprehensive insights into your model collection:
 
 ## 🎯 Features
 
-### Core Features (from Original)
+### 🔍 Browse & Search
 
-<details open>
-<summary><b>Browse & Download</b></summary>
+- **Browse CivitAI** directly inside the WebUI — no browser switching needed
+- **Search by keyword, tag, or username** — multiple search modes
+- **Filter by content type**: Checkpoint, LORA, LoCon, DoRA, VAE, ControlNet, Upscaler, TextualInversion, Wildcards, Workflows, and more
+- **Filter by base model**: SD 1.x, SDXL, Pony, Illustrious, FLUX, Wan, Qwen, Z-Image, NoobAI, Lumina, and many more — **auto-updated from CivitAI API** at startup (no hardcoded stale list)
+- **Sort by**: Highest Rated, Most Downloaded, Newest, Most Liked, Most Discussed
+- **Filter by time period**: Day, Week, Month, Year, All Time
+- **NSFW toggle**: Show/hide NSFW content
+- **Liked models only**: Filter to models you've liked on CivitAI (requires API key)
+- **Hide installed models**: Declutter the browser by hiding already-downloaded models
+- **Exact search**: Match search terms exactly instead of fuzzy
+- **Search settings persist**: Sort, NSFW state, base model filter — all saved across restarts
 
-- 🧩 **Browse all models** from CivitAI
-- 📥 **Download any model**, version, and file
-- 🚄 **High-speed downloads** with Aria2
-- 📊 **Queue system** for batch downloads
-- 🏷️ **Auto-tag** installed models
-- 🔍 **Search by hash** to identify unknown models
+### 📥 Download
 
-</details>
+- **Download any model, version, and file** directly from the browser
+- **Aria2 high-speed multi-connection downloads** — optional, enabled by default
+- **Download queue** — multiple downloads run in sequence without blocking the UI
+- **Cancel downloads** individually or all at once
+- **Auto-set save folder** based on content type — no manual path typing needed
+- **Custom sub-folders** — choose or create sub-folders per download
+- **Custom save folder per type** — configure paths in Settings
+- **Download URL override** — paste a direct URL to download a specific file
+- **Proxy support** — SOCKS4/SOCKS5 for regions with restricted access
+- **API key support** — download early access and private models with your CivitAI API key
 
-<details open>
-<summary><b>Model Management</b></summary>
+### 🔄 Model Updates
 
-- 📁 **Auto-organize** by model type (NEW in Neo!)
-- ↶ **Undo organization** with one click
-- 💾 **Automatic backups** before changes
-- 🗂️ **Custom categories** for organization
-- � **Dashboard statistics** - View disk usage by type (NEW!)
-- �🔄 **Update model info & tags**
-- 🖼️ **Download preview images**
-- 📋 **Generate model info HTML**
+- **Outdated card detection** — orange border on cards that have a newer version available
+- **Batch update** — select multiple outdated models via checkbox and download all at once
+- **Precise version comparison** — compares model family + version string (configurable)
+- **Retention policy** — when updating, choose: `keep` both files, `move to _Trash`, or `replace` (permanent delete)
+- **Audit log** — `neo_update_audit.jsonl` records every scan and retention action for traceability
+- **Dashboard update summary** — after scanning, the Dashboard shows a live banner with outdated counts per type
 
-</details>
+### 🗂️ Auto-Organization
 
-<details open>
-<summary><b>Integration</b></summary>
+- **Organize new downloads automatically** into subfolders by base model type (SDXL/, Pony/, FLUX/, etc.)
+- **Organize existing models** in one click from the Update Models tab
+- **Backup before organizing** — automatic snapshot of current folder structure
+- **One-click rollback** — restore previous structure at any time (keeps last 5 backups)
+- **Custom category patterns** — define your own base model → folder mapping in Settings (JSON)
+- **Associated files moved together** — `.json`, `.png`, `.preview.png`, `.txt` files travel with the model
 
-- 🎨 **Quick access** from txt2img/img2img
-- 📤 **Send prompts** to txt2img
-- 🔗 **CivitAI API** integration
-- ⚙️ **Extensive settings**
+### 🖼️ Model Info & Preview
 
-</details>
+- **Model information panel** — shows name, version, base model, type, trained tags, permissions, description
+- **Sample images** with a **"Send to txt2img"** button per image — fills prompt, negative, sampler, steps, CFG all at once
+- **Individual meta field buttons** — click any field (Prompt, Negative, Seed, CFG...) to send just that value to txt2img. **Shift+click appends** to your existing prompt instead of replacing
+- **Trained tags / trigger words** displayed in a dedicated field with an **"➕ Add to prompt" button** — sends activation tags directly to your txt2img prompt
+- **Video preview** support — models with video samples show the video inline
+- **Image viewer** — click any preview image to open it fullscreen
+- **Resize preview images** in cards — configurable max resolution (128–1024px) for faster loading
+- **Save model info** — saves model data as `.json` and HTML with all sample images
+- **Save images** — downloads all sample images locally
+- **Use local HTML** — when clicking the CivitAI button on a model card in txt2img, open the locally saved HTML instead of fetching from the internet
 
-### Improvements from Anxety-Solo Fork
+### 📊 Dashboard & Statistics
 
-- 🎨 Modern, redesigned model cards
-- 📅 Neat brick-style date sorting
-- 🏷️ Visual badges for model type and NSFW
-- 💎 Gold badges for paid models
-- 🔍 Exact search toggle
-- 🖼️ Customizable preview resolution
-- 📱 Better responsive design
-- 🐛 Multiple bugfixes from community issues
+- **Disk usage by category** — see exactly how much space each model type and architecture uses
+- **File count per category** — know exactly what you have
+- **Organized by base model** — Checkpoints and LORAs broken down by type (Pony, SDXL, FLUX, etc.)
+- **Visual progress bars** and percentage breakdown
+- **Pie chart** with legend
+- **Hide empty categories** toggle for a cleaner view
+- **Scan summary** — folders scanned, scan duration, skipped files, read errors
+- **Update summary banner** — shows outdated model count per type after scanning
+
+### 🃏 Model Cards
+
+- **Color-coded borders**: green = installed, orange = update available, blue = early access, none = not installed
+- **Color legend bar** — always-visible reference above the card grid
+- **NSFW badge** on cards marked as adult content (configurable)
+- **"Paid" badge** (💎) for early access models
+- **Model type badge** on each card
+- **Tile size** — configurable card size (smaller = more cards per row)
+- **Sort by date** — group cards by upload date
+- **Hide installed models** — remove already-downloaded models from the grid
+- **Multi-select** — checkbox on outdated cards to select multiple for batch download
+- **Quick delete** on installed/outdated cards — removes model directly from the card
+
+### 🔒 Safety & Integrity
+
+- **Send deleted models to Trash** (OS recycle bin) instead of permanent delete — configurable in Settings (default: ON)
+- **Filename length limit (246 bytes / UTF-8)** — prevents filesystem errors on Linux (ext4 max: 255 bytes), works correctly with multi-byte characters (Japanese, Chinese, etc.)
+- **Illegal character sanitization** in filenames — removes characters forbidden by the OS automatically
+
+### ⚙️ Settings
+
+All settings are in **Forge Settings → CivitAI Browser Neo**:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Personal API key | — | Required for some downloads and liked-only search |
+| Hide early access models | OFF | Hides models behind a paywall |
+| Individual prompt buttons | ON | Click each meta field to send it to txt2img |
+| Shift+click meta fields | — | Appends to existing prompt instead of replacing |
+| Move deleted to Trash | ON | OS recycle bin instead of permanent delete |
+| Resize preview cards | ON | Resizes card thumbnails for faster loading |
+| Resize preview size | 512px | Max width for card thumbnails |
+| Video playback | ON | Disable if experiencing high CPU usage |
+| Use local HTML | OFF | Open local HTML when clicking CivitAI button |
+| Page navigation as header | OFF | Sticky top navigation bar |
+| Auto-organize downloads | OFF | Organize new downloads by base model type |
+| Retention policy | replace | What to do with old files on update |
+| Debug prints | OFF | Verbose console output for troubleshooting |
+| Use Aria2 | ON | High-speed multi-connection downloads |
+| Proxy address | — | SOCKS4/SOCKS5 proxy for restricted regions |
 
 ---
 
