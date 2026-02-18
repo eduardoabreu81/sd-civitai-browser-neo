@@ -1,5 +1,5 @@
 <div align="center">
-  <img src=".github/logo.png?v=2" alt="CivitAI Browser Neo" width="320"/>
+  <img src=".github/logo.png?v=2" alt="CivitAI Browser Neo" width="560"/>
 </div>
 
 # 🎨 CivitAI Browser Neo
