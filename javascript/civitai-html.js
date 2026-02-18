@@ -926,6 +926,24 @@ function sendImgUrl(image_url) {
     sendClick(genButton);
 }
 
+// Sends trained tags (trigger words) to txt2img prompt
+// Shift+click appends to existing prompt; regular click replaces
+function sendTagsToPrompt(tags) {
+    if (!tags || !tags.trim()) return;
+    const genButton = gradioApp().querySelector('#txt2img_extra_tabs > div > button');
+    const prompt = gradioApp().querySelector('#txt2img_prompt textarea');
+    const neg_prompt = gradioApp().querySelector('#txt2img_neg_prompt textarea');
+    const cfg_scale = gradioApp().querySelector('#txt2img_cfg_scale > div:nth-child(2) > div > input');
+    const cfg = 'CFG scale: ' + cfg_scale.value + ', ';
+    const prompt_addon = cfg + cfg + cfg;
+    const cleanTags = tags.trimEnd().replace(/,\s*$/, '');
+    const existing = (prompt.value || '').trimEnd().replace(/,\s*$/, '');
+    const combined = existing ? existing + ', ' + cleanTags : cleanTags;
+    const final = combined + '\nNegative prompt: ' + (neg_prompt.value || '') + '\n' + prompt_addon;
+    genInfo_to_txt2img(final, false);
+    sendClick(genButton);
+}
+
 // Sends txt2img info to txt2img tab
 function genInfo_to_txt2img(genInfo, do_slice = true) {
     let insert = gradioApp().querySelector('#txt2img_prompt textarea');
