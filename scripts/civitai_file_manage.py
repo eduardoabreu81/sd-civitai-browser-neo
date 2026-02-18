@@ -945,10 +945,33 @@ def save_model_info(install_path, file_name, sub_folder, sha256=None, preview_ht
             f.write(HTML.encode('utf8'))
         print(f"HTML saved at: {path_to_new_file}")
 
-    if save_api_info:
-        path_to_new_file = os.path.join(save_path, f'{filename}.api_info.json')
-        if not os.path.exists(path_to_new_file) or overwrite_toggle:
-            _api.safe_json_save(path_to_new_file, gl.json_info)
+    # Always save .api_info.json — this is the source of truth for organization.
+    # We fetch the version-specific response via by-hash so that 'baseModel' is
+    # at the root level, making extraction simple and reliable.
+    # Respects overwrite_toggle: won't overwrite an existing file unless the user
+    # explicitly requested it (same behaviour as the .json sidecar).
+    # Falls back to gl.json_info (full model object) if the hash lookup fails.
+    api_info_path = os.path.join(save_path, f'{filename}.api_info.json')
+    if not os.path.exists(api_info_path) or overwrite_toggle:
+        version_data = None
+        try:
+            model_file = os.path.join(save_path, file_name)
+            if os.path.exists(model_file):
+                file_hash = _file.get_model_hash(model_file, hash_type='SHA256')
+                if file_hash:
+                    normalized = _api.normalize_sha256(file_hash)
+                    by_hash_url = f"https://civitai.com/api/v1/model-versions/by-hash/{normalized}"
+                    headers = _api.get_headers()
+                    proxies, ssl_verify = _api.get_proxies()
+                    resp = requests.get(by_hash_url, headers=headers, timeout=(60, 30), proxies=proxies, verify=ssl_verify)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        if 'error' not in data:
+                            version_data = data
+        except Exception as e:
+            pass  # fall through to gl.json_info below
+        _api.safe_json_save(api_info_path, version_data if version_data else gl.json_info)
+        print(f"[CivitAI Browser Neo] - API info saved to: {api_info_path}")
 
 def find_model_version_by_sha256(api_response, sha256):
     """Find the specific model version that matches the given SHA256 hash"""
