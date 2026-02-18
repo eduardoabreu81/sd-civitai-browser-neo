@@ -1,10 +1,18 @@
+<div align="center">
+  <img src=".github/logo.png" alt="CivitAI Browser Neo" width="320"/>
+</div>
+
 # 🎨 CivitAI Browser Neo
+
+<div align="center">
 
 [![Forge Neo](https://img.shields.io/badge/Forge-Neo-blue)](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo)
 [![Gradio](https://img.shields.io/badge/Gradio-4.40.0-orange)](https://gradio.app/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 > **Extension for [Stable Diffusion WebUI Forge - Neo](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo)**
+
+</div>
 
 Modern fork of sd-civitai-browser-plus optimized for Forge Neo with auto-organization features and support for latest model architectures (FLUX, Pony, Illustrious, Wan, Qwen, Z-Image, and more).
 

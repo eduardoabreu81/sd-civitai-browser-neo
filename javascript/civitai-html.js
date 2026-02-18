@@ -619,11 +619,12 @@ function inputHTMLPreviewContent(html_input) {
     }
 }
 
-function metaToTxt2Img(type, element) {
+function metaToTxt2Img(event, type, element) {
     const selection = window.getSelection();
     if (selection.toString().length > 0) {
         return;
     }
+    const isAppend = event && event.shiftKey;
     const genButton = gradioApp().querySelector('#txt2img_extra_tabs > div > button');
     let input = element.querySelector('dd').textContent;
     let inf;
@@ -678,9 +679,21 @@ function metaToTxt2Img(type, element) {
     let cfg = 'CFG scale: ' + cfg_scale.value + ', ';
     let prompt_addon = cfg + cfg + cfg;
     if (is_positive) {
-        final = inf + '\nNegative prompt: ' + neg_prompt.value + '\n' + prompt_addon;
+        if (isAppend) {
+            const existing = prompt.value.trimEnd().replace(/,\s*$/, '');
+            const combined = existing ? existing + ', ' + input : input;
+            final = combined + '\nNegative prompt: ' + neg_prompt.value + '\n' + prompt_addon;
+        } else {
+            final = inf + '\nNegative prompt: ' + neg_prompt.value + '\n' + prompt_addon;
+        }
     } else if (is_negative) {
-        final = prompt.value + '\n' + inf + '\n' + prompt_addon;
+        if (isAppend) {
+            const existingNeg = neg_prompt.value.trimEnd().replace(/,\s*$/, '');
+            const combinedNeg = existingNeg ? existingNeg + ', ' + input : input;
+            final = prompt.value + '\nNegative prompt: ' + combinedNeg + '\n' + prompt_addon;
+        } else {
+            final = prompt.value + '\n' + inf + '\n' + prompt_addon;
+        }
     } else {
         final = prompt.value + '\nNegative prompt: ' + neg_prompt.value + '\n' + inf;
     }

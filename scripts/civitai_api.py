@@ -1076,7 +1076,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                                     key_disp = key_map.get(key, key)
                                     if meta_btn:
                                         img_html += (
-                                            f'<div class="civitai-meta-btn" data-key="{key}" onclick="metaToTxt2Img(\'{escape(str(key_disp))}\', this)">'
+                                            f'<div class="civitai-meta-btn" data-key="{key}" title="Click to replace \u00b7 Shift+click to append" onclick="metaToTxt2Img(event, \'{escape(str(key_disp))}\', this)">'
                                             f'<dt>{escape(str(key_disp))}</dt><dd>{escape(str(value))}</dd></div>'
                                         )
                                     else:
