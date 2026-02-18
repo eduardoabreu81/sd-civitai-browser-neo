@@ -142,14 +142,14 @@ Examples:
 - **Browse CivitAI** directly inside the WebUI — no browser switching needed
 - **Search by keyword, tag, or username** — multiple search modes
 - **Filter by content type**: Checkpoint, LORA, LoCon, DoRA, VAE, ControlNet, Upscaler, TextualInversion, Wildcards, Workflows, and more
-- **Filter by base model**: SD 1.x, SDXL, Pony, Illustrious, FLUX, Wan, Qwen, Z-Image, NoobAI, Lumina, and many more — **auto-updated from CivitAI API** at startup (no hardcoded stale list)
+- **Filter by base model**: SD 1.x, SDXL, Pony, Illustrious, FLUX, Wan, Qwen, Z-Image, NoobAI, Lumina, and many more — **auto-updated from CivitAI API** at startup (no hardcoded stale list) ⭐
 - **Sort by**: Highest Rated, Most Downloaded, Newest, Most Liked, Most Discussed
 - **Filter by time period**: Day, Week, Month, Year, All Time
 - **NSFW toggle**: Show/hide NSFW content
 - **Liked models only**: Filter to models you've liked on CivitAI (requires API key)
 - **Hide installed models**: Declutter the browser by hiding already-downloaded models
 - **Exact search**: Match search terms exactly instead of fuzzy
-- **Search settings persist**: Sort, NSFW state, base model filter — all saved across restarts
+- **Search settings persist**: Sort, NSFW state, base model filter — all saved across restarts ⭐
 
 ### 📥 Download
 
@@ -186,9 +186,9 @@ Examples:
 
 - **Model information panel** — shows name, version, base model, type, trained tags, permissions, description
 - **Sample images** with a **"Send to txt2img"** button per image — fills prompt, negative, sampler, steps, CFG all at once
-- **Individual meta field buttons** — click any field (Prompt, Negative, Seed, CFG...) to send just that value to txt2img. **Shift+click appends** to your existing prompt instead of replacing
-- **Trained tags / trigger words** displayed in a dedicated field with an **"➕ Add to prompt" button** — sends activation tags directly to your txt2img prompt
-- **Video preview** support — model cards with video samples play on hover (muted, loops automatically)
+- **Individual meta field buttons** — click any field (Prompt, Negative, Seed, CFG...) to send just that value to txt2img. **Shift+click appends** to your existing prompt instead of replacing ⭐
+- **Trained tags / trigger words** displayed in a dedicated field with an **"➕ Add to prompt" button** — sends activation tags directly to your txt2img prompt ⭐
+- **Video preview** support — model cards with video samples play on hover (muted, loops automatically) ⭐
 - **Image viewer** — click any preview image to open it fullscreen
 - **Resize preview images** in cards — configurable max resolution (128–1024px) for faster loading
 - **Save model info** — saves model data as `.json` and HTML with all sample images
@@ -209,14 +209,14 @@ Examples:
 ### 🃏 Model Cards
 
 - **Color-coded borders**: green = installed, orange = update available, blue = early access, none = not installed
-- **Color legend bar** — always-visible reference above the card grid
+- **Color legend bar** — always-visible reference above the card grid ⭐
 - **NSFW badge** on cards marked as adult content (configurable)
 - **"Paid" badge** (💎) for early access models
 - **Model type badge** on each card
 - **Tile size** — configurable card size (smaller = more cards per row)
 - **Sort by date** — group cards by upload date
 - **Hide installed models** — remove already-downloaded models from the grid
-- **Multi-select** — checkbox on outdated cards to select multiple for batch download
+- **Multi-select** — checkbox on outdated cards to select multiple for batch download ⭐
 - **Quick delete** on installed/outdated cards — removes model directly from the card
 
 ### 🔒 Safety & Integrity ⭐
