@@ -24,7 +24,6 @@ Modern fork of sd-civitai-browser-plus optimized for Forge Neo with auto-organiz
 - [What's New](#-whats-new--v041)
 - [SD Civitai Browser Neo Release Story](#-sd-civitai-browser-neo-release-story)
 - [Roadmap](#%EF%B8%8F-roadmap)
-- [What's New in Neo?](#-whats-new-in-neo)
 - [Features](#-features)
 - [Installation](#-installation)
 - [Auto-Organization System](#-auto-organization-system)
@@ -135,52 +134,9 @@ Examples:
 
 ---
 
-## ✨ What's New in Neo?
-
-### 🚀 **Major Features**
-
-#### **1. Smart Auto-Organization** 📁
-Automatically organize your models into subfolders by type (SDXL, Pony, FLUX, etc.):
-- **Auto-organize downloads**: New downloads go directly to organized folders
-- **Organize existing models**: One-click organization of all your models
-- **Backup & Rollback**: Safe organization with automatic backup and undo functionality
-- **Customizable categories**: Define your own folder structure and detection patterns
-
-#### **2. Modern Model Support** 🎯
-Full support for all Forge Neo architectures:
-- **SD**: SD1.x and SD2.x (unified)
-- **SDXL**: Including Pony and Illustrious variants
-- **FLUX**: Dev, Krea, Kontext, Klein (4B/9B)
-- **Wan**: Wan 2.2 (T2V, I2V)
-- **Qwen**: Qwen-Image, Qwen-Image-Edit
-- **Z-Image**: Z-Image, Z-Image-Turbo
-- **Lumina**: Neta-Lumina, NetaYume-Lumina
-- **Anima**, **Cascade**, **PixArt**, **Playground**
-- **SVD**, **Hunyuan**, **Kolors**, **AuraFlow**, **Chroma**
-
-#### **3. Gradio 4.x Migration** 🔄
-- Complete migration to Gradio 4.40.0 (Forge Neo compatible)
-- Modern UI components and improved performance
-- Better error handling and stability
-
-#### **4. Dashboard & Statistics** 📊
-Get comprehensive insights into your model collection:
-- **Disk usage statistics**: See how much space each model type uses
-- **File count by category**: Know exactly what you have
-- **Organized by baseModel**: Checkpoints and LORAs grouped by type (Pony, SDXL, FLUX, etc.)
-- **Visual breakdown**: Progress bars and percentage indicators
-- **All model types**: Supports Checkpoints, LORAs, VAEs, Upscalers, ControlNets, and more
-- **Smart detection**: Auto-detects organization from folder structure
-
-#### **5. Safety Features** 🛡️
-- **Automatic backups** before any organization
-- **One-click rollback** to undo changes
-- **Backup history** (keeps last 5 operations)
-- **Safe execution** (cancels if backup fails)
-
----
-
 ## 🎯 Features
+
+> ⭐ = exclusive to Neo · everything else inherited and improved from the original fork
 
 ### 🔍 Browse & Search
 
@@ -209,7 +165,7 @@ Get comprehensive insights into your model collection:
 - **Proxy support** — SOCKS4/SOCKS5 for regions with restricted access
 - **API key support** — download early access and private models with your CivitAI API key
 
-### 🔄 Model Updates
+### 🔄 Model Updates ⭐
 
 - **Outdated card detection** — orange border on cards that have a newer version available
 - **Batch update** — select multiple outdated models via checkbox and download all at once
@@ -218,7 +174,7 @@ Get comprehensive insights into your model collection:
 - **Audit log** — `neo_update_audit.jsonl` records every scan and retention action for traceability
 - **Dashboard update summary** — after scanning, the Dashboard shows a live banner with outdated counts per type
 
-### 🗂️ Auto-Organization
+### 🗂️ Auto-Organization ⭐
 
 - **Organize new downloads automatically** into subfolders by base model type (SDXL/, Pony/, FLUX/, etc.)
 - **Organize existing models** in one click from the Update Models tab
@@ -240,7 +196,7 @@ Get comprehensive insights into your model collection:
 - **Save images** — downloads all sample images locally
 - **Use local HTML** — when clicking the CivitAI button on a model card in txt2img, open the locally saved HTML instead of fetching from the internet
 
-### 📊 Dashboard & Statistics
+### 📊 Dashboard & Statistics ⭐
 
 - **Disk usage by category** — see exactly how much space each model type and architecture uses
 - **File count per category** — know exactly what you have
@@ -264,7 +220,7 @@ Get comprehensive insights into your model collection:
 - **Multi-select** — checkbox on outdated cards to select multiple for batch download
 - **Quick delete** on installed/outdated cards — removes model directly from the card
 
-### 🔒 Safety & Integrity
+### 🔒 Safety & Integrity ⭐
 
 - **Send deleted models to Trash** (OS recycle bin) instead of permanent delete — configurable in Settings (default: ON)
 - **Filename length limit (246 bytes / UTF-8)** — prevents filesystem errors on Linux (ext4 max: 255 bytes), works correctly with multi-byte characters (Japanese, Chinese, etc.)
