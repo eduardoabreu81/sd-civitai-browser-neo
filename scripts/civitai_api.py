@@ -251,7 +251,7 @@ def model_list_html(json_data):
                         image_url = image_url.replace('transcode=true,', f"transcode=true,width={resize_size},")
                 else:
                     image_url = image_url.replace('width=', 'transcode=true,width=')
-                imgtag = f'<video class="video-bg" {playback} muted playsinline><source src="{image_url}" type="video/mp4"></video>'
+                imgtag = f'<video class="video-bg" loop muted playsinline><source src="{image_url}" type="video/mp4"></video>'
             else:
                 imgtag = f'<img src="{image_url}"></img>'
         else:
