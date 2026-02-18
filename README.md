@@ -21,7 +21,7 @@ Modern fork of sd-civitai-browser-plus optimized for Forge Neo with auto-organiz
 ## 📋 Table of Contents
 
 - [Neo Versioning](#-neo-versioning)
-- [What's New](#-whats-new--v040)
+- [What's New](#-whats-new--v041)
 - [SD Civitai Browser Neo Release Story](#-sd-civitai-browser-neo-release-story)
 - [Roadmap](#%EF%B8%8F-roadmap)
 - [What's New in Neo?](#-whats-new-in-neo)
@@ -51,18 +51,30 @@ Examples:
 
 ---
 
-## 🆕 What's New — v0.4.0
+## 🆕 What's New — v0.4.1
 
-> **Update Intelligence** — smarter update detection, audit trail, and retention control.
+> **UX Polish** — better prompt integration, safer file handling, complete documentation.
 
-- **Dashboard update summary banner** — after running a scan, the Dashboard shows a live banner: ✅ green (all up to date) or ⚠️ orange with per-type breakdown (e.g. *Checkpoint: 2, LORA: 5*)
-- **Batch update from cards** — outdated cards (orange border) now show a **checkbox** instead of a delete button, enabling multi-select for batch download via the existing queue pipeline
-- **Retention policy** — new setting in *Model Organization*: `keep` both files, `move to _Trash` (subfolder next to old file), or `replace` (delete old before downloading new)
-- **Audit log** — every update scan and every retention action is appended to `neo_update_audit.jsonl` at the extension root for traceability
+- **Trigger words button** — "➕ Add to prompt" button next to the Trained Tags field sends activation tags directly to the txt2img prompt
+- **Shift+click to append** — on individual meta field buttons (Prompt, Negative), Shift+click appends to your existing prompt instead of replacing it. Tooltip visible on hover.
+- **Send to Trash setting** — new setting to move deleted models to the OS recycle bin instead of permanent deletion (default: ON)
+- **Filename length safety** — filenames are now capped at 246 bytes (UTF-8) to prevent filesystem crashes on Linux
+- **Search settings persist** — sort, NSFW state, base model filter and other preferences are now correctly saved and restored after restart
+- **Full feature documentation** — README completely rewritten to document every feature, including hidden/undocumented ones from previous forks
 
 ---
 
 ## 📖 SD Civitai Browser Neo Release Story
+
+### v0.4.1
+> **Theme: UX Polish** — better prompt workflow, safer deletes, complete documentation.
+
+- [x] "➕ Add to prompt" button next to Trained Tags field
+- [x] Shift+click append on meta field buttons (Prompt / Negative)
+- [x] Setting: move deleted models to OS Trash instead of permanent delete (default ON)
+- [x] Filename length capped at 246 UTF-8 bytes (Linux filesystem safety)
+- [x] Search settings now persist correctly across restarts (fixed key prefix bug)
+- [x] README features section completely rewritten with full documentation
 
 ### v0.4.0
 > **Theme: Update Intelligence** — smarter update workflow, Dashboard integration, retention policy, audit log.
@@ -106,11 +118,11 @@ Examples:
 
 ## 🗺️ Roadmap
 
+### v0.4.1 — UX Polish *(released)*
+- Trigger words → txt2img button, Shift+click append, send2trash setting, filename 246-byte limit, search settings persist
+
 ### v0.4.0 — Update Intelligence *(released)*
-- Dashboard update summary banner (outdated count per type)
-- Outdated cards show checkbox for batch update selection
-- Retention policy: `keep` / `move to _Trash` / `replace`
-- `neo_update_audit.jsonl` audit log
+- Dashboard update banner, batch update cards, retention policy, audit log
 
 ### v0.5.0 — Dashboard as Console *(planned)*
 - Export dashboard data to CSV / JSON
