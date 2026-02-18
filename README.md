@@ -29,7 +29,6 @@ Modern fork of sd-civitai-browser-plus optimized for Forge Neo with auto-organiz
 - [Auto-Organization System](#-auto-organization-system)
 - [Dashboard & Statistics](#-dashboard--statistics)
 - [Supported Model Types](#-supported-model-types)
-- [Settings](#%EF%B8%8F-settings)
 - [Credits](#-credits)
 
 ---
@@ -189,7 +188,6 @@ Examples:
 - **Sample images** with a **"Send to txt2img"** button per image — fills prompt, negative, sampler, steps, CFG all at once
 - **Individual meta field buttons** — click any field (Prompt, Negative, Seed, CFG...) to send just that value to txt2img. **Shift+click appends** to your existing prompt instead of replacing
 - **Trained tags / trigger words** displayed in a dedicated field with an **"➕ Add to prompt" button** — sends activation tags directly to your txt2img prompt
-- **Video preview** support — models with video samples show the video inline
 - **Image viewer** — click any preview image to open it fullscreen
 - **Resize preview images** in cards — configurable max resolution (128–1024px) for faster loading
 - **Save model info** — saves model data as `.json` and HTML with all sample images
@@ -443,43 +441,9 @@ You can define your own categories in **Settings** → **Model Organization** us
 
 ---
 
-## ⚙️ Settings
+## ⚠️ Known Issues
 
-### Model Organization (New!)
-
-| Setting | Description | Default |
-|---------|-------------|---------|
-| **Auto-organize downloads** | Automatically organize new downloads into subfolders | OFF |
-| **Create "Other" folder** | Put unrecognized models in "Other/" folder | ON |
-| **Custom categories** | JSON with custom folder names and patterns | (empty) |
-
-### Browser Settings
-
-| Setting | Description |
-|---------|-------------|
-| **Personal API key** | Your CivitAI API key (required for some downloads) |
-| **Hide early access** | Hide early access models from results |
-| **Hide dot subfolders** | Hide folders starting with `.` |
-| **Use local HTML** | Use local HTML files instead of CivitAI links |
-| **Page navigation header** | Keep page navigation always visible |
-| **Video playback** | Enable gif/video playback in browser |
-| **Resize preview cards** | Resize preview images for faster loading |
-
-### Download Settings
-
-| Setting | Description |
-|---------|-------------|
-| **Download method** | Choose between Default or Aria2 |
-| **Aria2 connections** | Number of connections for Aria2 (1-64) |
-| **Auto-save images** | Automatically download preview images |
-| **Image count** | Number of images to save (4-64) |
-| **Unpack ZIP** | Automatically extract .zip files |
-| **Save HTML on download** | Save HTML file with model info |
-
----
-
-##  Known Issues
-
+- **Video preview not working** — the setting exists but video/gif playback in the model info panel is currently broken
 - Some models may not have `baseModel` metadata (download from CivitAI to get it)
 - Dashboard shows "Unorganized" for files placed directly in root model folders
 - Rollback only works for the last operation
