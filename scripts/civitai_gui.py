@@ -159,7 +159,7 @@ def get_base_models():
     ]
 
     if not isinstance(json_return, dict):
-        print("Couldn't fetch latest baseModel options, using default.")
+        print("[CivitAI Browser Neo] - Couldn't fetch latest baseModel options, using default.")
         return default_options
 
     if 'error' in json_return and 'message' in json_return['error']:

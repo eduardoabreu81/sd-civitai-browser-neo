@@ -1639,16 +1639,19 @@ def request_civit_api(api_url=None, skip_error_check=False):
                 'NameResolutionError' in error_text
                 or 'Failed to resolve' in error_text
                 or 'Temporary failure in name resolution' in error_text
+                or ('Max retries exceeded' in error_text and 'NameResolutionError' in error_text)
+                or ('Max retries exceeded' in error_text and 'Failed to resolve' in error_text)
             )
 
             if dns_resolution_error and attempt < max_attempts:
                 wait_time = base_backoff_seconds * attempt
-                print(f"DNS resolution failed (attempt {attempt}/{max_attempts}). Retrying in {wait_time}s...")
+                print(f"[CivitAI Browser Neo] - DNS resolution failed (attempt {attempt}/{max_attempts}). Retrying in {wait_time}s...")
                 time.sleep(wait_time)
                 continue
 
-            print(f"Error: {e}")
+            print(f"[CivitAI Browser Neo] - Error: {e}")
             if dns_resolution_error:
+                print(f"[CivitAI Browser Neo] - DNS resolution failed (attempt {max_attempts}/{max_attempts}). No more retries.")
                 return 'dns_error'
             return 'error'
 
