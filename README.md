@@ -21,7 +21,7 @@ Modern fork of sd-civitai-browser-plus optimized for Forge Neo with auto-organiz
 ## 📋 Table of Contents
 
 - [Neo Versioning](#-neo-versioning)
-- [What's New](#-whats-new--v041)
+- [What's New](#-whats-new--v042)
 - [SD Civitai Browser Neo Release Story](#-sd-civitai-browser-neo-release-story)
 - [Roadmap](#%EF%B8%8F-roadmap)
 - [Features](#-features)
@@ -49,20 +49,26 @@ Examples:
 
 ---
 
-## 🆕 What's New — v0.4.1
+## 🆕 What's New — v0.4.2
 
-> **UX Polish** — better prompt integration, safer file handling, complete documentation.
+> **Bug Fix Patch** — crash fixes, trigger words in overlay, line ending normalization.
 
-- **Trigger words button** — "➕ Add to prompt" button next to the Trained Tags field sends activation tags directly to the txt2img prompt
-- **Shift+click to append** — on individual meta field buttons (Prompt, Negative), Shift+click appends to your existing prompt instead of replacing it. Tooltip visible on hover.
-- **Send to Trash setting** — new setting to move deleted models to the OS recycle bin instead of permanent deletion (default: ON)
-- **Filename length safety** — filenames are now capped at 246 bytes (UTF-8) to prevent filesystem crashes on Linux
-- **Search settings persist** — sort, NSFW state, base model filter and other preferences are now correctly saved and restored after restart
-- **Full feature documentation** — README completely rewritten to document every feature, including hidden/undocumented ones from previous forks
+- **"➕ Add to prompt" in model overlay** — trigger words button now appears inside the popup that opens when clicking the CivitAI icon on txt2img/img2img model cards, with auto-close after sending
+- **Fix: delete model crash** — `AttributeError` when deleting a model whose `.json` had no `sha256` field is now handled safely
+- **Fix: auto-organize download crash** — `UnboundLocalError` on `from_batch` when auto-organize was enabled during batch downloads
+- **Fix: `.gitattributes`** — added to enforce LF line endings across all text files, preventing CRLF warnings on Windows
 
 ---
 
 ## 📖 SD Civitai Browser Neo Release Story
+
+### v0.4.2
+> **Theme: Bug Fix Patch** — crash fixes, trigger words in overlay, line ending normalization.
+
+- [x] "➕ Add to prompt" button now appears in the model info overlay (CivitAI icon popup in txt2img/img2img)
+- [x] Fix: `AttributeError` crash when deleting models with missing `sha256` in `.json`
+- [x] Fix: `UnboundLocalError` on `from_batch` when auto-organize was enabled during batch downloads
+- [x] Added `.gitattributes` to enforce LF line endings across the codebase
 
 ### v0.4.1
 > **Theme: UX Polish** — better prompt workflow, safer deletes, complete documentation.
@@ -187,7 +193,7 @@ Examples:
 - **Model information panel** — shows name, version, base model, type, trained tags, permissions, description
 - **Sample images** with a **"Send to txt2img"** button per image — fills prompt, negative, sampler, steps, CFG all at once
 - **Individual meta field buttons** — click any field (Prompt, Negative, Seed, CFG...) to send just that value to txt2img. **Shift+click appends** to your existing prompt instead of replacing ⭐
-- **Trained tags / trigger words** displayed in a dedicated field with an **"➕ Add to prompt" button** — sends activation tags directly to your txt2img prompt ⭐
+- **Trained tags / trigger words** — displayed in the model info panel and in the **model overlay popup** (CivitAI icon on txt2img/img2img cards). The **"➕ Add to prompt" button** appends activation tags directly to your txt2img prompt and closes the overlay ⭐
 - **Video preview** support — model cards with video samples play on hover (muted, loops automatically) ⭐
 - **Image viewer** — click any preview image to open it fullscreen
 - **Resize preview images** in cards — configurable max resolution (128–1024px) for faster loading

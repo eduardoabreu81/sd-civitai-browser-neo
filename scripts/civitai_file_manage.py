@@ -139,7 +139,7 @@ def delete_model(delete_finish=None, model_filename=None, model_string=None, lis
                     file_path = os.path.join(root, file)
                     data = _api.safe_json_load(file_path)
                     if data:
-                        file_sha256 = data.get('sha256', '').upper()
+                        file_sha256 = (data.get('sha256') or '').upper()
                     else:
                         file_sha256 = '0'
 
