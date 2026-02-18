@@ -342,7 +342,7 @@ def on_ui_tabs():
                 with gr.Column(scale=4):
                     with gr.Row():
                         trained_tags = gr.Textbox(label='Trained tags (if any):', value=None, interactive=False, lines=1, scale=6)
-                        send_tags_btn = gr.Button(value='➕ Add to prompt', scale=1, min_width=120, interactive=False)
+                        send_tags_btn = gr.Button(value='➕ Add to prompt', scale=1, min_width=120, interactive=False, visible=False)
                 with gr.Column(scale=2, elem_id='spanWidth'):
                     base_model = gr.Textbox(label='Base model: ', value=None, interactive=False, lines=1, elem_id='baseMdl')
                     model_filename = gr.Textbox(label='Model filename:', interactive=False, value=None)
