@@ -479,6 +479,10 @@ def on_ui_tabs():
                 fix_misplaced_btn = gr.Button(value='✅ Fix misplaced files', interactive=True, visible=False, variant='secondary')
             with gr.Row():
                 fix_misplaced_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+            with gr.Row():
+                undo_fix_btn = gr.Button(value='↶ Undo Fix', interactive=True, visible=False, variant='secondary')
+            with gr.Row():
+                undo_fix_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
 
             validate_plan_state = gr.State(value='{}')
 
@@ -1359,7 +1363,15 @@ def on_ui_tabs():
             outputs=[
                 fix_misplaced_progress,
                 fix_misplaced_btn,
+                undo_fix_btn,
                 validate_plan_state
+            ]
+        )
+
+        undo_fix_btn.click(
+            fn=_file.rollback_organization,
+            outputs=[
+                undo_fix_progress
             ]
         )
 

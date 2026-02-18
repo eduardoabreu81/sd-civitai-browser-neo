@@ -2565,7 +2565,7 @@ def fix_misplaced_files(plan_json, progress=gr.Progress() if queue else None):
         html = '''<div style="padding:20px;text-align:center;">
             <strong>Nothing to fix.</strong> Run validation first.
         </div>'''
-        return gr.update(value=html), gr.update(visible=False), '{}'
+        return gr.update(value=html), gr.update(visible=False), gr.update(visible=False), '{}'
 
     if progress is not None:
         progress(0, desc="Saving backup before fixing...")
@@ -2585,7 +2585,7 @@ def fix_misplaced_files(plan_json, progress=gr.Progress() if queue else None):
         <div style="padding:20px;text-align:center;">
             <div style="font-size:48px;margin-bottom:12px;">✅</div>
             <h3 style="margin:0 0 8px 0;color:var(--body-text-color);">Fixed! {total_moved} file(s) moved to correct folders.</h3>
-            <p style="color:var(--body-text-color-subdued);margin:0;font-size:13px;">A backup was saved. Use "↶ Undo Last Organization" to revert if needed.</p>
+            <p style="color:var(--body-text-color-subdued);margin:0;font-size:13px;">A backup was saved. Use "↶ Undo Fix" below to revert if needed.</p>
         </div>'''
     else:
         error_list = '<br>'.join(errors[:10])
@@ -2600,7 +2600,7 @@ def fix_misplaced_files(plan_json, progress=gr.Progress() if queue else None):
         </div>'''
 
     print(f"[CivitAI Browser Neo] fix_misplaced_files: {result['message']}")
-    return gr.update(value=result_html), gr.update(visible=False), '{}'
+    return gr.update(value=result_html), gr.update(visible=False), gr.update(visible=True), '{}'
 
 
 def rollback_organization(progress=gr.Progress() if queue else None):
