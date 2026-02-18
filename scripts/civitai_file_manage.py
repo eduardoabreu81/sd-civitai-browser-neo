@@ -664,6 +664,12 @@ def model_from_sent(model_name, content_type):
         if os.path.exists(json_file):
             data = _api.safe_json_load(json_file)
             file_sha256 = data.get('sha256') if data else None
+        # If SHA256 not cached, compute it now (also saves it to .json for future use)
+        if not file_sha256 and os.path.exists(model_file):
+            try:
+                file_sha256 = gen_sha256(model_file)
+            except Exception:
+                pass
         # Find the specific model version based on SHA256 or filename
         if file_sha256:
             model_version, item = find_model_version_by_sha256(api_response, file_sha256)
@@ -1569,6 +1575,14 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
                 if os.path.exists(json_file):
                     data = _api.safe_json_load(json_file)
                     file_sha256 = data.get('sha256') if data else None
+
+                # If SHA256 not cached in .json, compute it now and save it
+                # This ensures we always match the exact version (not just by filename)
+                if not file_sha256 and os.path.exists(file_path):
+                    try:
+                        file_sha256 = gen_sha256(file_path)
+                    except Exception:
+                        pass
 
                 # Find the specific model version based on SHA256 or filename
                 if file_sha256:
