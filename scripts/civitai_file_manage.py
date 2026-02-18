@@ -2453,6 +2453,156 @@ def organize_start(organize_start):
     number = _download.random_number(organize_start)
     return start_returns(number)
 
+def validate_organization(folders, progress=gr.Progress() if queue else None):
+    """
+    Validate that models are in their correct subfolders based on .json metadata.
+    Read-only: does NOT move any files.
+    Returns (html_report, plan_json_string) where plan_json_string can be passed
+    to fix_misplaced_files() to actually apply the corrections.
+    """
+    import json as _json
+
+    if not folders:
+        html = '''<div style="padding:20px;text-align:center;">
+            <strong>No content types selected.</strong><br>
+            <span style="color:var(--body-text-color-subdued);">Select at least one type above.</span>
+        </div>'''
+        return gr.update(value=html), gr.update(visible=False), '{}'
+
+    if progress is not None:
+        progress(0, desc="Scanning files for validation...")
+
+    plan = analyze_organization_plan(folders, progress)
+
+    misplaced  = plan['moves']             # files in wrong folder
+    no_meta    = plan['files_without_info']
+    total      = plan['total_files']
+    correct    = total - len(misplaced) - no_meta
+
+    # ── Summary numbers ──────────────────────────────────────────────────────
+    if not misplaced and no_meta == 0:
+        html = f'''
+        <div style="padding:20px;text-align:center;">
+            <div style="font-size:48px;margin-bottom:12px;">✅</div>
+            <h3 style="margin:0 0 8px 0;color:var(--body-text-color);">All {total} models are in the correct folders!</h3>
+            <p style="color:var(--body-text-color-subdued);margin:0;">Nothing to fix.</p>
+        </div>'''
+        return gr.update(value=html), gr.update(visible=False), '{}'
+
+    # ── Build misplaced table ─────────────────────────────────────────────────
+    rows_html = ''
+    for m in misplaced:
+        current_folder = os.path.basename(os.path.dirname(m['from']))
+        expected_folder = m['base_model']
+        rows_html += f'''
+        <tr style="border-bottom:1px solid var(--border-color-primary);">
+            <td style="padding:6px 10px;font-family:monospace;font-size:12px;">{m['model_name']}</td>
+            <td style="padding:6px 10px;text-align:center;color:#e57373;">{current_folder or '(root)'}</td>
+            <td style="padding:6px 10px;text-align:center;">→</td>
+            <td style="padding:6px 10px;text-align:center;color:#81c784;">{expected_folder}/</td>
+        </tr>'''
+
+    no_meta_note = (
+        f'<div style="margin-top:12px;padding:10px;background:#fff3cd;border-radius:5px;font-size:13px;">'
+        f'⚠️ {no_meta} file(s) have no .json metadata and were skipped.</div>'
+        if no_meta > 0 else ''
+    )
+
+    html = f'''
+    <div style="padding:15px;border:1px solid var(--border-color-primary);border-radius:8px;margin:10px 0;">
+        <h3 style="margin:0 0 12px 0;">🔍 Organization Validation Report</h3>
+
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
+            <div style="padding:8px 16px;background:rgba(129,199,132,0.15);border-radius:6px;font-size:14px;">
+                ✅ <strong>{correct}</strong> correctly placed
+            </div>
+            <div style="padding:8px 16px;background:rgba(229,115,115,0.15);border-radius:6px;font-size:14px;">
+                ❌ <strong>{len(misplaced)}</strong> misplaced
+            </div>
+            <div style="padding:8px 16px;background:rgba(255,193,7,0.15);border-radius:6px;font-size:14px;">
+                ⚠️ <strong>{no_meta}</strong> without metadata
+            </div>
+        </div>
+
+        <details open>
+            <summary style="cursor:pointer;padding:8px;background:var(--block-background-fill);border-radius:5px;font-size:13px;margin-bottom:8px;">
+                ❌ Misplaced files ({len(misplaced)})
+            </summary>
+            <div style="max-height:300px;overflow-y:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                    <thead>
+                        <tr style="background:var(--background-fill-secondary);">
+                            <th style="padding:6px 10px;text-align:left;">File</th>
+                            <th style="padding:6px 10px;text-align:center;">Current folder</th>
+                            <th style="padding:6px 10px;"></th>
+                            <th style="padding:6px 10px;text-align:center;">Expected folder</th>
+                        </tr>
+                    </thead>
+                    <tbody>{rows_html}</tbody>
+                </table>
+            </div>
+        </details>
+        {no_meta_note}
+    </div>'''
+
+    plan_json = _json.dumps(plan, ensure_ascii=False)
+    return gr.update(value=html), gr.update(visible=True, interactive=True), plan_json
+
+
+def fix_misplaced_files(plan_json, progress=gr.Progress() if queue else None):
+    """
+    Execute the organization plan produced by validate_organization().
+    Moves only the misplaced files; creates a backup before moving.
+    """
+    import json as _json
+
+    try:
+        plan = _json.loads(plan_json) if plan_json else {}
+    except Exception:
+        plan = {}
+
+    if not plan or not plan.get('moves'):
+        html = '''<div style="padding:20px;text-align:center;">
+            <strong>Nothing to fix.</strong> Run validation first.
+        </div>'''
+        return gr.update(value=html), gr.update(visible=False), '{}'
+
+    if progress is not None:
+        progress(0, desc="Saving backup before fixing...")
+
+    save_organization_backup(plan)
+
+    if progress is not None:
+        progress(0.05, desc="Moving misplaced files...")
+
+    result = execute_organization(plan, progress)
+
+    total_moved = result['completed']
+    errors      = result['errors']
+
+    if result['success']:
+        result_html = f'''
+        <div style="padding:20px;text-align:center;">
+            <div style="font-size:48px;margin-bottom:12px;">✅</div>
+            <h3 style="margin:0 0 8px 0;color:var(--body-text-color);">Fixed! {total_moved} file(s) moved to correct folders.</h3>
+            <p style="color:var(--body-text-color-subdued);margin:0;font-size:13px;">A backup was saved. Use "↶ Undo Last Organization" to revert if needed.</p>
+        </div>'''
+    else:
+        error_list = '<br>'.join(errors[:10])
+        if len(errors) > 10:
+            error_list += f'<br><em>... and {len(errors)-10} more</em>'
+        result_html = f'''
+        <div style="padding:20px;">
+            <h3 style="color:var(--error-text-color);">⚠️ Fixed with errors — {total_moved}/{len(plan["moves"])} files moved</h3>
+            <details><summary style="cursor:pointer;">View errors</summary>
+                <div style="margin-top:8px;font-size:13px;font-family:monospace;">{error_list}</div>
+            </details>
+        </div>'''
+
+    print(f"[CivitAI Browser Neo] fix_misplaced_files: {result['message']}")
+    return gr.update(value=result_html), gr.update(visible=False), '{}'
+
+
 def rollback_organization(progress=gr.Progress() if queue else None):
     """
     Rollback the last organization operation

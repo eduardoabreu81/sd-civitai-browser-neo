@@ -467,6 +467,21 @@ def on_ui_tabs():
             with gr.Row():
                 undo_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
 
+            gr.Markdown('---')
+            gr.Markdown('### 🔍 Validate Organization')
+            gr.Markdown('Check whether all models are in their correct subfolders — without moving anything. Optionally fix any misplaced files.')
+
+            with gr.Row():
+                validate_org_btn = gr.Button(value='🔍 Validate organization', interactive=True, visible=True, variant='primary')
+            with gr.Row():
+                validate_org_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+            with gr.Row():
+                fix_misplaced_btn = gr.Button(value='✅ Fix misplaced files', interactive=True, visible=False, variant='secondary')
+            with gr.Row():
+                fix_misplaced_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+
+            validate_plan_state = gr.State(value='{}')
+
         ## Dashboard Tab
         with gr.Tab(label='Dashboard', elem_id='dashboardTab'):
             gr.Markdown('## 📊 Model Collection Statistics', elem_id='dashboard_header')
@@ -1325,6 +1340,26 @@ def on_ui_tabs():
             fn=_file.rollback_organization,
             outputs=[
                 undo_progress
+            ]
+        )
+
+        validate_org_btn.click(
+            fn=_file.validate_organization,
+            inputs=[selected_tags_local],
+            outputs=[
+                validate_org_progress,
+                fix_misplaced_btn,
+                validate_plan_state
+            ]
+        )
+
+        fix_misplaced_btn.click(
+            fn=_file.fix_misplaced_files,
+            inputs=[validate_plan_state],
+            outputs=[
+                fix_misplaced_progress,
+                fix_misplaced_btn,
+                validate_plan_state
             ]
         )
 
