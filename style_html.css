@@ -225,6 +225,43 @@ body {
     display: none;
 }
 
+.trained-words-block {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 12px;
+}
+.trained-words-block .block-header {
+    text-align: center;
+    margin: 0 0 8px 0;
+    padding: 0;
+    line-height: 1;
+}
+.trained-words-content {
+    font-size: 0.875rem;
+    word-break: break-word;
+    margin-bottom: 10px;
+}
+.add-to-prompt-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 14px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 6px;
+    border: 1px solid #7c6af7;
+    background: #7c6af7;
+    color: #fff;
+    transition: background 0.2s ease;
+}
+.add-to-prompt-btn:hover {
+    background: #6355d8;
+    border-color: #6355d8;
+}
+
 .version-info-block .block-header,
 .permissions-block .block-header,
 .description-block .block-header {

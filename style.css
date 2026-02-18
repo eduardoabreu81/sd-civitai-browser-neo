@@ -1102,6 +1102,85 @@
     display: none;
 }
 
+#civitai_preview_html .trained-words-block {
+    background: var(--block-background-fill);
+    border: 1px solid var(--block-border-color);
+    border-radius: var(--block-radius);
+    padding: 12px 16px;
+    margin-bottom: 12px;
+}
+#civitai_preview_html .trained-words-block .block-header {
+    text-align: center;
+    margin: 0 0 8px 0;
+    padding: 0;
+    line-height: 1;
+}
+#civitai_preview_html .trained-words-content {
+    font-size: 0.875rem;
+    color: var(--body-text-color);
+    word-break: break-word;
+    margin-bottom: 10px;
+}
+#civitai_preview_html .add-to-prompt-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 14px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: var(--button-small-radius);
+    border: 1px solid var(--button-primary-border-color);
+    background: var(--button-primary-background-fill);
+    color: var(--button-primary-text-color);
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+#civitai_preview_html .add-to-prompt-btn:hover {
+    background: var(--button-primary-background-fill-hover);
+    border-color: var(--button-primary-border-color-hover);
+    color: var(--button-primary-text-color-hover);
+}
+
+/* Overlay trained-words-block */
+.civitai-overlay .trained-words-block {
+    background: var(--block-background-fill);
+    border: 1px solid var(--block-border-color);
+    border-radius: var(--block-radius);
+    padding: 12px 16px;
+    margin-bottom: 12px;
+}
+.civitai-overlay .trained-words-block .block-header {
+    text-align: center;
+    margin: 0 0 8px 0;
+    padding: 0;
+    line-height: 1;
+}
+.civitai-overlay .trained-words-content {
+    font-size: 0.875rem;
+    color: var(--body-text-color);
+    word-break: break-word;
+    margin-bottom: 10px;
+}
+.civitai-overlay .add-to-prompt-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 14px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: var(--button-small-radius);
+    border: 1px solid var(--button-primary-border-color);
+    background: var(--button-primary-background-fill);
+    color: var(--button-primary-text-color);
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+.civitai-overlay .add-to-prompt-btn:hover {
+    background: var(--button-primary-background-fill-hover);
+    border-color: var(--button-primary-border-color-hover);
+    color: var(--button-primary-text-color-hover);
+}
+
 #civitai_preview_html .version-info-block .block-header,
 #civitai_preview_html .permissions-block .block-header,
 #civitai_preview_html .description-block .block-header {

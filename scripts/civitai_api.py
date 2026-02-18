@@ -1260,6 +1260,19 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                     '</div>'
                 )
 
+                # Build trigger words block (only if trained words exist)
+                if output_training:
+                    safe_tags = escape(output_training).replace("'", "&#39;")
+                    trained_words_section = (
+                        '<div class="trained-words-block">'
+                            '<h3 class="block-header">Trigger Words</h3>'
+                            f'<div class="trained-words-content">{escape(output_training)}</div>'
+                            f'<button class="add-to-prompt-btn" onclick="sendTagsToPrompt(\'{safe_tags}\')">➕ Add to prompt</button>'
+                        '</div>'
+                    )
+                else:
+                    trained_words_section = ''
+
                 # Build main HTML structure
                 output_html = (
                     '<div class="main-container">'
@@ -1273,6 +1286,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                                 f'{version_info}'
                                 f'{version_permissions}'
                             '</div>'
+                            f'{trained_words_section}'
                             f'{description_section}'
                         '</div>'
                         '<div class="images-section">'

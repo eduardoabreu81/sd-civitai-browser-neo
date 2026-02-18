@@ -990,6 +990,7 @@ function sendTagsToPrompt(tags) {
     const final = combined + '\nNegative prompt: ' + (neg_prompt.value || '') + '\n' + prompt_addon;
     genInfo_to_txt2img(final, false);
     sendClick(genButton);
+    hideCivitaiOverlay();
 }
 
 // Sends txt2img info to txt2img tab

@@ -208,7 +208,8 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
 
         # Check if auto-organization is enabled
         auto_organize = getattr(opts, 'civitai_neo_auto_organize', False)
-        
+        from_batch = True  # default: treat as batch (no manual subfolder)
+
         if auto_organize and output_basemodel:
             # Use auto-organization: determine folder from baseModel
             from scripts.civitai_file_manage import normalize_base_model
