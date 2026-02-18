@@ -54,7 +54,9 @@ Examples:
 > **Organization Validator** — validate + fix misplaced models without running a full re-organize.
 
 - **Organization Validator** — new button in Local Models tab scans your Checkpoint/LORA folders and reports which models are in the wrong subfolder (based on `.json` metadata), which are correctly placed, and which have no metadata. Read-only by default ⭐
-- **Fix misplaced files** — after validation, a "✅ Fix misplaced files" button appears to move only the flagged models to their correct subfolders. Creates a backup automatically; fully undoable via the existing "↶ Undo" button ⭐
+- **Fix misplaced files** — after validation, a "✅ Fix misplaced files" button appears to move only the flagged models to their correct subfolders. Creates a backup automatically; fully undoable via the "↶ Undo Fix" button inline ⭐
+- **NoobAI support** — new category added to organization system; models tagged `NoobAI` on CivitAI now go to `NoobAI/` instead of `Other/` ⭐
+- **Fix: `"sd version"` now stores raw CivitAI value** — metadata files no longer save the normalized folder name (e.g. `"Other"`) — stores the original API string (e.g. `"NoobAI"`) ⭐
 
 ---
 
@@ -65,7 +67,9 @@ Examples:
 
 - [x] New "🔍 Validate organization" button in Local Models tab — read-only scan showing correct / misplaced / no-metadata counts with a per-file table
 - [x] "✅ Fix misplaced files" button appears after validation — moves only flagged models to correct subfolders, saves a backup first
-- [x] Fix is fully undoable via the existing "↶ Undo Last Organization" button
+- [x] "↶ Undo Fix" button appears after fix — reverts changes inline, no need to scroll to Undo section
+- [x] NoobAI added as new organization category (folder `NoobAI/`)
+- [x] Fix: `"sd version"` in `.json` now saves the raw CivitAI API value, not the normalized folder name — prevents future mis-categorization
 
 ### v0.4.2
 > **Theme: Bug Fix Patch** — crash fixes, trigger words in overlay, line ending normalization.
@@ -424,6 +428,7 @@ The Neo version includes detection for all modern architectures supported by For
 | **SDXL** | SDXL | Base SDXL |
 | **Pony** | PONY | Pony V6 and variants |
 | **Illustrious** | ILLUSTRIOUS | Illustrious XL |
+| **NoobAI** | NOOBAI, NOOB AI, NAI | NoobAI (Illustrious variant) |
 | **FLUX** | FLUX | Dev, Krea, Kontext, Klein |
 | **Wan** | WAN | Wan 2.2 T2V/I2V |
 | **Qwen** | QWEN | Qwen-Image, Edit |

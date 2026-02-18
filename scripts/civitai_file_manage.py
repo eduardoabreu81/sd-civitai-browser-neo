@@ -995,13 +995,10 @@ def find_and_save(api_response, sha256=None, file_name=None, json_file=None, no_
 
         base_model = model_version.get('baseModel', '')
         
-        # Normalize base model using the same function as organization
-        normalized_base_model = normalize_base_model(base_model)
-        if normalized_base_model:
-            base_model = normalized_base_model
-        else:
-            # If normalize returns None (leave in root), keep original or set to 'Other'
-            base_model = base_model if base_model else 'Other'
+        # Save the RAW CivitAI baseModel value (e.g. "NoobAI", "Pony", "Illustrious")
+        # normalize_base_model() is only used for folder placement, never for .json storage
+        if not base_model:
+            base_model = 'Other'
 
         if isinstance(trained_words, list):
             trained_tags = ','.join(trained_words)
@@ -1784,6 +1781,7 @@ def get_model_categories():
         'SDXL': ['SDXL'],
         'Pony': ['PONY', 'PONYXL', 'PONY XL', 'PONY V6', 'PONYV6'],
         'Illustrious': ['ILLUSTRIOUS'],
+        'NoobAI': ['NOOBAI', 'NOOB AI', 'NOOB', 'NAI'],
         'FLUX': ['FLUX'],
         'Wan': ['WAN'],
         'Qwen': ['QWEN'],
