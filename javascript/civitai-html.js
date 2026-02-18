@@ -115,6 +115,54 @@ function updateCard(modelNameWithSuffix) {
     }
 }
 
+// === VIDEO HOVER-TO-PLAY ===
+// Attach hover-to-play listeners to a single card element
+function attachVideoHoverPlay(card) {
+    const video = card.querySelector('video.video-bg');
+    if (!video || video._hoverPlayAttached) return;
+    video._hoverPlayAttached = true;
+
+    card.addEventListener('mouseenter', () => {
+        video.play().catch(() => {});
+    });
+    card.addEventListener('mouseleave', () => {
+        video.pause();
+        video.currentTime = 0;
+    });
+}
+
+// Observe the model list container for newly injected cards
+(function initVideoHoverObserver() {
+    function attachAll(root) {
+        root.querySelectorAll('.civmodelcard').forEach(attachVideoHoverPlay);
+    }
+
+    const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            for (const node of mutation.addedNodes) {
+                if (node.nodeType !== 1) continue;
+                if (node.classList && node.classList.contains('civmodelcard')) {
+                    attachVideoHoverPlay(node);
+                } else {
+                    attachAll(node);
+                }
+            }
+        }
+    });
+
+    function startObserver() {
+        const container = document.querySelector('.civmodellist') || document.body;
+        observer.observe(container, { childList: true, subtree: true });
+        attachAll(container);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', startObserver);
+    } else {
+        startObserver();
+    }
+})();
+
 // Enables refresh with alt+enter and ctrl+enter
 function keydownHandler(e) {
     var handled = false;

@@ -188,6 +188,7 @@ Examples:
 - **Sample images** with a **"Send to txt2img"** button per image — fills prompt, negative, sampler, steps, CFG all at once
 - **Individual meta field buttons** — click any field (Prompt, Negative, Seed, CFG...) to send just that value to txt2img. **Shift+click appends** to your existing prompt instead of replacing
 - **Trained tags / trigger words** displayed in a dedicated field with an **"➕ Add to prompt" button** — sends activation tags directly to your txt2img prompt
+- **Video preview** support — model cards with video samples play on hover (muted, loops automatically)
 - **Image viewer** — click any preview image to open it fullscreen
 - **Resize preview images** in cards — configurable max resolution (128–1024px) for faster loading
 - **Save model info** — saves model data as `.json` and HTML with all sample images
@@ -237,7 +238,7 @@ All settings are in **Forge Settings → CivitAI Browser Neo**:
 | Move deleted to Trash | ON | OS recycle bin instead of permanent delete |
 | Resize preview cards | ON | Resizes card thumbnails for faster loading |
 | Resize preview size | 512px | Max width for card thumbnails |
-| Video playback | ON | Disable if experiencing high CPU usage |
+| Video playback | ON | Card thumbnails play video on hover (muted). Disable if experiencing high CPU usage |
 | Use local HTML | OFF | Open local HTML when clicking CivitAI button |
 | Page navigation as header | OFF | Sticky top navigation bar |
 | Auto-organize downloads | OFF | Organize new downloads by base model type |
@@ -263,7 +264,7 @@ All settings are in **Forge Settings → CivitAI Browser Neo**:
 - ✅ Python 3.10+ (3.13 recommended)
 - ✅ Gradio 4.39.0+ (comes with Forge Neo)
 
-> ⚠️ **Note**: This extension is designed for **Forge Neo only**. For Forge Classic or Automatic1111, use the original [sd-civitai-browser-plus](https://github.com/anxety-solo/sd-civitai-browser-plus).
+> ⚠️ **Note**: This extension is designed for **Forge Neo only**. For Forge Classic or Automatic1111, I recommend the [anxety-solo fork of sd-civitai-browser-plus](https://github.com/anxety-solo/sd-civitai-browser-plus) — it is the most maintained non-Neo fork, based on the original [BlafKing version](https://github.com/BlafKing/sd-civitai-browser-plus).
 
 ---
 
@@ -443,7 +444,6 @@ You can define your own categories in **Settings** → **Model Organization** us
 
 ## ⚠️ Known Issues
 
-- **Video preview not working** — the setting exists but video/gif playback in the model info panel is currently broken
 - Some models may not have `baseModel` metadata (download from CivitAI to get it)
 - Dashboard shows "Unorganized" for files placed directly in root model folders
 - Rollback only works for the last operation
