@@ -963,7 +963,7 @@ def save_model_info(install_path, file_name, sub_folder, sha256=None, preview_ht
         try:
             model_file = os.path.join(save_path, file_name)
             if os.path.exists(model_file):
-                file_hash = _file.get_model_hash(model_file, hash_type='SHA256')
+                file_hash = gen_sha256(model_file)
                 if file_hash:
                     normalized = _api.normalize_sha256(file_hash)
                     by_hash_url = f"https://civitai.com/api/v1/model-versions/by-hash/{normalized}"
@@ -1909,7 +1909,7 @@ def _fetch_api_info_by_hash(file_path, api_info_file):
     model_name = os.path.basename(file_path)
     _debug_log(f"Fetching .api_info.json by SHA256 for: {model_name}")
 
-    file_hash = _file.get_model_hash(file_path, hash_type='SHA256')
+    file_hash = gen_sha256(file_path)
     if not file_hash:
         _debug_log(f"Could not compute SHA256 for: {model_name}")
         return None
@@ -1994,7 +1994,7 @@ def _extract_base_model_from_api_data(data, file_path=None):
         if versions:
             matched_version = None
             if file_path:
-                file_hash = _file.get_model_hash(file_path, hash_type='SHA256')
+                file_hash = gen_sha256(file_path)
                 if file_hash:
                     _debug_log(f"Model SHA256: {file_hash}")
                     for version in versions:
