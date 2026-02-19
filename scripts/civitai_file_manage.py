@@ -2470,6 +2470,64 @@ def execute_rollback(progress=None):
         'message': f"Successfully rolled back {moves_completed} files" if len(errors) == 0 else f"Completed with {len(errors)} errors"
     }
 
+def _move_associated_files(source_path, target_path):
+    """Move all sidecar files (.json, .png, .html, numbered previews, etc.)
+    from source_path location to target_path location."""
+    base_name        = os.path.splitext(source_path)[0]
+    target_base_name = os.path.splitext(target_path)[0]
+
+    associated_extensions = ['.json', '.png', '.jpg', '.jpeg', '.txt', '.html', '.civitai.info']
+
+    # Exact base name matches
+    for ext in associated_extensions:
+        associated_file = base_name + ext
+        if os.path.exists(associated_file):
+            target_associated = target_base_name + ext
+            try:
+                shutil.move(associated_file, target_associated)
+                debug_print(f"Moved associated file: {os.path.basename(associated_file)}")
+            except Exception as e:
+                debug_print(f"Could not move associated file {associated_file}: {e}")
+
+    # Numbered previews: model_0.png, model_1.png, …
+    for i in range(20):
+        for ext in ['.png', '.jpg', '.jpeg']:
+            numbered_file = f"{base_name}_{i}{ext}"
+            if os.path.exists(numbered_file):
+                target_numbered = f"{target_base_name}_{i}{ext}"
+                try:
+                    shutil.move(numbered_file, target_numbered)
+                    debug_print(f"Moved numbered preview: {os.path.basename(numbered_file)}")
+                except Exception as e:
+                    debug_print(f"Could not move numbered preview {numbered_file}: {e}")
+
+    # Compound-suffix files: .preview.png, .api_info.json, .civitai.*
+    suffixes = ['.preview', '.api_info', '.civitai']
+    for suffix in suffixes:
+        for ext in associated_extensions:
+            associated_file = base_name + suffix + ext
+            if os.path.exists(associated_file):
+                target_associated = target_base_name + suffix + ext
+                try:
+                    shutil.move(associated_file, target_associated)
+                    debug_print(f"Moved associated file: {os.path.basename(associated_file)}")
+                except Exception as e:
+                    debug_print(f"Could not move associated file {associated_file}: {e}")
+
+
+def _make_progress_bar_html(done, total, label):
+    """Return an inline HTML progress bar used by generator functions."""
+    pct = int(done / total * 100) if total else 0
+    return f'''
+    <div style="padding:12px 15px;border:1px solid var(--border-color-primary);border-radius:8px;margin:6px 0;">
+        <div style="font-size:13px;margin-bottom:6px;">{label}</div>
+        <div style="background:var(--border-color-primary);border-radius:4px;height:10px;">
+            <div style="background:#4caf50;width:{pct}%;height:100%;border-radius:4px;transition:width 0.2s;"></div>
+        </div>
+        <div style="font-size:12px;color:var(--body-text-color-subdued);margin-top:4px;">{done} / {total} files ({pct}%)</div>
+    </div>'''
+
+
 def execute_organization(organization_plan, progress=None):
     """
     Execute the organization plan by moving files
@@ -2510,55 +2568,10 @@ def execute_organization(organization_plan, progress=None):
             
             # Move main model file
             shutil.move(source_path, target_path)
-            
-            # Move associated files
-            # First, handle exact matches (.json, .png, etc.)
-            base_name = os.path.splitext(source_path)[0]
-            target_base_name = os.path.splitext(target_path)[0]
-            source_dir = os.path.dirname(source_path)
-            
-            # Extensions to move (both with and without .preview suffix)
-            associated_extensions = ['.json', '.png', '.jpg', '.jpeg', '.txt', '.html', '.civitai.info']
-            
-            # Move files with exact base name
-            for ext in associated_extensions:
-                associated_file = base_name + ext
-                if os.path.exists(associated_file):
-                    target_associated = target_base_name + ext
-                    try:
-                        shutil.move(associated_file, target_associated)
-                        debug_print(f"Moved associated file: {os.path.basename(associated_file)}")
-                    except Exception as e:
-                        debug_print(f"Could not move associated file {associated_file}: {e}")
-            
-            # Move numbered preview images (e.g., model_0.png, model_1.png, ...)
-            import glob
-            model_basename = os.path.basename(base_name)
-            for i in range(20):  # Support up to 20 preview images
-                for ext in ['.png', '.jpg', '.jpeg']:
-                    numbered_file = f"{base_name}_{i}{ext}"
-                    if os.path.exists(numbered_file):
-                        target_numbered = f"{target_base_name}_{i}{ext}"
-                        try:
-                            shutil.move(numbered_file, target_numbered)
-                            debug_print(f"Moved numbered preview: {os.path.basename(numbered_file)}")
-                        except Exception as e:
-                            debug_print(f"Could not move numbered preview {numbered_file}: {e}")
-            
-            # Also move files with .preview, .api_info suffixes before extension
-            # e.g., model.preview.png, model.api_info.json
-            suffixes = ['.preview', '.api_info', '.civitai']
-            for suffix in suffixes:
-                for ext in associated_extensions:
-                    associated_file = base_name + suffix + ext
-                    if os.path.exists(associated_file):
-                        target_associated = target_base_name + suffix + ext
-                        try:
-                            shutil.move(associated_file, target_associated)
-                            debug_print(f"Moved associated file: {os.path.basename(associated_file)}")
-                        except Exception as e:
-                            debug_print(f"Could not move associated file {associated_file}: {e}")
-            
+
+            # Move all associated sidecar files
+            _move_associated_files(source_path, target_path)
+
             print(f"✓ Organized: {model_name} → {move_info['base_model']}/")
             
         except Exception as e:
@@ -2583,8 +2596,8 @@ def validate_organization(folders, progress=gr.Progress() if queue else None):
     """
     Validate that models are in their correct subfolders based on .json metadata.
     Read-only: does NOT move any files.
-    Returns (html_report, plan_json_string) where plan_json_string can be passed
-    to fix_misplaced_files() to actually apply the corrections.
+    Yields (html_report, fix_btn_update, plan_json_string) — generator so the UI
+    shows a status message immediately while the scan runs in the background.
     """
     import json as _json
 
@@ -2593,7 +2606,17 @@ def validate_organization(folders, progress=gr.Progress() if queue else None):
             <strong>No content types selected.</strong><br>
             <span style="color:var(--body-text-color-subdued);">Select at least one type above.</span>
         </div>'''
-        return gr.update(value=html), gr.update(visible=False), '{}'
+        yield gr.update(value=html), gr.update(visible=False), '{}'
+        return
+
+    # ── Show scanning status immediately ─────────────────────────────────────
+    yield (
+        gr.update(value='<div style="padding:12px 15px;border:1px solid var(--border-color-primary);border-radius:8px;margin:6px 0;">'
+                        '🔍 <strong>Scanning files…</strong> This may take a while for large collections.'
+                        '</div>'),
+        gr.update(visible=False),
+        '{}'
+    )
 
     if progress is not None:
         progress(0, desc="Scanning files for validation...")
@@ -2613,7 +2636,8 @@ def validate_organization(folders, progress=gr.Progress() if queue else None):
             <h3 style="margin:0 0 8px 0;color:var(--body-text-color);">All {total} models are in the correct folders!</h3>
             <p style="color:var(--body-text-color-subdued);margin:0;">Nothing to fix.</p>
         </div>'''
-        return gr.update(value=html), gr.update(visible=False), '{}'
+        yield gr.update(value=html), gr.update(visible=False), '{}'
+        return
 
     # ── Build misplaced table ─────────────────────────────────────────────────
     rows_html = ''
@@ -2672,13 +2696,14 @@ def validate_organization(folders, progress=gr.Progress() if queue else None):
     </div>'''
 
     plan_json = _json.dumps(plan, ensure_ascii=False)
-    return gr.update(value=html), gr.update(visible=True, interactive=True), plan_json
+    yield gr.update(value=html), gr.update(visible=True, interactive=True), plan_json
 
 
 def fix_misplaced_files(plan_json, progress=gr.Progress() if queue else None):
     """
     Execute the organization plan produced by validate_organization().
     Moves only the misplaced files; creates a backup before moving.
+    Generator: yields inline HTML progress updates to the UI.
     """
     import json as _json
 
@@ -2691,7 +2716,21 @@ def fix_misplaced_files(plan_json, progress=gr.Progress() if queue else None):
         html = '''<div style="padding:20px;text-align:center;">
             <strong>Nothing to fix.</strong> Run validation first.
         </div>'''
-        return gr.update(value=html), gr.update(visible=False), gr.update(visible=False), '{}'
+        yield gr.update(value=html), gr.update(visible=False), gr.update(visible=False), '{}'
+        return
+
+    moves = plan['moves']
+    total = len(moves)
+
+    # ── Initial status: saving backup ─────────────────────────────────────────
+    yield (
+        gr.update(value='<div style="padding:12px 15px;border:1px solid var(--border-color-primary);border-radius:8px;margin:6px 0;">'
+                        '💾 <strong>Saving backup…</strong>'
+                        '</div>'),
+        gr.update(visible=True),
+        gr.update(visible=False),
+        '{}'
+    )
 
     if progress is not None:
         progress(0, desc="Saving backup before fixing...")
@@ -2699,34 +2738,68 @@ def fix_misplaced_files(plan_json, progress=gr.Progress() if queue else None):
     save_organization_backup(plan)
 
     if progress is not None:
-        progress(0.05, desc="Moving misplaced files...")
+        progress(0.02, desc="Moving misplaced files...")
 
-    result = execute_organization(plan, progress)
+    # ── Move files one by one, yielding progress every 25 ────────────────────
+    completed = 0
+    errors    = []
 
-    total_moved = result['completed']
-    errors      = result['errors']
+    for i, move_info in enumerate(moves):
+        if gl.cancel_status:
+            break
 
-    if result['success']:
+        source_path = move_info['from']
+        target_path = move_info['to']
+        model_name  = move_info.get('model_name', os.path.basename(source_path))
+        base_model  = move_info.get('base_model', '?')
+
+        if progress is not None:
+            progress((i + 1) / total, desc=f"Moving: {model_name} ({i + 1}/{total})")
+
+        try:
+            os.makedirs(os.path.dirname(target_path), exist_ok=True)
+            if os.path.exists(source_path) and not os.path.exists(target_path):
+                shutil.move(source_path, target_path)
+                _move_associated_files(source_path, target_path)
+            print(f"[CivitAI Browser Neo] ✓ Organized: {model_name} → {base_model}/")
+            completed += 1
+        except Exception as e:
+            errors.append(f"Failed to move {model_name}: {e}")
+            print(f"[CivitAI Browser Neo] ✗ Error moving {model_name}: {e}")
+
+        # ── Yield progress every 25 files (and after the last one) ────────────
+        if (i + 1) % 25 == 0 or i == total - 1:
+            yield (
+                gr.update(value=_make_progress_bar_html(i + 1, total, f'📁 Moving: {model_name} → {base_model}/')),
+                gr.update(visible=True),
+                gr.update(visible=False),
+                '{}'
+            )
+
+    # ── Final result ──────────────────────────────────────────────────────────
+    success = len(errors) == 0
+
+    if success:
         result_html = f'''
         <div style="padding:20px;text-align:center;">
             <div style="font-size:48px;margin-bottom:12px;">✅</div>
-            <h3 style="margin:0 0 8px 0;color:var(--body-text-color);">Fixed! {total_moved} file(s) moved to correct folders.</h3>
+            <h3 style="margin:0 0 8px 0;color:var(--body-text-color);">Fixed! {completed} file(s) moved to correct folders.</h3>
             <p style="color:var(--body-text-color-subdued);margin:0;font-size:13px;">A backup was saved. Use "↶ Undo Fix" below to revert if needed.</p>
         </div>'''
     else:
         error_list = '<br>'.join(errors[:10])
         if len(errors) > 10:
-            error_list += f'<br><em>... and {len(errors)-10} more</em>'
+            error_list += f'<br><em>... and {len(errors) - 10} more</em>'
         result_html = f'''
         <div style="padding:20px;">
-            <h3 style="color:var(--error-text-color);">⚠️ Fixed with errors — {total_moved}/{len(plan["moves"])} files moved</h3>
+            <h3 style="color:var(--error-text-color);">⚠️ Fixed with errors — {completed}/{total} files moved</h3>
             <details><summary style="cursor:pointer;">View errors</summary>
                 <div style="margin-top:8px;font-size:13px;font-family:monospace;">{error_list}</div>
             </details>
         </div>'''
 
-    print(f"[CivitAI Browser Neo] fix_misplaced_files: {result['message']}")
-    return gr.update(value=result_html), gr.update(visible=False), gr.update(visible=True), '{}'
+    print(f"[CivitAI Browser Neo] fix_misplaced_files: moved {completed}/{total}, errors={len(errors)}")
+    yield gr.update(value=result_html), gr.update(visible=False), gr.update(visible=True), '{}'
 
 
 def rollback_organization(progress=gr.Progress() if queue else None):

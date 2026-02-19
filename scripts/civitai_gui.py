@@ -1354,7 +1354,8 @@ def on_ui_tabs():
                 validate_org_progress,
                 fix_misplaced_btn,
                 validate_plan_state
-            ]
+            ],
+            show_progress="full"
         )
 
         fix_misplaced_btn.click(
@@ -1365,7 +1366,8 @@ def on_ui_tabs():
                 fix_misplaced_btn,
                 undo_fix_btn,
                 validate_plan_state
-            ]
+            ],
+            show_progress="full"
         )
 
         undo_fix_btn.click(
