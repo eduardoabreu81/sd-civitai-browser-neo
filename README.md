@@ -21,7 +21,7 @@ Modern fork of sd-civitai-browser-plus optimized for Forge Neo with auto-organiz
 ## 📋 Table of Contents
 
 - [Neo Versioning](#-neo-versioning)
-- [What's New](#-whats-new--v043)
+- [What's New](#-whats-new--v044)
 - [SD Civitai Browser Neo Release Story](#-sd-civitai-browser-neo-release-story)
 - [Roadmap](#%EF%B8%8F-roadmap)
 - [Features](#-features)
@@ -49,21 +49,30 @@ Examples:
 
 ---
 
-## 🆕 What's New — v0.4.3
+## 🆕 What's New — v0.4.4
 
-> **Organization Validator + Metadata Reliability** — validate + fix misplaced models, guaranteed correct version metadata.
+> **Model Overlay Polish + Delete Fix** — LoRA activation syntax in Add to prompt, SHA256 in version info, inline progress bars, card delete crash fixed.
 
-- **Organization Validator** — new button in Local Models tab scans your Checkpoint/LORA folders and reports which models are in the wrong subfolder (based on `.json` metadata), which are correctly placed, and which have no metadata. Read-only by default ⭐
-- **Fix misplaced files** — after validation, a "✅ Fix misplaced files" button appears to move only the flagged models to their correct subfolders. Creates a backup automatically; fully undoable via the "↶ Undo Fix" button inline ⭐
-- **NoobAI support** — new category added to organization system; models tagged `NoobAI` on CivitAI now go to `NoobAI/` instead of `Other/` ⭐
-- **Fix: `"sd version"` now stores raw CivitAI value** — metadata files no longer save the normalized folder name (e.g. `"Other"`) — stores the original API string (e.g. `"NoobAI"`) ⭐
-- **`.api_info.json` always created on model info save** — removed the opt-in guard; every "Save Model Info" now always creates/updates `.api_info.json` using the `by-hash` CivitAI endpoint (cleanest source of truth) ⭐
-- **Auto-fetch `.api_info.json` by SHA256 during validation** — if the file is missing, the validator fetches and saves it on-the-fly via `GET /api/v1/model-versions/by-hash/{sha256}`, then patches the `.json` with the correct `baseModel` ⭐
-- **SHA256 computed on-the-fly when not cached** — when scanning models, if `sha256` is absent from `.json`, it is computed from the actual file and saved immediately; this ensures `find_model_version_by_sha256()` is always used for exact version matching, eliminating wrong-version mismatches from filename-only lookups ⭐
+- **LoRA activation syntax in "Add to prompt"** — for LORA/LoCon models, the button now inserts `<lora:filename:1>, trigger, words` directly into txt2img — no more manually typing the activation tag ⭐
+- **SHA256 in Version Information** — the model overlay now shows the SHA256 hash of the selected file, selectable with one click (monospace, `user-select:all`) ⭐
+- **Inline progress bars for Validate & Fix** — Validate Organization and Fix Misplaced Files now stream live HTML progress bars into the UI during long operations, instead of only printing to the terminal ⭐
+- **Fix: "Delete function not available" crash** — quick-delete from model cards was broken due to a missing `elem_id` on the `delete_finish` Gradio element; now fixed
+- **Fix: card border not updating after quick-delete** — after deleting a model via the card's trash button, the card now immediately removes its green "installed" border
 
 ---
 
 ## 📖 SD Civitai Browser Neo Release Story
+
+### v0.4.4
+> **Theme: Model Overlay Polish + Delete Fix** — LoRA activation syntax, SHA256 display, inline progress bars, delete crash fixed.
+
+- [x] "Add to prompt" now inserts `<lora:filename:1>` prefix for LORA models, followed by trigger words
+- [x] SHA256 shown in Version Information block of the model overlay (monospace, click-to-select)
+- [x] Validate Organization and Fix Misplaced Files converted to generators — show live progress bars in the UI
+- [x] Fix: `show_progress="full"` added to validate and fix GUI bindings
+- [x] Fix: `delete_finish` missing `elem_id` caused "Delete function not available" crash on card quick-delete
+- [x] Fix: after card quick-delete, card now correctly removes its installed border state
+- [x] Fix: `deleteInstalledModel` was passing `model_name_js` to `updateCard` instead of `model_string` — card was never found and updated
 
 ### v0.4.3
 > **Theme: Organization Validator + Metadata Reliability** — validate + fix misplaced models, guaranteed correct version metadata.
@@ -211,7 +220,8 @@ Examples:
 - **Model information panel** — shows name, version, base model, type, trained tags, permissions, description
 - **Sample images** with a **"Send to txt2img"** button per image — fills prompt, negative, sampler, steps, CFG all at once
 - **Individual meta field buttons** — click any field (Prompt, Negative, Seed, CFG...) to send just that value to txt2img. **Shift+click appends** to your existing prompt instead of replacing ⭐
-- **Trained tags / trigger words** — displayed in the model info panel and in the **model overlay popup** (CivitAI icon on txt2img/img2img cards). The **"➕ Add to prompt" button** appends activation tags directly to your txt2img prompt and closes the overlay ⭐
+- **Trained tags / trigger words** — displayed in the model info panel and in the **model overlay popup** (CivitAI icon on txt2img/img2img cards). The **"➕ Add to prompt" button** appends activation tags directly to your txt2img prompt and closes the overlay; for **LORA models it automatically prepends `<lora:filename:1>`** so the activation tag is always included ⭐
+- **SHA256 in Version Information** — the model info overlay shows the SHA256 hash of the selected file; click once to select all for easy copy ⭐
 - **Video preview** support — model cards with video samples play on hover (muted, loops automatically) ⭐
 - **Image viewer** — click any preview image to open it fullscreen
 - **Resize preview images** in cards — configurable max resolution (128–1024px) for faster loading
