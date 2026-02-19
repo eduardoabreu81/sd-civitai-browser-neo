@@ -1689,10 +1689,31 @@ def request_civit_api(api_url=None, skip_error_check=False):
     return 'error'
 
 ## === ANXETY EDITs ===
+def inject_removed_banner(html: str) -> str:
+    """Prepend a 'removed by owner' warning banner to existing model HTML."""
+    banner = (
+        '<div style="background:rgba(229,115,115,0.15);border:1px solid #e57373;border-radius:8px;'
+        'padding:12px 16px;margin:0 0 16px 0;display:flex;align-items:center;gap:10px;">'
+        '<span style="font-size:20px;">&#9888;&#65039;</span>'
+        '<div>'
+        '<strong style="color:#e57373;">This resource has been removed by its owner</strong><br>'
+        '<span style="font-size:12px;color:var(--body-text-color-subdued);">'
+        'Showing cached local data. The model file is still available locally.'
+        '</span></div></div>'
+    )
+    target = '<div class="info-section"'
+    if target in html:
+        return html.replace(target, banner + target, 1)
+    # fallback: prepend to body content
+    return banner + html
+
+
 def api_error_msg(input_string):
     div = '<div style="color: white; font-family: var(--font); font-size: 24px; text-align: center; margin: 50px !important;">'
     if input_string == 'not_found':
         return div + 'Model ID not found on CivitAI.<br>Maybe the model doesn\'t exist on CivitAI?</div>'
+    elif input_string == 'removed':
+        return div + 'This resource has been removed by its owner.<br>No local cached data was found for this model.</div>'
     elif input_string == 'path_not_found':
         return div + 'Local model not found.<br>Could not locate the model path.</div>'
     elif input_string == 'timeout':

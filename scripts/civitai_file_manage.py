@@ -599,6 +599,29 @@ def convert_local_images(html):
         simg['src'] = f"data:image/{imgtype};base64,{b64img}"
     return str(soup)
 
+def _get_cached_html_stripped(model_file) -> str | None:
+    """Return stripped (no <head> section) content from the local .html cache, or None if absent."""
+    if not model_file:
+        return None
+    html_file = os.path.splitext(model_file)[0] + '.html'
+    if not os.path.exists(html_file):
+        return None
+    with open(html_file, 'r', encoding='utf-8') as f:
+        html = f.read()
+    index = html.find('</head>')
+    if index != -1:
+        html = html[index + len('</head>'):]
+    return html
+
+
+def _wrap_html_with_css(body: str) -> str:
+    """Prepend the overlay stylesheet to a body HTML string."""
+    css_path = Path(__file__).resolve().parents[1] / 'style_html.css'
+    with open(css_path, 'r', encoding='utf-8') as css_file:
+        css = css_file.read()
+    return f'<head><style>{css}</style></head>{body}'
+
+
 def model_from_sent(model_name, content_type):
     modelID_failed = False
     output_html = None
@@ -648,6 +671,10 @@ def model_from_sent(model_name, content_type):
         api_response = None
         modelID = get_models(model_file, True)
         if not modelID or modelID == 'Model not found':
+            # SHA256 lookup returned 404 — check for local cached HTML before giving up
+            cached = _get_cached_html_stripped(model_file)
+            if cached is not None:
+                return gr.update(value=_wrap_html_with_css(_api.inject_removed_banner(cached)), placeholder=_download.random_number()),  # Preview HTML
             output_html = _api.api_error_msg('not_found')
             modelID_failed = True
         if modelID == 'offline':
@@ -657,6 +684,11 @@ def model_from_sent(model_name, content_type):
             api_response = _api.request_civit_api(f"https://civitai.com/api/v1/models?ids={modelID}&nsfw=true")
         if modelID_failed or api_response in ['timeout', 'error', 'offline']:
             return gr.update(value='<p>ERROR</p>', placeholder=_download.random_number()),  # Preview HTML
+        if api_response == 'not_found':
+            # Model was removed from CivitAI after being cached locally — show cached HTML with banner
+            cached = _get_cached_html_stripped(model_file)
+            body = _api.inject_removed_banner(cached) if cached is not None else _api.api_error_msg('removed')
+            return gr.update(value=_wrap_html_with_css(body), placeholder=_download.random_number()),  # Preview HTML
 
         # Get SHA256 hash for the file to find the specific version
         file_sha256 = None
