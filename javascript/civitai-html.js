@@ -1560,7 +1560,7 @@ function initializeImageViewer() {
 }
 
 // Delete installed model with confirmation
-function deleteInstalledModel(event, modelName, sha256) {
+function deleteInstalledModel(event, modelString, sha256) {
     // Stop event propagation to prevent card selection
     event.stopPropagation();
     event.preventDefault();
@@ -1570,13 +1570,16 @@ function deleteInstalledModel(event, modelName, sha256) {
         return;
     }
     
+    // Strip the trailing " (id)" part for display only
+    const displayName = modelString.replace(/\s*\(\d+\)\s*$/, '');
+    
     // Show confirmation dialog
-    const confirmMessage = `Are you sure you want to delete "${modelName}"?\n\nThis will move the model and its associated files to the trash.`;
+    const confirmMessage = `Are you sure you want to delete "${displayName}"?\n\nThis will move the model and its associated files to the trash.`;
     if (!confirm(confirmMessage)) {
         return;
     }
     
-    // Find the delete trigger input element
+    // Find the delete trigger input element (presence check — ensures UI is loaded)
     const deleteFinishInput = gradioApp().querySelector('#delete_finish textarea');
     if (!deleteFinishInput) {
         alert('Error: Delete function not available.');
@@ -1602,6 +1605,8 @@ function deleteInstalledModel(event, modelName, sha256) {
         const deleteButton = gradioApp().querySelector('#delete_trigger_btn');
         if (deleteButton) {
             deleteButton.click();
+            // After deletion completes, update the card visually (remove installed state)
+            setTimeout(() => updateCard(modelString + '.None'), 500);
         } else {
             console.error('Could not find #delete_trigger_btn element');
             alert('Error: Delete button not found. Please try using the delete button in the model details panel.');
