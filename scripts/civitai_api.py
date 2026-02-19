@@ -1211,6 +1211,10 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                     )
 
                 # Build version info block
+                _sha256_row = (
+                    f'<dt>SHA256</dt>'
+                    f'<dd><span style="font-family:monospace;font-size:11px;word-break:break-all;user-select:all;">{escape(sha256_value)}</span></dd>'
+                ) if sha256_value and sha256_value != 'Unknown' else ''
                 version_info = (
                     '<div class="version-info-block">'
                         '<h3 class="block-header">Version Information</h3>'
@@ -1231,6 +1235,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                                     f'{tags_html}'
                                 '</div>'
                             '</dd>'
+                            f'{_sha256_row}'
                             f'{"<dt>Download Link</dt>" if model_url else ""}'
                             f'{f"<dd><a href={model_url} target=_blank>{model_url}</a></dd>" if model_url else ""}'
                         '</dl>'
@@ -1260,14 +1265,26 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                     '</div>'
                 )
 
-                # Build trigger words block (only if trained words exist)
-                if output_training:
-                    safe_tags = escape(output_training).replace("'", "&#39;")
+                # Build trigger words block (if trained words exist, or it's a LORA so we can insert the activation syntax)
+                if output_training or is_LORA:
+                    safe_tags = escape(output_training).replace("'", "&#39;") if output_training else ''
+                    display_content = escape(output_training) if output_training else ''
+                    onclick_tags = safe_tags
+
+                    if is_LORA and model_filename:
+                        lora_stem = os.path.splitext(model_filename)[0]
+                        # safe_stem_js: entities for <> so the browser decodes them to actual chars before JS runs
+                        safe_stem_js = lora_stem.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace("'", '&#39;')
+                        lora_tag_display = f'&lt;lora:{escape(lora_stem)}:1&gt;'
+                        lora_tag_onclick = f'&lt;lora:{safe_stem_js}:1&gt;'
+                        display_content = lora_tag_display + (f', {escape(output_training)}' if output_training else '')
+                        onclick_tags = lora_tag_onclick + (f', {safe_tags}' if safe_tags else '')
+
                     trained_words_section = (
                         '<div class="trained-words-block">'
                             '<h3 class="block-header">Trigger Words</h3>'
-                            f'<div class="trained-words-content">{escape(output_training)}</div>'
-                            f'<button class="add-to-prompt-btn" onclick="sendTagsToPrompt(\'{safe_tags}\')">➕ Add to prompt</button>'
+                            f'<div class="trained-words-content">{display_content}</div>'
+                            f'<button class="add-to-prompt-btn" onclick="sendTagsToPrompt(\'{onclick_tags}\')">➕ Add to prompt</button>'
                         '</div>'
                     )
                 else:
