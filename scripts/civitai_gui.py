@@ -578,7 +578,7 @@ def on_ui_tabs():
         installed_finish = gr.Textbox(visible=None)
         organize_start = gr.Textbox(visible=None)
         organize_finish = gr.Textbox(visible=None)
-        delete_finish = gr.Textbox(visible=False)
+        delete_finish = gr.Textbox(elem_id='delete_finish', visible=False)
         current_model = gr.Textbox(visible=False)
         current_sha256 = gr.Textbox(visible=False)
         model_preview_html_input = gr.Textbox(visible=False)
