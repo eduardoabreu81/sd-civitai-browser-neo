@@ -21,7 +21,7 @@ Modern fork of sd-civitai-browser-plus optimized for Forge Neo with auto-organiz
 ## 📋 Table of Contents
 
 - [Neo Versioning](#-neo-versioning)
-- [What's New](#-whats-new--v044)
+- [What's New](#-whats-new--v045)
 - [SD Civitai Browser Neo Release Story](#-sd-civitai-browser-neo-release-story)
 - [Roadmap](#%EF%B8%8F-roadmap)
 - [Features](#-features)
@@ -49,19 +49,26 @@ Examples:
 
 ---
 
-## 🆕 What's New — v0.4.4
+## 🆕 What's New — v0.4.5
 
-> **Model Overlay Polish + Delete Fix** — LoRA activation syntax in Add to prompt, SHA256 in version info, inline progress bars, card delete crash fixed.
+> **Removed Model Failsafe** — when a model is deleted from CivitAI by its creator, the overlay now shows the cached local data with a clear warning banner instead of a generic error.
 
-- **LoRA activation syntax in "Add to prompt"** — for LORA/LoCon models, the button now inserts `<lora:filename:1>, trigger, words` directly into txt2img — no more manually typing the activation tag ⭐
-- **SHA256 in Version Information** — the model overlay now shows the SHA256 hash of the selected file, selectable with one click (monospace, `user-select:all`) ⭐
-- **Inline progress bars for Validate & Fix** — Validate Organization and Fix Misplaced Files now stream live HTML progress bars into the UI during long operations, instead of only printing to the terminal ⭐
-- **Fix: "Delete function not available" crash** — quick-delete from model cards was broken due to a missing `elem_id` on the `delete_finish` Gradio element; now fixed
-- **Fix: card border not updating after quick-delete** — after deleting a model via the card's trash button, the card now immediately removes its green "installed" border
+- **Failsafe for creator-removed models** — clicking the CivitAI icon on a locally-installed model that has been removed from the site no longer shows a useless error; Neo falls back to the `.html` sidecar cache and displays all the original information (trigger words, sample images, SHA256, permissions) with a prominent ⚠️ banner: *"This resource has been removed by its owner — Showing cached local data"* ⭐
+- **Covers both removal scenarios** — works whether the SHA256-by-hash endpoint returns 404 (creator deleted before the ID was cached) or the model page endpoint returns 404 (deleted after the ID was already saved locally)
+- **Graceful fallback with no local cache** — if no `.html` sidecar exists either, shows a specific *"removed by owner"* message instead of the old confusing "Model ID not found" text
 
 ---
 
 ## 📖 SD Civitai Browser Neo Release Story
+
+### v0.4.5
+> **Theme: Removed Model Failsafe** — graceful degradation when a model has been deleted from CivitAI by its creator.
+
+- [x] When API returns 404, `model_from_sent` checks for a local `.html` sidecar before showing an error
+- [x] `inject_removed_banner(html)` helper prepends a red ⚠️ warning banner into the existing cached HTML
+- [x] Two code paths covered: SHA256-by-hash 404 (`get_models` → `'Model not found'`) and model-page 404 (`api_response == 'not_found'`)
+- [x] `api_error_msg('removed')` added for the case where model was removed and no local cache exists
+- [x] `_get_cached_html_stripped` and `_wrap_html_with_css` extracted as DRY helpers
 
 ### v0.4.4
 > **Theme: Model Overlay Polish + Delete Fix** — LoRA activation syntax, SHA256 display, inline progress bars, delete crash fixed.
