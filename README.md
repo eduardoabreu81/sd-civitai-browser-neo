@@ -21,7 +21,7 @@ Modern fork of sd-civitai-browser-plus optimized for Forge Neo with auto-organiz
 ## 📋 Table of Contents
 
 - [Neo Versioning](#-neo-versioning)
-- [What's New](#-whats-new--v045)
+- [What's New](#-whats-new--v050)
 - [SD Civitai Browser Neo Release Story](#-sd-civitai-browser-neo-release-story)
 - [Roadmap](#%EF%B8%8F-roadmap)
 - [Features](#-features)
@@ -46,20 +46,36 @@ Examples:
 - `v1.0.0`: First stable major release
 - `v0.4.0`: New feature set, backward-compatible
 - `v0.4.3`: Bug-fix release on top of `v0.4.x`
+- `v0.5.0`: Dashboard upgrade (export, rankings, orphan detection)
 
 ---
 
-## 🆕 What's New — v0.4.5
+## 🆕 What's New — v0.5.0
 
-> **Removed Model Failsafe** — when a model is deleted from CivitAI by its creator, the overlay now shows the cached local data with a clear warning banner instead of a generic error.
+> **Dashboard as Console** — export to CSV/JSON, top-10 rankings, and optional orphan file detection right inside the Dashboard tab.
 
-- **Failsafe for creator-removed models** — clicking the CivitAI icon on a locally-installed model that has been removed from the site no longer shows a useless error; Neo falls back to the `.html` sidecar cache and displays all the original information (trigger words, sample images, SHA256, permissions) with a prominent ⚠️ banner: *"This resource has been removed by its owner — Showing cached local data"* ⭐
-- **Covers both removal scenarios** — works whether the SHA256-by-hash endpoint returns 404 (creator deleted before the ID was cached) or the model page endpoint returns 404 (deleted after the ID was already saved locally)
-- **Graceful fallback with no local cache** — if no `.html` sidecar exists either, shows a specific *"removed by owner"* message instead of the old confusing "Model ID not found" text
+- **Export CSV / JSON** — after any scan, "Export CSV" and "Export JSON" buttons trigger an instant browser download without writing anything to disk; the file contains categories, file counts, sizes, top-25 largest files, and orphan lists ⭐
+- **Top 10 Largest Individual Files** — new section below the pie chart ranking the 10 biggest files across all scanned types with filename, category, and size ⭐
+- **Top 10 Categories by File Count** — complementary ranking showing which folders have the most model files ⭐
+- **Orphan file detection** — opt-in checkbox; flags model files with no `.json` sidecar (never touched by CivitAI) and files whose `.json` exists but has no `modelId` (manually placed or download origin unknown); capped at 50 rows per bucket with overflow count ⭐
 
 ---
 
 ## 📖 SD Civitai Browser Neo Release Story
+
+### v0.5.0
+> **Theme: Dashboard as Console** — export, top-file rankings, and optional orphan detection.
+
+- [x] `export_dashboard_csv()` and `export_dashboard_json()` — return file content into hidden Gradio textboxes
+- [x] `downloadBlobFile(content, filename, mimeType)` JS helper — creates a Blob URL and fires a browser download without server disk writes
+- [x] "Export CSV" and "Export JSON" buttons added to Dashboard tab (always visible; show empty if no scan yet)
+- [x] "Top 10 Largest Individual Files" HTML section added below pie chart
+- [x] "Top 10 Categories by File Count" HTML section added
+- [x] `per_file_records` list collected in all four walk branches during scan (no extra I/O cost)
+- [x] "Detect orphan files" checkbox added (default off) — flags `.safetensors` with no `.json` sidecar and `.json` without `modelId`
+- [x] Orphan results capped at 50 rows per bucket with `... and N more` overflow row; green ✅ shown when none found
+- [x] `last_dashboard_data` module global stores raw data for export between generate and button click
+- [x] `_format_size()` extracted as module-level helper (was a local closure in `generate_dashboard_statistics`)
 
 ### v0.4.5
 > **Theme: Removed Model Failsafe** — graceful degradation when a model has been deleted from CivitAI by its creator.
@@ -154,7 +170,7 @@ Examples:
 
 ## 🗺️ Roadmap
 
-### v0.5.0 — Dashboard as Console *(planned)*
+### v0.5.0 — Dashboard as Console *(complete)*
 - Export dashboard data to CSV / JSON
 - Top models ranking per type (by folder count / size)
 - Orphan folder detection (local files with no CivitAI match)
