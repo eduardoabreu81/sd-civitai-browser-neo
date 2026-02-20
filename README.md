@@ -21,7 +21,7 @@ Modern fork of sd-civitai-browser-plus optimized for Forge Neo with auto-organiz
 ## 📋 Table of Contents
 
 - [Neo Versioning](#-neo-versioning)
-- [What's New](#-whats-new--v050)
+- [What's New](#-whats-new--v060)
 - [SD Civitai Browser Neo Release Story](#-sd-civitai-browser-neo-release-story)
 - [Roadmap](#%EF%B8%8F-roadmap)
 - [Features](#-features)
@@ -50,18 +50,41 @@ Examples:
 
 ---
 
-## 🆕 What's New — v0.5.0
+## 🆕 What's New — v0.6.0
 
-> **Dashboard as Console** — export to CSV/JSON, top-10 rankings, and optional orphan file detection right inside the Dashboard tab.
+> **Creator Management** — favorite and ban model creators directly from the browser UI, with an instant client-side hide toggle.
 
-- **Export CSV / JSON** — after any scan, "Export CSV" and "Export JSON" buttons trigger an instant browser download without writing anything to disk; the file contains categories, file counts, sizes, top-25 largest files, and orphan lists ⭐
-- **Top 10 Largest Individual Files** — new section below the pie chart ranking the 10 biggest files across all scanned types with filename, category, and size ⭐
-- **Top 10 Categories by File Count** — complementary ranking showing which folders have the most model files ⭐
-- **Orphan file detection** — opt-in checkbox; flags model files with no `.json` sidecar (never touched by CivitAI) and files whose `.json` exists but has no `modelId` (manually placed or download origin unknown); capped at 50 rows per bucket with overflow count ⭐
+- **👤 Creator Management accordion** — new collapsible panel in the Browser tab; auto-fills the creator name from the selected model card ⭐
+- **⭐ Favorite creators** — gold glowing border + ⭐ caption badge on every card by that creator; saved to `favoriteCreators.txt` ⭐
+- **🚫 Ban creators** — hide all cards from a banned creator instantly; saved to `bannedCreators.txt` ⭐
+- **↺ Reset** — remove a creator from both lists with one click ⭐
+- **Hide banned creators checkbox** — client-side toggle in the filter row; applies instantly without a new search ⭐
+- **Mutually exclusive lists** — favoriting a banned creator auto-removes them from the ban list and vice versa ⭐
 
 ---
 
 ## 📖 SD Civitai Browser Neo Release Story
+
+### v0.6.0
+> **Theme: Creator Management** — favorite / ban creators with instant JS filtering and persistent `.txt` storage, inspired by [SignalFlagZ/sd-webui-civbrowser](https://github.com/SignalFlagZ/sd-webui-civbrowser).
+
+- [x] `UserInfo` base class + `FavoriteUsers` / `BanUsers` subclasses in `civitai_file_manage.py`
+  - Module-level singletons `FavoriteCreators` / `BanCreators`
+  - Persistent storage: `favoriteCreators.txt` / `bannedCreators.txt` — comma-separated, 3 names per line
+  - `add()` / `remove()` / `get_as_list()` / `get_as_text()` API; `add` auto-deduplicates
+- [x] `add_favorite_creator()` / `ban_creator()` / `clear_creator()` — mutually exclusive: favoriting removes the creator from the ban list and vice versa
+- [x] `_creator_button_updates()` — returns 4 `gr.update` values to enable/disable the three action buttons and refresh the hidden textbox
+- [x] `civitai_api.py`: `get_model_card()` now accepts a `favorite_creators` set; every `<figure>` card gets `data-creator="{username}"` attribute and `civcard-favorite` CSS class when the creator is favorited
+- [x] `favorite_creators` set built once per `model_list_html()` call — no per-card file I/O
+- [x] `civitai_gui.py`: `👤 Creator Management` accordion between filter row and card grid
+  - `creator_name_txt` auto-fills from `model_id.change` by reading `gl.json_data`
+  - `⭐ Favorite` / `🚫 Ban` / `↺ Reset` buttons; enabled/disabled state reflects current status
+  - `hide_banned_creators` checkbox added to the filter row
+  - `banned_creators_list_txt` hidden textbox keeps JS in sync
+- [x] `civitai-html.js`: `initBannedCreators()` / `refreshBannedCreators()` / `hideBannedCreators()`
+  - Module-scoped `_bannedCreators[]` array updated on every ban/fav action
+  - `hideBannedCreators(checked)` queries `[data-creator]` cards and toggles `display:none`
+- [x] `style.css`: `.civcard-favorite { box-shadow: 0 0 2px 2px gold }` + `figcaption::after { content: ' ⭐' }`
 
 ### v0.5.0
 > **Theme: Dashboard as Console** — export, top-file rankings, and optional orphan detection.
@@ -175,10 +198,15 @@ Examples:
 - Top models ranking per type (by folder count / size)
 - Orphan folder detection (local files with no CivitAI match)
 
-### v0.6.0 — Advanced Curation *(planned)*
-- Favorite / ban creators directly in the UI
+### v0.6.0 — Creator Management *(complete)*
+- Favorite / ban creators directly in the UI ✅
+- "Hide banned" toggle in browser listing ✅
+- Saved search presets *(deferred to v0.7.0)*
+
+### v0.7.0 — Advanced Curation *(planned)*
 - Saved search presets
-- "Hide banned" toggle in browser listing
+- ⭐ Favorites in User/creator search dropdown
+- Additional browser quality-of-life improvements
 
 ### v1.0.0 — First Stable Release *(planned)*
 - All known regressions resolved
@@ -202,6 +230,7 @@ Examples:
 - **NSFW toggle**: Show/hide NSFW content
 - **Liked models only**: Filter to models you've liked on CivitAI (requires API key)
 - **Hide installed models**: Declutter the browser by hiding already-downloaded models
+- **Hide banned creators**: Client-side toggle that instantly hides cards from banned creators without a new search ⭐
 - **Exact search**: Match search terms exactly instead of fuzzy
 - **Search settings persist**: Sort, NSFW state, base model filter — all saved across restarts ⭐
 
@@ -275,6 +304,7 @@ Examples:
 - **Hide installed models** — remove already-downloaded models from the grid
 - **Multi-select** — checkbox on outdated cards to select multiple for batch download ⭐
 - **Quick delete** on installed/outdated cards — removes model directly from the card
+- **👤 Creator Management** — ⭐ favorite or 🚫 ban a creator directly from the browser; favorited creator cards get a gold glow and ⭐ badge; banned creators can be hidden in one click ⭐
 
 ### 🔒 Safety & Integrity ⭐
 
@@ -522,6 +552,9 @@ You can define your own categories in **Settings** → **Model Organization** us
 ### Original Project
 - **[sd-civitai-browser](https://github.com/Vetchems/sd-civitai-browser)** by Vetchems
 - **[sd-civitai-browser-plus](https://github.com/BlafKing/sd-civitai-browser-plus)** by BlafKing
+
+### Feature Inspiration
+- **[sd-webui-civbrowser](https://github.com/SignalFlagZ/sd-webui-civbrowser)** by SignalFlagZ — Creator Management pattern (UserInfo class, `.txt` storage, accordion UI, mutually exclusive lists)
 
 ### Anxety-Solo Fork
 - **[sd-civitai-browser-plus](https://github.com/anxety-solo/sd-civitai-browser-plus)** by anxety-solo
