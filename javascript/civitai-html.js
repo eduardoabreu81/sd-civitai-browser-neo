@@ -974,6 +974,29 @@ function sendImgUrl(image_url) {
     sendClick(genButton);
 }
 
+// Triggers a browser download for text content using a temporary Blob URL.
+// Called by the export_csv_output / export_json_output change events.
+function downloadBlobFile(content, filename, mimeType) {
+    if (!content || !content.trim()) return;  // no data yet — ignore reset to ''
+    const blob = new Blob([content], { type: mimeType });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    // Reset the hidden textbox so the next click fires a fresh change event
+    const outputId = mimeType === 'text/csv' ? 'export_csv_output' : 'export_json_output';
+    const box = gradioApp().querySelector(`#${outputId} textarea`);
+    if (box) {
+        const nativeSet = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+        nativeSet.call(box, '');
+        box.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+}
+
 // Sends trained tags (trigger words) to txt2img prompt
 // Shift+click appends to existing prompt; regular click replaces
 function sendTagsToPrompt(tags) {

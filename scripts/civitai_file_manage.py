@@ -43,6 +43,16 @@ gl.init()
 css_path = Path(__file__).resolve().parents[1] / 'style_html.css'
 no_update = False
 last_update_scan = None  # Stores last update scan results for Dashboard summary
+last_dashboard_data = None  # Stores last dashboard scan raw data (categories, top files, orphans)
+
+
+def _format_size(size_bytes: int) -> str:
+    """Format bytes to human-readable string."""
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size_bytes < 1024.0:
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024.0
+    return f"{size_bytes:.1f} PB"
 from_tag = False
 from_ver = False
 from_installed = False
@@ -2910,29 +2920,24 @@ def save_preview_finish():
     set_globals('reset')
     return finish_returns()
 
-def generate_dashboard_statistics(selected_types, hide_empty_categories=True, progress=gr.Progress() if queue else None):
+def generate_dashboard_statistics(selected_types, hide_empty_categories=True, detect_orphans=False, progress=gr.Progress() if queue else None):
     """
     Generate dashboard statistics showing disk usage by model type
     Returns HTML with detailed breakdown of files and sizes per folder
     """
-    import os
     import math
     import time
     from collections import defaultdict
-    
-    # Format sizes helper function
-    def format_size(size_bytes):
-        """Format bytes to human readable format"""
-        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-            if size_bytes < 1024.0:
-                return f"{size_bytes:.1f} {unit}"
-            size_bytes /= 1024.0
-        return f"{size_bytes:.1f} PB"
-    
+
+    format_size = _format_size  # use module-level helper
+
     scan_start_time = time.time()
     scanned_folder_count = 0
     skipped_files = 0
     read_errors = 0
+    per_file_records = []   # [{name, path, size, category}] for top-ranking
+    orphans_no_json  = []   # model files without a .json sidecar
+    orphans_no_id    = []   # model files with .json but missing modelId
 
     if progress is not None:
         progress(0, desc="Starting dashboard generation...")
@@ -2979,6 +2984,13 @@ def generate_dashboard_statistics(selected_types, hide_empty_categories=True, pr
                                     model_stats[category]['size'] += file_size
                                     total_files += 1
                                     total_size += file_size
+                                    per_file_records.append({'name': file, 'path': file_path, 'size': file_size, 'category': category})
+                                    if detect_orphans:
+                                        _js = os.path.splitext(file_path)[0] + '.json'
+                                        if not os.path.exists(_js):
+                                            orphans_no_json.append({'name': file, 'path': file_path, 'size': file_size})
+                                        elif not (_api.safe_json_load(_js) or {}).get('modelId'):
+                                            orphans_no_id.append({'name': file, 'path': file_path, 'size': file_size})
                                 except:
                                     read_errors += 1
                             else:
@@ -3034,6 +3046,14 @@ def generate_dashboard_statistics(selected_types, hide_empty_categories=True, pr
                         model_stats[category]['size'] += file_size
                         total_files += 1
                         total_size += file_size
+                        fname = os.path.basename(file_path)
+                        per_file_records.append({'name': fname, 'path': file_path, 'size': file_size, 'category': category})
+                        if detect_orphans:
+                            _js = os.path.splitext(file_path)[0] + '.json'
+                            if not os.path.exists(_js):
+                                orphans_no_json.append({'name': fname, 'path': file_path, 'size': file_size})
+                            elif not (_api.safe_json_load(_js) or {}).get('modelId'):
+                                orphans_no_id.append({'name': fname, 'path': file_path, 'size': file_size})
                     except:
                         pass
                 if getattr(opts, 'civitai_neo_debug_organize', False):
@@ -3065,7 +3085,14 @@ def generate_dashboard_statistics(selected_types, hide_empty_categories=True, pr
                                 total_files += 1
                                 total_size += file_size
                                 folder_file_count += 1
-                                
+                                per_file_records.append({'name': file, 'path': file_path, 'size': file_size, 'category': category})
+                                if detect_orphans:
+                                    _js = os.path.splitext(file_path)[0] + '.json'
+                                    if not os.path.exists(_js):
+                                        orphans_no_json.append({'name': file, 'path': file_path, 'size': file_size})
+                                    elif not (_api.safe_json_load(_js) or {}).get('modelId'):
+                                        orphans_no_id.append({'name': file, 'path': file_path, 'size': file_size})
+
                                 # Debug first 2 files per folder
                                 if folder_file_count <= 2 and getattr(opts, 'civitai_neo_debug_organize', False):
                                     print(f"[Dashboard]     File: {file} → {format_size(file_size)}")
@@ -3095,6 +3122,13 @@ def generate_dashboard_statistics(selected_types, hide_empty_categories=True, pr
                             model_stats[category]['size'] += file_size
                             total_files += 1
                             total_size += file_size
+                            per_file_records.append({'name': file, 'path': file_path, 'size': file_size, 'category': category})
+                            if detect_orphans and content_type not in ('Wildcards', 'Workflows'):
+                                _js = os.path.splitext(file_path)[0] + '.json'
+                                if not os.path.exists(_js):
+                                    orphans_no_json.append({'name': file, 'path': file_path, 'size': file_size})
+                                elif not (_api.safe_json_load(_js) or {}).get('modelId'):
+                                    orphans_no_id.append({'name': file, 'path': file_path, 'size': file_size})
                         except:
                             read_errors += 1
                     else:
@@ -3371,8 +3405,111 @@ def generate_dashboard_statistics(selected_types, hide_empty_categories=True, pr
             </tbody>
         </table>
         ''')
-    
-    # Footer
+
+    # Top 10 largest individual files and top 10 categories by file count
+    if per_file_records:
+        top_by_size  = sorted(per_file_records, key=lambda x: x['size'], reverse=True)[:10]
+        top_by_count = sorted(sorted_stats, key=lambda x: x[1]['count'], reverse=True)[:10]
+
+        html_parts.append('''
+        <h3 style="color:var(--body-text-color);margin:32px 0 12px 0;text-align:center;">
+            &#127942; Top 10 Largest Individual Files
+        </h3>
+        <table style="width:100%;border-collapse:collapse;margin:0 auto 8px auto;max-width:900px;">
+            <thead><tr style="background:var(--block-title-background-fill);border-bottom:2px solid var(--border-color-primary);">
+                <th style="padding:10px;text-align:left;font-size:13px;">#</th>
+                <th style="padding:10px;text-align:left;font-size:13px;">FILENAME</th>
+                <th style="padding:10px;text-align:left;font-size:13px;">CATEGORY</th>
+                <th style="padding:10px;text-align:right;font-size:13px;">SIZE</th>
+            </tr></thead><tbody>
+        ''')
+        for i, rec in enumerate(top_by_size, 1):
+            html_parts.append(f'''
+                <tr style="border-bottom:1px solid var(--border-color-primary);">
+                    <td style="padding:10px;color:var(--body-text-color-subdued);font-weight:bold;">#{i}</td>
+                    <td style="padding:10px;font-family:monospace;font-size:12px;color:var(--body-text-color);">{rec['name']}</td>
+                    <td style="padding:10px;font-size:12px;color:var(--body-text-color-subdued);">{rec['category']}</td>
+                    <td style="padding:10px;text-align:right;font-weight:bold;color:var(--body-text-color);">{format_size(rec['size'])}</td>
+                </tr>
+            ''')
+        html_parts.append('</tbody></table>')
+
+        html_parts.append('''
+        <h3 style="color:var(--body-text-color);margin:32px 0 12px 0;text-align:center;">
+            &#128230; Top 10 Categories by File Count
+        </h3>
+        <table style="width:100%;border-collapse:collapse;margin:0 auto 8px auto;max-width:900px;">
+            <thead><tr style="background:var(--block-title-background-fill);border-bottom:2px solid var(--border-color-primary);">
+                <th style="padding:10px;text-align:left;font-size:13px;">#</th>
+                <th style="padding:10px;text-align:left;font-size:13px;">CATEGORY</th>
+                <th style="padding:10px;text-align:center;font-size:13px;">FILES</th>
+                <th style="padding:10px;text-align:right;font-size:13px;">TOTAL SIZE</th>
+            </tr></thead><tbody>
+        ''')
+        for i, (cat, stats) in enumerate(top_by_count, 1):
+            html_parts.append(f'''
+                <tr style="border-bottom:1px solid var(--border-color-primary);">
+                    <td style="padding:10px;color:var(--body-text-color-subdued);font-weight:bold;">#{i}</td>
+                    <td style="padding:10px;font-weight:bold;color:var(--body-text-color);">{cat}</td>
+                    <td style="padding:10px;text-align:center;color:var(--body-text-color-subdued);">{stats['count']}</td>
+                    <td style="padding:10px;text-align:right;color:var(--body-text-color);">{format_size(stats['size'])}</td>
+                </tr>
+            ''')
+        html_parts.append('</tbody></table>')
+
+    # Orphan detection results
+    if detect_orphans:
+        total_orphans = len(orphans_no_json) + len(orphans_no_id)
+        if total_orphans:
+            html_parts.append(f'''
+            <h3 style="color:#e57373;margin:32px 0 12px 0;text-align:center;">
+                &#9888;&#65039; Orphan Files &mdash; {total_orphans} found
+            </h3>
+            <p style="text-align:center;color:var(--body-text-color-subdued);font-size:13px;margin-bottom:16px;">
+                These model files have no CivitAI metadata. They can still be used,
+                but won&apos;t show info in the overlay.
+            </p>
+            ''')
+            def _orphan_table(records, heading):
+                rows = ''.join(
+                    f'<tr style="border-bottom:1px solid var(--border-color-primary);">'
+                    f'<td style="padding:8px 12px;font-family:monospace;font-size:12px;color:var(--body-text-color);">{r["name"]}</td>'
+                    f'<td style="padding:8px 12px;text-align:right;color:var(--body-text-color-subdued);">{format_size(r["size"])}</td>'
+                    f'</tr>'
+                    for r in records[:50]
+                )
+                extra = (f'<tr><td colspan="2" style="padding:8px 12px;color:var(--body-text-color-subdued);'
+                         f'font-style:italic;">... and {len(records)-50} more</td></tr>') if len(records) > 50 else ''
+                return (
+                    f'<h4 style="color:var(--body-text-color);margin:20px 0 8px 20px;">{heading} ({len(records)} files)</h4>'
+                    f'<table style="width:100%;border-collapse:collapse;margin:0 auto 8px auto;max-width:900px;">'
+                    f'<tbody>{rows}{extra}</tbody></table>'
+                )
+            if orphans_no_json:
+                html_parts.append(_orphan_table(orphans_no_json, 'No .json sidecar'))
+            if orphans_no_id:
+                html_parts.append(_orphan_table(orphans_no_id, 'Has .json but no modelId'))
+        else:
+            html_parts.append('<p style="text-align:center;color:rgba(75,192,75,0.9);margin:24px 0;font-size:14px;">&#9989; No orphan files found.</p>')
+
+    # Store raw data for CSV / JSON export
+    global last_dashboard_data
+    last_dashboard_data = {
+        'generated_at': __import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'total_files': total_files,
+        'total_size': total_size,
+        'categories': [
+            {'name': cat, 'count': s['count'], 'size_bytes': s['size'], 'size_human': format_size(s['size'])}
+            for cat, s in sorted_stats
+        ],
+        'top_by_size': [
+            {'name': r['name'], 'path': r['path'], 'size_bytes': r['size'],
+             'size_human': format_size(r['size']), 'category': r['category']}
+            for r in sorted(per_file_records, key=lambda x: x['size'], reverse=True)[:25]
+        ],
+        'orphans_no_json': [{'name': r['name'], 'path': r['path'], 'size_bytes': r['size']} for r in orphans_no_json],
+        'orphans_no_id':   [{'name': r['name'], 'path': r['path'], 'size_bytes': r['size']} for r in orphans_no_id],
+    }
     html_parts.append(f'''
         <div style="margin-top: 20px; text-align: center; font-size: 13px; color: var(--body-text-color-subdued);">
             <em>Dashboard generated on {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</em>
@@ -3381,6 +3518,27 @@ def generate_dashboard_statistics(selected_types, hide_empty_categories=True, pr
     ''')
     
     return gr.update(value=''.join(html_parts))
+
+
+def export_dashboard_csv():
+    """Return the last dashboard scan data as a CSV string for Blob download."""
+    if not last_dashboard_data:
+        return gr.update(value='')
+    import csv, io
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(['category', 'files', 'size_bytes', 'size_human'])
+    for cat in last_dashboard_data['categories']:
+        w.writerow([cat['name'], cat['count'], cat['size_bytes'], cat['size_human']])
+    return gr.update(value=buf.getvalue())
+
+
+def export_dashboard_json():
+    """Return the last dashboard scan data as a JSON string for Blob download."""
+    if not last_dashboard_data:
+        return gr.update(value='')
+    import json
+    return gr.update(value=json.dumps(last_dashboard_data, indent=2, ensure_ascii=False))
 
 
 def scan_finish():

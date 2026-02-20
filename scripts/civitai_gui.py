@@ -504,6 +504,11 @@ def on_ui_tabs():
                     label='Hide empty categories (0 files)',
                     value=True
                 )
+                dashboard_detect_orphans = gr.Checkbox(
+                    elem_id='dashboard_detect_orphans',
+                    label='Detect orphan files (no CivitAI metadata)',
+                    value=False
+                )
             
             with gr.Row():
                 generate_dashboard = gr.Button(
@@ -515,6 +520,16 @@ def on_ui_tabs():
                 refresh_dashboard = gr.Button(
                     value='🔄 Refresh', 
                     interactive=True, 
+                    visible=True
+                )
+                export_csv_btn = gr.Button(
+                    value='📥 Export CSV',
+                    interactive=True,
+                    visible=True
+                )
+                export_json_btn = gr.Button(
+                    value='📥 Export JSON',
+                    interactive=True,
                     visible=True
                 )
             
@@ -579,6 +594,8 @@ def on_ui_tabs():
         organize_start = gr.Textbox(visible=None)
         organize_finish = gr.Textbox(visible=None)
         delete_finish = gr.Textbox(elem_id='delete_finish', visible=False)
+        export_csv_output  = gr.Textbox(elem_id='export_csv_output',  visible=False)
+        export_json_output = gr.Textbox(elem_id='export_json_output', visible=False)
         current_model = gr.Textbox(visible=False)
         current_sha256 = gr.Textbox(visible=False)
         model_preview_html_input = gr.Textbox(visible=False)
@@ -1394,14 +1411,36 @@ def on_ui_tabs():
 
         generate_dashboard.click(
             fn=_file.generate_dashboard_statistics,
-            inputs=[dashboard_content_types, dashboard_hide_empty],
+            inputs=[dashboard_content_types, dashboard_hide_empty, dashboard_detect_orphans],
             outputs=[dashboard_html]
         )
 
         refresh_dashboard.click(
             fn=_file.generate_dashboard_statistics,
-            inputs=[dashboard_content_types, dashboard_hide_empty],
+            inputs=[dashboard_content_types, dashboard_hide_empty, dashboard_detect_orphans],
             outputs=[dashboard_html]
+        )
+
+        export_csv_btn.click(
+            fn=_file.export_dashboard_csv,
+            inputs=[],
+            outputs=[export_csv_output]
+        )
+        export_csv_output.change(
+            fn=None,
+            inputs=[export_csv_output],
+            _js='(csv) => downloadBlobFile(csv, "dashboard_stats.csv", "text/csv")'
+        )
+
+        export_json_btn.click(
+            fn=_file.export_dashboard_json,
+            inputs=[],
+            outputs=[export_json_output]
+        )
+        export_json_output.change(
+            fn=None,
+            inputs=[export_json_output],
+            _js='(json) => downloadBlobFile(json, "dashboard_stats.json", "application/json")'
         )
 
         load_to_browser_outdated.click(
