@@ -3231,76 +3231,85 @@ def generate_dashboard_statistics(selected_types, hide_empty_categories=True, de
         </div>
         ''')
 
-    # Pie chart - Always show when there's data
+    # Charts (pie + horizontal bar) with toggle — Always show when there's data
     if sorted_stats and len(sorted_stats) > 0:
         try:
             if getattr(opts, 'civitai_neo_debug_organize', False):
-                print(f"[Dashboard] Generating pie chart for {len(sorted_stats)} categories")
-            # Generate pie chart using SVG
+                print(f"[Dashboard] Generating charts for {len(sorted_stats)} categories")
+
             pie_colors = [
                 '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
                 '#FF9F40', '#FF6B9D', '#C9CBCF', '#8DD3C7', '#FFED6F',
                 '#BEBADA', '#FB8072', '#80B1D3', '#FDB462', '#B3DE69'
             ]
-            
-            # Prepare data for top categories (show top 8, group rest as "Others")
+
+            # Prepare shared data: top 8 categories + "Others"
             top_categories = sorted_stats[:8]
-            other_size = sum(stats['size'] for _, stats in sorted_stats[8:])
-            other_count = sum(stats['count'] for _, stats in sorted_stats[8:])
-            
+            other_size  = sum(s['size']  for _, s in sorted_stats[8:])
+            other_count = sum(s['count'] for _, s in sorted_stats[8:])
             if len(sorted_stats) > 8 and other_size > 0:
                 chart_data = top_categories + [('Others', {'size': other_size, 'count': other_count})]
             else:
                 chart_data = sorted_stats
-            
-            if getattr(opts, 'civitai_neo_debug_organize', False):
-                print(f"[Dashboard] Chart will show {len(chart_data)} categories")
-            
-            # Calculate angles for pie slices
-            total = sum(stats['size'] for _, stats in chart_data)
+
+            total = sum(s['size'] for _, s in chart_data)
+
+            # ── Toggle buttons ───────────────────────────────────────────────
+            html_parts.append('''
+            <div style="display:flex;justify-content:center;gap:8px;margin:24px 0 0 0;">
+                <button id="neo-btn-pie"
+                    onclick="document.getElementById('neo-chart-pie').style.display='';
+                             document.getElementById('neo-chart-bar').style.display='none';
+                             this.style.background='var(--primary-500)';this.style.color='#fff';
+                             document.getElementById('neo-btn-bar').style.background='var(--block-background-fill)';
+                             document.getElementById('neo-btn-bar').style.color='var(--body-text-color)';"
+                    style="padding:6px 18px;border-radius:20px;border:1px solid var(--border-color-primary);
+                           cursor:pointer;font-size:13px;background:var(--primary-500);color:#fff;
+                           transition:background 0.2s;">
+                    🥧 Pie Chart
+                </button>
+                <button id="neo-btn-bar"
+                    onclick="document.getElementById('neo-chart-bar').style.display='';
+                             document.getElementById('neo-chart-pie').style.display='none';
+                             this.style.background='var(--primary-500)';this.style.color='#fff';
+                             document.getElementById('neo-btn-pie').style.background='var(--block-background-fill)';
+                             document.getElementById('neo-btn-pie').style.color='var(--body-text-color)';"
+                    style="padding:6px 18px;border-radius:20px;border:1px solid var(--border-color-primary);
+                           cursor:pointer;font-size:13px;background:var(--block-background-fill);
+                           color:var(--body-text-color);transition:background 0.2s;">
+                    📊 Bar Chart
+                </button>
+            </div>
+            ''')
+
+            # ── Pie chart ────────────────────────────────────────────────────
             angles = []
             current_angle = 0
-            
             for category, stats in chart_data:
                 percentage = (stats['size'] / total * 100) if total > 0 else 0
-                angle = (stats['size'] / total * 360) if total > 0 else 0
+                angle      = (stats['size'] / total * 360) if total > 0 else 0
                 angles.append((category, percentage, current_angle, current_angle + angle, stats))
                 current_angle += angle
-            
-            if getattr(opts, 'civitai_neo_debug_organize', False):
-                print(f"[Dashboard] Calculated {len(angles)} pie slices")
-            
-            # Generate SVG pie chart
+
             svg_parts = []
+            svg_parts.append('<div id="neo-chart-pie" style="">')
             svg_parts.append('''
-            <div style="display: flex; justify-content: center; margin: 30px 0; flex-wrap: wrap; gap: 40px; align-items: center;">
+            <div style="display: flex; justify-content: center; margin: 20px 0; flex-wrap: wrap; gap: 40px; align-items: center;">
                 <div style="position: relative;">
-                    <svg viewBox="0 0 200 200" style="width: 300px; height: 300px; transform: rotate(-90deg);">
+                    <svg viewBox="0 0 200 200" style="width: 280px; height: 280px; transform: rotate(-90deg);">
             ''')
-            
-            slice_count = 0
+
             for i, (category, percentage, start_angle, end_angle, stats) in enumerate(angles):
-                if percentage < 0.1:  # Skip very small slices
-                    if getattr(opts, 'civitai_neo_debug_organize', False):
-                        print(f"[Dashboard] Skipping tiny slice: {category} ({percentage:.2f}%)")
+                if percentage < 0.1:
                     continue
-                
-                slice_count += 1
-                
-                # Convert angles to radians
                 start_rad = start_angle * math.pi / 180
-                end_rad = end_angle * math.pi / 180
-                
-                # Calculate arc path
+                end_rad   = end_angle   * math.pi / 180
                 x1 = 100 + 90 * math.cos(start_rad)
                 y1 = 100 + 90 * math.sin(start_rad)
                 x2 = 100 + 90 * math.cos(end_rad)
                 y2 = 100 + 90 * math.sin(end_rad)
-                
                 large_arc = 1 if (end_angle - start_angle) > 180 else 0
-                
                 color = pie_colors[i % len(pie_colors)]
-                
                 svg_parts.append(f'''
                     <path d="M 100 100 L {x1:.2f} {y1:.2f} A 90 90 0 {large_arc} 1 {x2:.2f} {y2:.2f} Z"
                           fill="{color}" stroke="#ffffff" stroke-width="2"
@@ -3309,54 +3318,71 @@ def generate_dashboard_statistics(selected_types, hide_empty_categories=True, de
                         <title>{category}: {format_size(stats['size'])} ({percentage:.1f}%)</title>
                     </path>
                 ''')
-            
-            if getattr(opts, 'civitai_neo_debug_organize', False):
-                print(f"[Dashboard] Generated {slice_count} SVG slices")
-            
-            svg_parts.append('''
-                    </svg>
-                </div>
-                <div style="display: flex; flex-direction: column; justify-content: center; gap: 8px; max-width: 300px;">
-            ''')
-            
-            # Legend
-            legend_count = 0
+
+            svg_parts.append('</svg></div>')
+            svg_parts.append('<div style="display:flex;flex-direction:column;justify-content:center;gap:8px;max-width:300px;">')
             for i, (category, percentage, _, _, stats) in enumerate(angles):
                 if percentage < 0.1:
                     continue
-                legend_count += 1
                 color = pie_colors[i % len(pie_colors)]
                 svg_parts.append(f'''
                     <div style="display: flex; align-items: center; gap: 10px;">
-                        <div style="width: 20px; height: 20px; background: {color}; border-radius: 3px; flex-shrink: 0;"></div>
-                        <div style="color: var(--body-text-color); font-size: 13px;">
+                        <div style="width:16px;height:16px;background:{color};border-radius:3px;flex-shrink:0;"></div>
+                        <div style="color:var(--body-text-color);font-size:13px;">
                             <strong>{category}</strong><br>
-                            <span style="color: var(--body-text-color-subdued); font-size: 12px;">
+                            <span style="color:var(--body-text-color-subdued);font-size:12px;">
                                 {format_size(stats['size'])} ({percentage:.1f}%)
                             </span>
                         </div>
                     </div>
                 ''')
-            
-            if getattr(opts, 'civitai_neo_debug_organize', False):
-                print(f"[Dashboard] Generated {legend_count} legend items")
-            
-            svg_parts.append('''
+            svg_parts.append('</div></div></div>')  # legend / flex row / pie wrapper
+            html_parts.append(''.join(svg_parts))
+
+            # ── Horizontal bar chart ─────────────────────────────────────────
+            max_size = chart_data[0][1]['size'] if chart_data else 1
+            bar_rows = []
+            for i, (category, stats) in enumerate(chart_data):
+                pct      = (stats['size'] / total    * 100) if total    > 0 else 0
+                bar_pct  = (stats['size'] / max_size * 100) if max_size > 0 else 0
+                color    = pie_colors[i % len(pie_colors)]
+                short_cat = category if len(category) <= 30 else category[:27] + '\u2026'
+                bar_rows.append(f'''
+                    <div style="display:grid;grid-template-columns:220px 1fr 120px;
+                                align-items:center;gap:10px;padding:8px 0;
+                                border-bottom:1px solid var(--border-color-primary);">
+                        <div style="font-size:13px;color:var(--body-text-color);font-weight:bold;
+                                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+                             title="{category}">{short_cat}</div>
+                        <div style="background:var(--block-background-fill);border-radius:4px;
+                                    height:20px;overflow:hidden;">
+                            <div style="background:{color};width:{bar_pct:.1f}%;height:100%;
+                                        border-radius:4px;transition:width 0.4s ease;">
+                            </div>
+                        </div>
+                        <div style="font-size:12px;color:var(--body-text-color-subdued);
+                                    text-align:right;white-space:nowrap;">
+                            {format_size(stats['size'])}
+                            <span style="opacity:0.6;">({pct:.1f}%)</span>
+                        </div>
+                    </div>
+                ''')
+
+            html_parts.append(f'''
+            <div id="neo-chart-bar" style="display:none;">
+                <div style="max-width:900px;margin:20px auto;padding:0 8px;">
+                    {''.join(bar_rows)}
                 </div>
             </div>
             ''')
-            
-            html_parts.append(''.join(svg_parts))
-            if getattr(opts, 'civitai_neo_debug_organize', False):
-                print(f"[Dashboard] Pie chart HTML added ({len(''.join(svg_parts))} chars)")
+
         except Exception as e:
-            # If pie chart fails, log error but continue with table
-            error_msg = f'Pie chart generation failed: {str(e)}'
+            error_msg = f'Chart generation failed: {str(e)}'
             if getattr(opts, 'civitai_neo_debug_organize', False):
                 print(f"[Dashboard ERROR] {error_msg}")
                 import traceback
                 traceback.print_exc()
-            html_parts.append(f'<div style="color: red; padding: 10px; text-align: center;">{error_msg}</div>')
+            html_parts.append(f'<div style="color:red;padding:10px;text-align:center;">{error_msg}</div>')
     
     # Table with breakdown
     if sorted_stats:
