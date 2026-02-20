@@ -53,6 +53,131 @@ def _format_size(size_bytes: int) -> str:
             return f"{size_bytes:.1f} {unit}"
         size_bytes /= 1024.0
     return f"{size_bytes:.1f} PB"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Creator management — Favorite & Ban lists
+# Pattern from SignalFlagZ/sd-webui-civbrowser
+# ─────────────────────────────────────────────────────────────────────────────
+_EXT_ROOT = Path(__file__).resolve().parents[1]
+
+class UserInfo:
+    """Persistent comma-separated list of creator usernames stored in a .txt file."""
+    def __init__(self, path: Path):
+        self._path = path
+        self._names: list = []
+        self.load()
+
+    def load(self) -> list:
+        if self._path.exists():
+            text = self._path.read_text(encoding='utf-8')
+            self._names = [n.strip() for n in text.replace('\n', ',').split(',') if n.strip()]
+        else:
+            self._names = []
+        return self._names
+
+    def save(self):
+        lines = []
+        for i in range(0, len(self._names), 3):
+            lines.append(', '.join(self._names[i:i + 3]))
+        self._path.write_text('\n'.join(lines), encoding='utf-8')
+
+    def add(self, name: str) -> bool:
+        name = name.strip()
+        if not name or name in self._names:
+            return False
+        self._names.append(name)
+        self.save()
+        return True
+
+    def remove(self, name: str) -> bool:
+        name = name.strip()
+        if name in self._names:
+            self._names.remove(name)
+            self.save()
+            return True
+        return False
+
+    def get_as_list(self) -> list:
+        return list(self._names)
+
+    def get_as_text(self) -> str:
+        return ','.join(self._names)
+
+
+class FavoriteUsers(UserInfo):
+    def __init__(self):
+        super().__init__(_EXT_ROOT / 'favoriteCreators.txt')
+
+
+class BanUsers(UserInfo):
+    def __init__(self):
+        super().__init__(_EXT_ROOT / 'bannedCreators.txt')
+
+
+FavoriteCreators = FavoriteUsers()
+BanCreators = BanUsers()
+
+
+def _creator_button_updates(username: str):
+    """Returns (btn_fav, btn_ban, btn_clear, banned_list_txt) gr.updates."""
+    u = (username or '').strip()
+    if not u:
+        return (
+            gr.update(interactive=False),
+            gr.update(interactive=False),
+            gr.update(interactive=False),
+            gr.update(value=BanCreators.get_as_text()),
+        )
+    is_fav = u in FavoriteCreators.get_as_list()
+    is_ban = u in BanCreators.get_as_list()
+    already_set = is_fav or is_ban
+    return (
+        gr.update(interactive=not is_fav),
+        gr.update(interactive=not is_ban),
+        gr.update(interactive=already_set),
+        gr.update(value=BanCreators.get_as_text()),
+    )
+
+
+def add_favorite_creator(username: str):
+    """Add creator to favorites (mutually exclusive with ban)."""
+    u = (username or '').strip()
+    if not u:
+        return _creator_button_updates(u)
+    FavoriteCreators.add(u)
+    BanCreators.remove(u)
+    gr.Info(f"\u2b50 {u} added to favorites")
+    return _creator_button_updates(u)
+
+
+def ban_creator(username: str):
+    """Ban creator (mutually exclusive with favorite)."""
+    u = (username or '').strip()
+    if not u:
+        return _creator_button_updates(u)
+    BanCreators.add(u)
+    FavoriteCreators.remove(u)
+    gr.Info(f"\U0001f6ab {u} banned")
+    return _creator_button_updates(u)
+
+
+def clear_creator(username: str):
+    """Remove creator from both favorites and ban list."""
+    u = (username or '').strip()
+    if not u:
+        return _creator_button_updates(u)
+    removed_fav = FavoriteCreators.remove(u)
+    removed_ban = BanCreators.remove(u)
+    if removed_fav or removed_ban:
+        gr.Info(f"\u21ba {u} status cleared")
+    return _creator_button_updates(u)
+
+
+def get_banned_creators_text() -> str:
+    """Comma-joined banned creator list for JS initialisation."""
+    return BanCreators.get_as_text()
+
+# ─────────────────────────────────────────────────────────────────────────────
 from_tag = False
 from_ver = False
 from_installed = False

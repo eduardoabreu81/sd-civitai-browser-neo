@@ -1035,6 +1035,32 @@ function hideInstalled(toggleValue) {
     });
 }
 
+// === Creator Management (ban / favorite) ===
+let _bannedCreators = [];
+
+// Called when a new model list loads — sync banned list then apply filter
+function initBannedCreators(listStr, checked) {
+    _bannedCreators = listStr ? listStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+    hideBannedCreators(checked);
+}
+
+// Called after ban/fav button actions — refresh list and re-apply filter
+function refreshBannedCreators(listStr, checked) {
+    _bannedCreators = listStr ? listStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+    hideBannedCreators(checked);
+}
+
+// Show or hide cards of banned creators
+function hideBannedCreators(checked) {
+    document.querySelectorAll('.civmodelcard[data-creator]').forEach(card => {
+        const creator = card.getAttribute('data-creator');
+        const isBanned = creator && _bannedCreators.includes(creator);
+        if (isBanned) {
+            card.style.display = checked ? 'none' : '';
+        }
+    });
+}
+
 // Toggle description visibility
 function toggleDescription(prefix = '') {
     const content = document.getElementById(prefix + 'description-content');

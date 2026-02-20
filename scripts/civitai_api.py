@@ -190,12 +190,17 @@ def model_list_html(json_data):
         return files_set, sha256_set
 
     ## === ANXETY EDITs ===
-    def get_model_card(item, existing_files, existing_files_sha256, playback):
+    def get_model_card(item, existing_files, existing_files_sha256, playback, favorite_creators):
         """Build HTML for a single model card (civmodelcard - Browser Card)"""
         model_id = item.get('id')
         model_name = item.get('name', '')
         is_nsfw = is_model_nsfw(item)
         nsfw_class = 'civcardnsfw' if is_nsfw else ''
+
+        # Creator info for favorite/ban display
+        _creator_data = item.get('creator', {}) or {}
+        model_uploader_card = (_creator_data.get('username', '') or '').strip()
+        fav_class = ' civcard-favorite' if model_uploader_card in favorite_creators else ''
 
         # Find the first installed version or fallback to the first version
         display_version = None
@@ -361,7 +366,8 @@ def model_list_html(json_data):
 
         # ModelCard HTML (Header)
         card_html = (
-            f'<figure class="civmodelcard {nsfw_class} {early_access_class} {installstatus}" base-model="{base_model}" date="{date}" '
+            f'<figure class="civmodelcard {nsfw_class} {early_access_class} {installstatus}{fav_class}" '
+            f'base-model="{base_model}" date="{date}" data-creator="{escape(model_uploader_card)}" '
             f'onclick="select_model(\'{model_string}\', event)">'
             f'<div class="card-header">'
             f'<div class="badges-container">{model_type_badge}{nsfw_badge}</div>'
@@ -448,9 +454,10 @@ def model_list_html(json_data):
     # Build HTML
     HTML = '<div class="column civmodellist">'
     sorted_models = {} if gl.sortNewest else None
+    favorite_creators = set(_file.FavoriteCreators.get_as_list())
 
     for item in json_data['items']:
-        model_card, date = get_model_card(item, existing_files, existing_files_sha256, playback)
+        model_card, date = get_model_card(item, existing_files, existing_files_sha256, playback, favorite_creators)
         if gl.sortNewest:
             if date not in sorted_models:
                 sorted_models[date] = []

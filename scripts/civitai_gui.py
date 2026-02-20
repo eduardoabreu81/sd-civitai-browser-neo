@@ -296,6 +296,7 @@ def on_ui_tabs():
                         exact_search = gr.Checkbox(label='Exact search', value=True, elem_id=toggle6)
                         only_liked = gr.Checkbox(label='Liked models only', value=False, interactive=show_only_liked, elem_id=toggle4)
                         hide_installed = gr.Checkbox(label='Hide installed models', value=False, elem_id=toggle5)
+                        hide_banned_creators = gr.Checkbox(label='Hide banned creators', value=False, elem_id='hideBannedCreators')
                     with gr.Row():
                         size_slider = gr.Slider(label='Tile size:', minimum=8, maximum=20, value=12, step=0.25)
                         tile_count_slider = gr.Slider(label='Tile count:', minimum=1, maximum=100, value=27, step=1)
@@ -325,6 +326,12 @@ def on_ui_tabs():
                     '<span class="legend-item"><span class="legend-dot early-access"></span>Early Access (paid)</span>'
                     '</div>'
                 ))
+            with gr.Accordion(label='\U0001f464 Creator Management', open=False, elem_id='creatorMgmtBox'):
+                with gr.Row():
+                    creator_name_txt = gr.Textbox(label='Creator:', interactive=False, max_lines=1, scale=3, elem_id='creator_name_display')
+                    btn_fav = gr.Button(value='\u2b50 Favorite', interactive=False, scale=1, min_width=110)
+                    btn_ban = gr.Button(value='\U0001f6ab Ban', interactive=False, scale=1, min_width=90)
+                    btn_clear = gr.Button(value='\u21ba Reset', interactive=False, scale=1, min_width=90)
             with gr.Row():
                 list_html = gr.HTML(value='<div style="font-size: 24px; text-align: center; margin: 50px;">Click the search icon to load models.<br>Use the filter icon to filter results.</div>')
             with gr.Row():
@@ -599,6 +606,7 @@ def on_ui_tabs():
         current_model = gr.Textbox(visible=False)
         current_sha256 = gr.Textbox(visible=False)
         model_preview_html_input = gr.Textbox(visible=False)
+        banned_creators_list_txt = gr.Textbox(elem_id='banned_creators_list', visible=False, value=_file.get_banned_creators_text())
         
         # Hidden elements for quick delete by SHA256 (from model cards)
         delete_trigger_sha256 = gr.Textbox(elem_id='sha256', visible=False)
@@ -621,6 +629,30 @@ def on_ui_tabs():
 
         list_html_input.change(fn=None, inputs=hide_installed, _js='(toggleValue) => hideInstalled(toggleValue)')
         hide_installed.input(fn=None, inputs=hide_installed, _js='(toggleValue) => hideInstalled(toggleValue)')
+
+        # === Creator Management bindings ===
+        list_html_input.change(fn=None, inputs=[banned_creators_list_txt, hide_banned_creators], _js='(bList, checked) => initBannedCreators(bList, checked)')
+        hide_banned_creators.change(fn=None, inputs=[banned_creators_list_txt, hide_banned_creators], _js='(bList, checked) => refreshBannedCreators(bList, checked)')
+
+        def get_creator_for_model(mid):
+            if not mid or not gl.json_data:
+                return gr.update(value='')
+            try:
+                mid_int = int(mid)
+                for it in gl.json_data.get('items', []):
+                    if int(it['id']) == mid_int:
+                        cr = it.get('creator', {}) or {}
+                        return gr.update(value=cr.get('username', '') or '')
+            except Exception:
+                pass
+            return gr.update(value='')
+
+        model_id.change(fn=get_creator_for_model, inputs=[model_id], outputs=[creator_name_txt])
+        creator_name_txt.change(fn=_file._creator_button_updates, inputs=[creator_name_txt], outputs=[btn_fav, btn_ban, btn_clear, banned_creators_list_txt])
+        btn_fav.click(fn=_file.add_favorite_creator, inputs=[creator_name_txt], outputs=[btn_fav, btn_ban, btn_clear, banned_creators_list_txt])
+        btn_ban.click(fn=_file.ban_creator, inputs=[creator_name_txt], outputs=[btn_fav, btn_ban, btn_clear, banned_creators_list_txt])
+        btn_clear.click(fn=_file.clear_creator, inputs=[creator_name_txt], outputs=[btn_fav, btn_ban, btn_clear, banned_creators_list_txt])
+        banned_creators_list_txt.change(fn=None, inputs=[banned_creators_list_txt, hide_banned_creators], _js='(bList, checked) => refreshBannedCreators(bList, checked)')
 
         civitai_text2img_output.change(fn=None, inputs=civitai_text2img_output, _js='(genInfo) => genInfo_to_txt2img(genInfo)')
 

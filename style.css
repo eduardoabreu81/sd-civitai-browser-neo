@@ -36,6 +36,15 @@
     box-shadow: 0 0 2px 2px aquamarine;
 }
 
+/* --- Favorite creator card --- */
+.civcard-favorite {
+    box-shadow: 0 0 2px 2px gold;
+}
+.civcard-favorite figcaption::after {
+    content: ' ⭐';
+    font-size: 0.85em;
+}
+
 /* --- Card Legend --- */
 .card-legend {
     display: flex;
