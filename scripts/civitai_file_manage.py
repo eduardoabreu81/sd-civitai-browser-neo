@@ -217,11 +217,14 @@ _COMPANION_NOTES = {
 }
 
 
-def get_companion_banner(base_model: str) -> str:
+def get_companion_banner(base_model: str, model_filename: str = '', model_name: str = '') -> str:
     """
     Returns an HTML banner listing required companion files (VAE, text encoders, etc.)
     for architectures that need them.  Returns '' if nothing is missing.
     Only checks Checkpoints (not LoRAs) — called from update_model_info.
+
+    For Wan 2.2 MoE models, detects whether the file is HN or LN by inspecting
+    model_filename and model_name, and shows a tailored instruction note.
     """
     if not base_model or str(base_model).strip() in ('', 'Not Found', 'Unknown'):
         return ''
@@ -238,6 +241,17 @@ def get_companion_banner(base_model: str) -> str:
 
     if not companions:
         return ''
+
+    # For Wan 2.2 MoE — detect HN vs LN from filename/model name
+    note_key = matched_key  # default: use the generic note key
+    if matched_key == 'WAN':
+        combined = (model_filename + ' ' + model_name).upper()
+        # Patterns: [HN], _HN_, -HN-, "HN" standalone, wan_hn, etc.
+        import re as _re
+        if _re.search(r'(?<![A-Z])HN(?![A-Z])', combined):
+            note_key = 'WAN_HN'
+        elif _re.search(r'(?<![A-Z])LN(?![A-Z])', combined):
+            note_key = 'WAN_LN'
 
     try:
         from modules.paths import models_path as _mp
@@ -274,7 +288,9 @@ def get_companion_banner(base_model: str) -> str:
         return ''  # All files already present
 
     note_html = ''
-    if matched_key and matched_key in _COMPANION_NOTES:
+    if note_key and note_key in _COMPANION_NOTES:
+        note_html = f'<p class="companion-note">{_COMPANION_NOTES[note_key]}</p>'
+    elif matched_key and matched_key in _COMPANION_NOTES:
         note_html = f'<p class="companion-note">{_COMPANION_NOTES[matched_key]}</p>'
 
     table_body = ''.join(rows)
