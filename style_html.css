@@ -628,3 +628,100 @@ a:hover::after {
 .civitai-overlay .viewer-overlay {
     z-index: 99999 !important;
 }
+
+/* --- Companion Files Banner --- */
+.companion-files-banner {
+    margin: 10px 0;
+    padding: 10px 14px 12px;
+    border: 1px solid #b8860b;
+    border-left: 4px solid #ffd700;
+    border-radius: 6px;
+    background: rgba(255, 215, 0, 0.04);
+    font-size: 13px;
+}
+
+.companion-title {
+    margin: 0 0 6px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #ffd700;
+}
+
+.companion-note {
+    margin: 0 0 8px;
+    padding: 6px 10px;
+    background: rgba(255, 165, 0, 0.08);
+    border-radius: 4px;
+    border-left: 3px solid #ffa500;
+    color: #e0c97a;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.companion-table-wrap {
+    overflow-x: auto;
+}
+
+.companion-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.companion-table thead tr {
+    background: rgba(255,255,255,0.05);
+    color: #aaa;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.companion-table th,
+.companion-table td {
+    padding: 4px 8px;
+    text-align: left;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    vertical-align: middle;
+}
+
+.companion-table tr.companion-present {
+    opacity: 0.45;
+}
+
+.companion-table tr.companion-missing {
+    color: #f0e6c0;
+}
+
+.companion-status {
+    font-size: 14px;
+    width: 22px;
+    text-align: center !important;
+}
+
+.companion-filename code {
+    font-family: monospace;
+    font-size: 11px;
+    word-break: break-all;
+    color: #9cdcfe;
+}
+
+.companion-folder {
+    color: #777;
+    font-size: 11px;
+}
+
+.companion-size {
+    color: #999;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.companion-link a {
+    color: #4af;
+    text-decoration: none;
+    font-size: 11px;
+}
+
+.companion-link a:hover {
+    text-decoration: underline;
+}

@@ -178,6 +178,122 @@ def get_banned_creators_text() -> str:
     return BanCreators.get_as_text()
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Companion Files Lookup Table
+# Required companion files (VAE, text encoders, etc.) per base model architecture.
+# Keys are substrings matched against baseModel.upper().
+# ─────────────────────────────────────────────────────────────────────────────
+_COMPANION_FILES = {
+    'FLUX': [
+        {'label': 'VAE',                     'filename': 'ae.safetensors',                                    'folder': 'models/VAE',          'size': '335 MB', 'url': 'https://huggingface.co/black-forest-labs/FLUX.1-dev'},
+        {'label': 'Text Encoder (CLIP-L)',   'filename': 'clip_l.safetensors',                               'folder': 'models/text_encoder', 'size': '246 MB', 'url': 'https://huggingface.co/comfyanonymous/flux_text_encoders'},
+        {'label': 'Text Encoder (T5-XXL)',   'filename': 't5xxl_fp8_e4m3fn_scaled.safetensors',              'folder': 'models/text_encoder', 'size': '4.9 GB', 'url': 'https://huggingface.co/comfyanonymous/flux_text_encoders'},
+    ],
+    'WAN': [
+        {'label': 'VAE',                     'filename': 'wan_2.1_vae.safetensors',                          'folder': 'models/VAE',          'size': '254 MB', 'url': 'https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged'},
+        {'label': 'Text Encoder (UMT5-XXL)', 'filename': 'umt5_xxl_fp8_e4m3fn_scaled.safetensors',          'folder': 'models/text_encoder', 'size': '6.7 GB', 'url': 'https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged'},
+    ],
+    'QWEN': [
+        {'label': 'VAE',                     'filename': 'qwen_image_vae.safetensors',                       'folder': 'models/VAE',          'size': '~0.5 GB','url': 'https://huggingface.co/nunchaku-tech/nunchaku-qwen-image'},
+        {'label': 'Text Encoder (Qwen2.5-VL)','filename': 'qwen2.5_vl_7b_instruct_fp8_e4m3fn_scaled.safetensors', 'folder': 'models/text_encoder', 'size': '~8 GB', 'url': 'https://huggingface.co/Comfy-Org/Qwen2.5-VL-7B-Instruct_fp8_scaled'},
+    ],
+    'Z-IMAGE': [
+        {'label': 'VAE',                     'filename': 'ae.safetensors',                                   'folder': 'models/VAE',          'size': '335 MB', 'url': 'https://huggingface.co/black-forest-labs/FLUX.1-dev'},
+        {'label': 'Text Encoder (Qwen3-4B)', 'filename': 'qwen_3_4b.safetensors',                           'folder': 'models/text_encoder', 'size': '8.0 GB', 'url': 'https://huggingface.co/Comfy-Org/z_image_turbo'},
+    ],
+    'LUMINA': [
+        {'label': 'VAE',                     'filename': 'ae.safetensors',                                   'folder': 'models/VAE',          'size': '335 MB', 'url': 'https://huggingface.co/black-forest-labs/FLUX.1-dev'},
+        {'label': 'Text Encoder (Gemma-2)',  'filename': 'gemma_2_2b.safetensors',                           'folder': 'models/text_encoder', 'size': '~5 GB',  'url': 'https://huggingface.co/Comfy-Org/Lumina-Image-2.0'},
+    ],
+}
+
+# Per-architecture notes injected into the companion banner
+_COMPANION_NOTES = {
+    'WAN': (
+        '⚠️ <strong>Wan 2.2</strong> uses a two-model MoE (Mixture-of-Experts) architecture. '
+        'Load the <code>[HN]</code> (high-noise) checkpoint as the main model and the '
+        '<code>[LN]</code> (low-noise) model in the <strong>Refiner</strong> slot. '
+        'Enable Refiner in <em>Forge Settings → Refiner</em> first.'
+    ),
+}
+
+
+def get_companion_banner(base_model: str) -> str:
+    """
+    Returns an HTML banner listing required companion files (VAE, text encoders, etc.)
+    for architectures that need them.  Returns '' if nothing is missing.
+    Only checks Checkpoints (not LoRAs) — called from update_model_info.
+    """
+    if not base_model or str(base_model).strip() in ('', 'Not Found', 'Unknown'):
+        return ''
+
+    base_upper = str(base_model).upper()
+
+    companions = None
+    matched_key = None
+    for pattern, files in _COMPANION_FILES.items():
+        if pattern in base_upper:
+            companions = files
+            matched_key = pattern
+            break
+
+    if not companions:
+        return ''
+
+    try:
+        from modules.paths import models_path as _mp
+        base_path = Path(_mp)
+    except Exception:
+        base_path = Path('models')
+
+    rows = []
+    any_missing = False
+    for comp in companions:
+        sub = comp['folder'].split('/')[-1]          # e.g. 'VAE', 'text_encoder'
+        dest_folder = base_path / sub
+        present = False
+        if dest_folder.exists():
+            present = (dest_folder / comp['filename']).exists()
+            if not present:
+                present = bool(list(dest_folder.rglob(comp['filename'])))
+        if not present:
+            any_missing = True
+        status_icon = '✅' if present else '⬇️'
+        status_class = 'companion-present' if present else 'companion-missing'
+        rows.append(
+            f'<tr class="{status_class}">'
+            f'<td class="companion-status">{status_icon}</td>'
+            f'<td class="companion-label">{comp["label"]}</td>'
+            f'<td class="companion-filename"><code>{comp["filename"]}</code></td>'
+            f'<td class="companion-folder">{comp["folder"]}/</td>'
+            f'<td class="companion-size">{comp["size"]}</td>'
+            f'<td class="companion-link"><a href="{comp["url"]}" target="_blank">HuggingFace ↗</a></td>'
+            f'</tr>'
+        )
+
+    if not any_missing:
+        return ''  # All files already present
+
+    note_html = ''
+    if matched_key and matched_key in _COMPANION_NOTES:
+        note_html = f'<p class="companion-note">{_COMPANION_NOTES[matched_key]}</p>'
+
+    table_body = ''.join(rows)
+    table_html = (
+        f'<table class="companion-table">'
+        f'<thead><tr><th></th><th>Type</th><th>Filename</th><th>Destination</th><th>Size</th><th>Source</th></tr></thead>'
+        f'<tbody>{table_body}</tbody>'
+        f'</table>'
+    )
+    return (
+        f'<div class="companion-files-banner">'
+        f'<h3 class="companion-title">📦 Required Companion Files</h3>'
+        f'{note_html}'
+        f'<div class="companion-table-wrap">{table_html}</div>'
+        f'</div>'
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 from_tag = False
 from_ver = False
 from_installed = False
