@@ -1298,7 +1298,11 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                     trained_words_section = ''
 
                 # Companion files banner — shown when required VAE/text_encoder files are missing
-                companion_banner = _file.get_companion_banner(output_basemodel)
+                companion_banner = _file.get_companion_banner(
+                    output_basemodel,
+                    model_filename=model_filename or '',
+                    model_name=model_name or '',
+                )
 
                 # Build main HTML structure
                 output_html = (
