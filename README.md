@@ -21,7 +21,7 @@ Modern fork of sd-civitai-browser-plus optimized for Forge Neo with auto-organiz
 ## 📋 Table of Contents
 
 - [Neo Versioning](#-neo-versioning)
-- [What's New](#-whats-new--v061)
+- [What's New](#-whats-new--v062)
 - [SD Civitai Browser Neo Release Story](#-sd-civitai-browser-neo-release-story)
 - [Roadmap](#%EF%B8%8F-roadmap)
 - [Features](#-features)
@@ -50,17 +50,26 @@ Examples:
 
 ---
 
-## 🆕 What's New — v0.6.1
+## 🆕 What's New — v0.6.2
 
-> **Companion Files Banner + Download Reliability** — smart architecture banners for multi-file models, Wan 2.2 HN/LN role detection, and a Web Worker fix that keeps downloads running when the browser tab is in the background.
+> **Queue Persistence + Restore Banner** — server-side download log survives RunPod disconnections and browser reloads; a one-click restore banner re-queues interrupted downloads on reconnect.
 
-- **⚠️ Companion files banner** — when downloading a Wan 2.2, FLUX, WAN/QWEN/Z-Image or other multi-file architecture, a contextual banner appears explaining which companion files are needed ⭐
-- **🔍 Wan 2.2 HN/LN detection** — the banner automatically identifies whether the file is the HN (High-Noise, load as main model) or LN (Low-Noise, load in Refiner slot) checkpoint and shows tailored instructions ⭐
-- **🔄 Download queue fix** — downloads no longer stall when you switch to another tab; replaced `setInterval` polling with a Web Worker that runs unthrottled in the background ⭐
+- **📋 Persistent download log** — every queued/active download is logged to `config_states/neo_download_queue.jsonl` on the server; the queue is never lost even if the browser disconnects mid-download ⭐
+- **🔄 Restore banner** — on reconnect, a contextual banner appears in the Browser tab listing interrupted downloads with one-click "↺ Restore Queue" and "✕ Dismiss" actions ⭐
+- **🔗 Native queue reuse** — restoring re-enqueues items through the existing download chain; no special code path, full cancel/progress support included ⭐
 
 ---
 
 ## 📖 SD Civitai Browser Neo Release Story
+
+### v0.6.2
+> **Theme: Queue Persistence + Restore Banner** — server-side JSONL log captures every queued and active download; a restore banner in the Browser tab lets users recover interrupted queues with one click after a RunPod disconnect or browser reload.
+
+- [x] `scripts/download_log.py` — new log module; JSONL schema per entry (`dl_id`, `dl_url`, `model_filename`, `install_path`, `model_name`, `version_name`, `model_sha256`, `model_id`, `status`, `queued_at`, `updated_at`); full entry lifecycle: `queued → downloading → completed / cancelled / failed / dismissed`
+- [x] 5 logging hooks in `civitai_download.py`: `log_queued` in `create_model_item`; `log_downloading` at start of `download_create_thread`; `log_completed/cancelled/failed` before queue pop; `log_cancelled` in `remove_from_queue`; `log_all_cancelled` in `download_cancel_all`
+- [x] 4 new functions at end of `civitai_download.py`: `get_interrupted_downloads_json` (purges old entries, returns JSON for UI); `dismiss_interrupted_downloads`; `_restore_queue_item` (rebuilds full queue item from log entry via API); `restore_interrupted_to_queue` (re-enqueues all interrupted items, returns standard 6-tuple to kick off normal download chain)
+- [x] `civitai_gui.py`: restore banner `gr.HTML` in Browser tab; 3 hidden textboxes (`restore_queue_input`, `restore_action_trigger`, `dismiss_restore_trigger`); `civitai_interface.load()` fires on every page load to populate the banner
+- [x] `civitai-html.js`: `initRestoreBanner(json)` renders the banner HTML with item names; `triggerRestoreQueue()` fires the restore chain; `triggerDismissRestore()` marks all entries dismissed
 
 ### v0.6.1
 > **Theme: Companion Files Banner + Download Reliability** — contextual architecture guidance on download and a Web Worker fix for background-tab download stalling.
@@ -203,6 +212,11 @@ Examples:
 - Top models ranking per type (by folder count / size)
 - Orphan folder detection (local files with no CivitAI match)
 
+### v0.6.2 — Queue Persistence + Restore Banner *(complete)*
+- Server-side JSONL download log survives disconnects ✅
+- Restore banner in Browser tab on reconnect ✅
+- One-click re-queue through native download chain ✅
+
 ### v0.6.1 — Companion Banner + Download Fix *(complete)*
 - Companion files banner for multi-file architectures ✅
 - Wan 2.2 HN/LN role detection in banner ✅
@@ -249,6 +263,7 @@ Examples:
 - **Download any model, version, and file** directly from the browser
 - **Aria2 high-speed multi-connection downloads** — optional, enabled by default
 - **Download queue** — multiple downloads run in sequence without blocking the UI
+- **Queue persistence** — the download queue is logged server-side; if the browser disconnects (e.g. RunPod timeout), a restore banner appears on reconnect so you can resume with one click ⭐
 - **Cancel downloads** individually or all at once
 - **Auto-set save folder** based on content type — no manual path typing needed
 - **Custom sub-folders** — choose or create sub-folders per download
