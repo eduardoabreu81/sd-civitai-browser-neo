@@ -828,6 +828,20 @@ function cancelQueueDl() {
     cancelBtn;
 }
 
+// Creates a setInterval-equivalent backed by a Web Worker so it runs
+// unthrottled even when the browser tab is in the background.
+function _createWorkerInterval(callback, ms) {
+    const code = `var id;self.onmessage=function(e){if(e.data==='start'){id=setInterval(function(){self.postMessage('tick');},${ms});}else{clearInterval(id);self.close();}};`;
+    const blob = new Blob([code], { type: 'application/javascript' });
+    const url = URL.createObjectURL(blob);
+    const worker = new Worker(url);
+    worker.onmessage = function() { callback(); };
+    worker.postMessage('start');
+    worker._url = url;
+    worker.stop = function() { worker.postMessage('stop'); URL.revokeObjectURL(url); };
+    return worker;
+}
+
 function setDownloadProgressBar() {
     const gradio_html = gradioApp().querySelector('#queue_html_input textarea');
     let browserContainer = document.querySelector('#DownloadProgress');
@@ -852,7 +866,7 @@ function setDownloadProgressBar() {
 
     nonQueue.appendChild(dlItem);
 
-    const interval = setInterval(() => {
+    const worker = _createWorkerInterval(() => {
         browserContainer = document.querySelector('#DownloadProgress');
         browserProgress = browserContainer.querySelector('.progress-bar');
         dlText = browserContainer.querySelector('.progress-level-inner');
@@ -869,7 +883,7 @@ function setDownloadProgressBar() {
         dlProgressBar.style.width = percentage + '%';
 
         if (percentage >= 100) {
-            clearInterval(interval);
+            worker.stop();
             dlBtn = dlItem.querySelector('.dl_action_btn > span');
             dlBtn.innerText = 'Remove';
             dlBtn.setAttribute('onclick', 'removeDlItem(' + parseInt(dlId) + ', this)');
@@ -883,7 +897,7 @@ function setDownloadProgressBar() {
         }
 
         if (currentDlCancelled) {
-            clearInterval(interval);
+            worker.stop();
             dlBtn = dlItem.querySelector('.dl_action_btn > span');
             dlBtn.innerText = 'Remove';
             dlBtn.setAttribute('onclick', 'removeDlItem(' + parseInt(dlId) + ', this)');
@@ -896,7 +910,7 @@ function setDownloadProgressBar() {
             updateInput(gradio_html);
             return;
         } else if (allDlCancelled) {
-            clearInterval(interval);
+            worker.stop();
             allDlCancelled = false;
             let dlItems = dlList.querySelectorAll('.civitai_dl_item');
             dlItems.forEach(function (item) {
@@ -914,7 +928,7 @@ function setDownloadProgressBar() {
             updateInput(gradio_html);
             return;
         } else if (dlText.includes('Encountered an error during download of') || dlText.includes('not found on CivitAI servers') || dlText.includes('requires a personal CivitAI API to be downloaded')) {
-            clearInterval(interval);
+            worker.stop();
             dlBtn = dlItem.querySelector('.dl_action_btn > span');
             dlBtn.innerText = 'Remove';
             dlBtn.setAttribute('onclick', 'removeDlItem(' + parseInt(dlId) + ', this)');
@@ -926,7 +940,7 @@ function setDownloadProgressBar() {
             updateInput(gradio_html);
             return;
         }
-    }, 500);
+    });
 }
 
 function removeDlItem(dl_id, element) {
