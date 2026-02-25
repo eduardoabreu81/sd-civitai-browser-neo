@@ -1,5 +1,6 @@
 import subprocess
 import threading
+import hashlib
 import requests
 import platform
 import random
@@ -178,6 +179,7 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
         current_count = 0
 
     model_list = json.loads(model_list)
+    skipped_names = []
 
     ## === ANXETY EDITs ===
     for model_string in model_list:
@@ -251,9 +253,18 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
             gl.download_queue.append(model_item)
             total_count += 1
         else:
+            skipped_names.append(model_name)
             debug_print(f"Skipped model {model_name} ({model_id}) due to processing error")
 
     html = download_manager_html(current_html)
+    if skipped_names:
+        names_str = ', '.join(skipped_names[:5]) + ('…' if len(skipped_names) > 5 else '')
+        html = html.rsplit('</div>', 1)[0] + (
+            f'<div style="background:#3a1a1a;border:1px solid #8b3030;border-radius:6px;'
+            f'padding:8px 12px;margin:4px 0;color:#ff9999;font-size:13px;">'
+            f'⚠️ Skipped {len(skipped_names)} model(s) — could not load info: {names_str}'
+            f'</div>'
+        ) + '</div>'
 
     return (
         gr.update(interactive=False, visible=False),  # Download Button
@@ -755,17 +766,17 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
     gl.recent_model = item['model_name']
     gl.last_version = item['version_name']
 
-    if item['from_batch']:
-        item['install_path'] = item['existing_path']
+    # Fix #3: do not mutate item dict — use a local effective path
+    effective_install_path = item['existing_path'] if item['from_batch'] else item['install_path']
 
     gl.isDownloading = True
     _dl_log.log_downloading(item['dl_id'])
-    _file.make_dir(item['install_path'])
+    _file.make_dir(effective_install_path)
 
-    path_to_new_file = os.path.join(item['install_path'], item['model_filename'])
+    path_to_new_file = os.path.join(effective_install_path, item['model_filename'])
 
     if use_aria2 and os_type != 'Darwin':
-        thread = threading.Thread(target=download_file, args=(item['dl_url'], path_to_new_file, item['install_path'], item['model_id'], progress))
+        thread = threading.Thread(target=download_file, args=(item['dl_url'], path_to_new_file, effective_install_path, item['model_id'], progress))
     else:
         thread = threading.Thread(target=download_file_old, args=(item['dl_url'], path_to_new_file, item['model_id'], progress))
     thread.start()
@@ -773,6 +784,21 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
         progress.join(thread)
     else:
         thread.join()
+
+    # Fix #1: SHA256 integrity check after download
+    if not gl.cancel_status and not gl.download_fail and item.get('model_sha256') and os.path.exists(path_to_new_file):
+        if progress is not None:
+            progress(0.99, desc=f"Verifying integrity: {item['model_filename']}...")
+        sha256_hash = hashlib.sha256()
+        with open(path_to_new_file, 'rb') as _f:
+            for _chunk in iter(lambda: _f.read(1024 * 1024), b''):
+                sha256_hash.update(_chunk)
+        actual_sha256 = sha256_hash.hexdigest().upper()
+        if actual_sha256 != item['model_sha256'].upper():
+            print(f"SHA256 mismatch for '{item['model_filename']}': expected {item['model_sha256'][:12]}…, got {actual_sha256[:12]}…")
+            gl.download_fail = True
+            if progress is not None:
+                progress(0, desc=f"Integrity check failed for '{item['model_filename']}' — file may be corrupted.")
 
     if not gl.cancel_status or gl.download_fail:
         if os.path.exists(path_to_new_file):
@@ -797,17 +823,17 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
                     print(f"Failed to extract {item['model_filename']} with error: {e}")
             if not gl.cancel_status:
                 if item['create_json']:
-                    _file.save_model_info(item['install_path'], item['model_filename'], item['sub_folder'], item['model_sha256'], item['preview_html'], api_response=item['model_json'])
+                    _file.save_model_info(effective_install_path, item['model_filename'], item['sub_folder'], item['model_sha256'], item['preview_html'], api_response=item['model_json'])
                 info_to_json(path_to_new_file, item['model_id'], item['model_sha256'], unpackList)
                 _file.save_preview(path_to_new_file, item['model_json'], True, item['model_sha256'])
                 if save_all_images:
-                    _file.save_images(item['preview_html'], item['model_filename'], item['install_path'], item['sub_folder'], api_response=item['model_json'])
+                    _file.save_images(item['preview_html'], item['model_filename'], effective_install_path, item['sub_folder'], api_response=item['model_json'])
 
     base_name = os.path.splitext(item['model_filename'])[0]
     base_name_preview = base_name + '.preview'
 
     if gl.download_fail:
-        for root, dirs, files in os.walk(item['install_path'], followlinks=True):
+        for root, dirs, files in os.walk(effective_install_path, followlinks=True):
             for file in files:
                 file_base_name = os.path.splitext(file)[0]
                 if file_base_name == base_name or file_base_name == base_name_preview:

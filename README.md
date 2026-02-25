@@ -231,6 +231,9 @@ Examples:
 - Saved search presets
 - ⭐ Favorites in User/creator search dropdown
 - Additional browser quality-of-life improvements
+- Batch enqueue API deferral (defer `update_model_versions` / `update_model_info` to download time, not enqueue time — speeds up large batch queuing significantly)
+- `threading.Event` for cancel signals (replace busy-wait `while True / time.sleep(0.5)` in `download_cancel` / `download_cancel_all`)
+- Aria2 auto-reconnect on retry (restart RPC if unreachable during status polling — improves resilience on RunPod/remote servers)
 
 ### v1.0.0 — First Stable Release *(planned)*
 - All known regressions resolved
