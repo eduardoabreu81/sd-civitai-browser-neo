@@ -943,6 +943,52 @@ function setDownloadProgressBar() {
     });
 }
 
+// === Queue Restore Banner ===
+
+function initRestoreBanner(json) {
+    const banner = gradioApp().querySelector('#restore_banner');
+    if (!banner) return;
+    if (!json || json.trim() === '') { banner.innerHTML = ''; return; }
+    let items;
+    try { items = JSON.parse(json); } catch (e) { return; }
+    if (!items || items.length === 0) { banner.innerHTML = ''; return; }
+    const count = items.length;
+    const names = items.slice(0, 3).map(i => `<b>${i.model_name}</b>`).join(', ');
+    const more = count > 3 ? ` and ${count - 3} more` : '';
+    banner.innerHTML = `
+        <div style="background:#1a3a5c;border:1px solid #2d6a9f;border-radius:8px;
+                    padding:12px 16px;margin:8px 0;display:flex;align-items:center;
+                    gap:12px;flex-wrap:wrap;">
+            <span style="flex:1;min-width:200px;">
+                🔄 <b>${count} download${count > 1 ? 's' : ''} were interrupted.</b> ${names}${more}
+            </span>
+            <button onclick="triggerRestoreQueue()"
+                style="background:#2d6a9f;color:white;border:none;border-radius:6px;
+                       padding:6px 14px;cursor:pointer;font-size:14px;">↺ Restore Queue</button>
+            <button onclick="triggerDismissRestore()"
+                style="background:transparent;color:#aaa;border:1px solid #555;
+                       border-radius:6px;padding:6px 14px;cursor:pointer;font-size:14px;">✕ Dismiss</button>
+        </div>`;
+}
+
+function triggerRestoreQueue() {
+    const trigger = gradioApp().querySelector('#restore_action_trigger textarea');
+    if (!trigger) return;
+    trigger.value = String(Date.now());
+    updateInput(trigger);
+    const banner = gradioApp().querySelector('#restore_banner');
+    if (banner) banner.innerHTML = '';
+}
+
+function triggerDismissRestore() {
+    const trigger = gradioApp().querySelector('#dismiss_restore_trigger textarea');
+    if (!trigger) return;
+    trigger.value = '1';
+    updateInput(trigger);
+    const banner = gradioApp().querySelector('#restore_banner');
+    if (banner) banner.innerHTML = '';
+}
+
 function removeDlItem(dl_id, element) {
     const gradio_html = gradioApp().querySelector('#queue_html_input textarea');
     const output = gradioApp().querySelector('#remove_dl_id textarea');

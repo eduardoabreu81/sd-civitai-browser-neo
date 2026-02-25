@@ -277,6 +277,7 @@ def on_ui_tabs():
         with gr.Tab(label='Browser', elem_id='browserTab'):
             gr.Markdown('## 🔍 Browse CivitAI Models', elem_id='browser_header')
             gr.Markdown('Search, discover, and download models directly from CivitAI.')
+            restore_banner_html = gr.HTML(value='', elem_id='restore_banner')
             
             with gr.Row(elem_id='searchRow'):
                 with gr.Accordion(label='', open=False, elem_id=filterBox):
@@ -607,6 +608,10 @@ def on_ui_tabs():
         current_sha256 = gr.Textbox(visible=False)
         model_preview_html_input = gr.Textbox(visible=False)
         banned_creators_list_txt = gr.Textbox(elem_id='banned_creators_list', visible=False, value=_file.get_banned_creators_text())
+        # Hidden: queue restore triggers (survive RunPod/browser disconnects)
+        restore_queue_input     = gr.Textbox(elem_id='restore_queue_input',     visible=False)
+        restore_action_trigger  = gr.Textbox(elem_id='restore_action_trigger',  visible=False)
+        dismiss_restore_trigger = gr.Textbox(elem_id='dismiss_restore_trigger', visible=False)
         
         # Hidden elements for quick delete by SHA256 (from model cards)
         delete_trigger_sha256 = gr.Textbox(elem_id='sha256', visible=False)
@@ -1000,6 +1005,19 @@ def on_ui_tabs():
 
         cancel_model.click(fn=None, _js='() => cancelCurrentDl()')
         cancel_all_model.click(fn=None, _js='() => cancelAllDl()')
+
+        # === Queue Restore bindings ===
+        restore_queue_input.change(
+            fn=None, inputs=[restore_queue_input],
+            _js='(json) => initRestoreBanner(json)'
+        )
+        restore_action_trigger.change(
+            fn=_download.restore_interrupted_to_queue,
+            inputs=[download_manager_html],
+            outputs=[download_model, cancel_model, cancel_all_model,
+                     download_start, download_progress, download_manager_html]
+        )
+        dismiss_restore_trigger.change(fn=_download.dismiss_interrupted_downloads)
 
         delete_model.click(
             fn=_file.delete_model,
@@ -1492,6 +1510,12 @@ def on_ui_tabs():
             fn=_file.updateSubfolder,
             inputs=create_subfolder,
             outputs=[]
+        )
+
+        # On page load, check for interrupted downloads and populate the restore banner
+        civitai_interface.load(
+            fn=_download.get_interrupted_downloads_json,
+            outputs=[restore_queue_input]
         )
 
     tab_name = 'CivitAI Browser Neo'

@@ -18,6 +18,7 @@ from modules.shared import opts, cmd_opts
 import scripts.civitai_file_manage as _file
 import scripts.civitai_global as gl
 import scripts.civitai_api as _api
+import scripts.download_log as _dl_log
 from scripts.civitai_api import is_early_access, is_model_nsfw
 from scripts.civitai_global import print, debug_print
 
@@ -164,6 +165,7 @@ def create_model_item(dl_url, model_filename, install_path, model_name, version_
         'sub_folder': sub_folder
     }
 
+    _dl_log.log_queued(item)
     return item
 
 def selected_to_queue(model_list, subfolder, download_start, create_json, current_html):
@@ -400,6 +402,7 @@ def download_cancel_all():
             if item:
                 model_string = f"{item['model_name']} ({item['model_id']})"
                 _file.delete_model(0, item['model_filename'], model_string, item['version_name'], False, model_ver=item['model_versions'], model_json=item['model_json'])
+            _dl_log.log_all_cancelled()
             gl.download_queue = []
             break
         else:
@@ -756,6 +759,7 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
         item['install_path'] = item['existing_path']
 
     gl.isDownloading = True
+    _dl_log.log_downloading(item['dl_id'])
     _file.make_dir(item['install_path'])
 
     path_to_new_file = os.path.join(item['install_path'], item['model_filename'])
@@ -822,6 +826,14 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
         model_string = f"{item['model_name']} ({item['model_id']})"
         (card_name, _, _) = _file.card_update(item['model_versions'], model_string, item['version_name'], True)
 
+    # Log final download status before removing from queue
+    if gl.cancel_status:
+        _dl_log.log_cancelled(item['dl_id'])
+    elif gl.download_fail:
+        _dl_log.log_failed(item['dl_id'])
+    else:
+        _dl_log.log_completed(item['dl_id'])
+
     if len(gl.download_queue) != 0:
         gl.download_queue.pop(0)
     gl.isDownloading = False
@@ -848,6 +860,7 @@ def remove_from_queue(dl_id):
         if int(dl_id) == int(item['dl_id']):
             gl.download_queue.remove(item)
             total_count -= 1
+            _dl_log.log_cancelled(int(dl_id))
             return
 
 def arrange_queue(input):
@@ -884,3 +897,121 @@ def download_manager_html(current_html):
     html += '</div>'
 
     return html
+
+
+# ─── Queue Restore  (called from civitai_gui.py) ─────────────────────────────
+
+def get_interrupted_downloads_json():
+    """Called by Gradio .load() on every page load.
+    Returns a JSON string of interrupted items, or '' if none.
+    Also purges stale completed/cancelled entries from the log file."""
+    _dl_log.purge_old_entries(days=7)
+    interrupted = _dl_log.get_interrupted()
+    if not interrupted:
+        return ''
+    import json as _json
+    return _json.dumps(interrupted)
+
+
+def dismiss_interrupted_downloads():
+    """Called when the user dismisses the restore banner without restoring."""
+    _dl_log.dismiss_interrupted()
+    return ''
+
+
+def _restore_queue_item(data):
+    """Rebuild a full queue item dict from a log entry, fetching fresh API data."""
+    model_id = int(data['model_id'])
+
+    # Duplicate guard
+    for existing in gl.download_queue:
+        if existing.get('dl_url') == data['dl_url']:
+            return None
+
+    model_versions = _api.update_model_versions(model_id)
+    if not model_versions:
+        return None
+
+    preview_html_val = ''
+    existing_path_val = data['install_path']
+    model_json = {'items': []}
+
+    try:
+        result = _api.update_model_info(None, model_versions.get('value'), False, model_id)
+        # update_model_info returns a 13-tuple; index 0 = preview_html, index 11 = existing_path
+        preview_html_val = result[0].get('value', '') if isinstance(result[0], dict) else ''
+        existing_path_val = result[11].get('value', data['install_path']) if isinstance(result[11], dict) else data['install_path']
+
+        # Re-fetch model JSON for metadata saving
+        api_url = f'https://civitai.com/api/v1/models/{model_id}'
+        raw = _api.request_civit_api(api_url)
+        if raw and isinstance(raw, dict):
+            model_json = {'items': [raw]}
+    except Exception as e:
+        debug_print(f"[Restore] Could not fetch API data for model {model_id}: {e}")
+
+    global dl_manager_count
+    dl_manager_count += 1
+
+    return {
+        'dl_id':          dl_manager_count,
+        'dl_url':         data['dl_url'],
+        'model_filename': data['model_filename'],
+        'install_path':   data['install_path'],
+        'model_name':     data['model_name'],
+        'version_name':   data.get('version_name', ''),
+        'model_sha256':   data.get('model_sha256'),
+        'model_id':       model_id,
+        'create_json':    data.get('create_json', True),
+        'model_json':     model_json,
+        'model_versions': model_versions,
+        'preview_html':   preview_html_val,
+        'existing_path':  existing_path_val,
+        'from_batch':     data.get('from_batch', False),
+        'sub_folder':     data.get('sub_folder', ''),
+    }
+
+
+def restore_interrupted_to_queue(current_html):
+    """Re-enqueue all interrupted downloads and kick off the download chain.
+    Returns the same 6-tuple as download_start / selected_to_queue so the GUI
+    wires up identically."""
+    global total_count, current_count
+
+    interrupted = _dl_log.get_interrupted()
+    if not interrupted:
+        return (
+            gr.update(), gr.update(), gr.update(),
+            gr.update(), gr.update(),
+            gr.update(value=current_html),
+        )
+
+    number = random_number()
+    total_count = 0
+    current_count = 0
+
+    for data in interrupted:
+        item = _restore_queue_item(data)
+        if item:
+            gl.download_queue.append(item)
+            total_count += 1
+
+    _dl_log.dismiss_interrupted()  # don't show banner again unless new interruptions
+
+    if not gl.download_queue:
+        return (
+            gr.update(), gr.update(), gr.update(),
+            gr.update(), gr.update(),
+            gr.update(value=current_html),
+        )
+
+    html = download_manager_html(current_html)
+
+    return (
+        gr.update(interactive=False, visible=False),   # Download Button
+        gr.update(interactive=True, visible=True),     # Cancel Button
+        gr.update(interactive=len(gl.download_queue) > 1, visible=True),  # Cancel All Button
+        gr.update(value=number),                       # Download Start Trigger
+        gr.update(value='<div style="min-height: 100px;"></div>'),  # Download Progress
+        gr.update(value=html),                         # Download Manager HTML
+    )
