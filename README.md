@@ -21,7 +21,7 @@ Modern fork of sd-civitai-browser-plus optimized for Forge Neo with auto-organiz
 ## 📋 Table of Contents
 
 - [Neo Versioning](#-neo-versioning)
-- [What's New](#-whats-new--v060)
+- [What's New](#-whats-new--v061)
 - [SD Civitai Browser Neo Release Story](#-sd-civitai-browser-neo-release-story)
 - [Roadmap](#%EF%B8%8F-roadmap)
 - [Features](#-features)
@@ -50,20 +50,25 @@ Examples:
 
 ---
 
-## 🆕 What's New — v0.6.0
+## 🆕 What's New — v0.6.1
 
-> **Creator Management** — favorite and ban model creators directly from the browser UI, with an instant client-side hide toggle.
+> **Companion Files Banner + Download Reliability** — smart architecture banners for multi-file models, Wan 2.2 HN/LN role detection, and a Web Worker fix that keeps downloads running when the browser tab is in the background.
 
-- **👤 Creator Management accordion** — new collapsible panel in the Browser tab; auto-fills the creator name from the selected model card ⭐
-- **⭐ Favorite creators** — gold glowing border + ⭐ caption badge on every card by that creator; saved to `favoriteCreators.txt` ⭐
-- **🚫 Ban creators** — hide all cards from a banned creator instantly; saved to `bannedCreators.txt` ⭐
-- **↺ Reset** — remove a creator from both lists with one click ⭐
-- **Hide banned creators checkbox** — client-side toggle in the filter row; applies instantly without a new search ⭐
-- **Mutually exclusive lists** — favoriting a banned creator auto-removes them from the ban list and vice versa ⭐
+- **⚠️ Companion files banner** — when downloading a Wan 2.2, FLUX, WAN/QWEN/Z-Image or other multi-file architecture, a contextual banner appears explaining which companion files are needed ⭐
+- **🔍 Wan 2.2 HN/LN detection** — the banner automatically identifies whether the file is the HN (High-Noise, load as main model) or LN (Low-Noise, load in Refiner slot) checkpoint and shows tailored instructions ⭐
+- **🔄 Download queue fix** — downloads no longer stall when you switch to another tab; replaced `setInterval` polling with a Web Worker that runs unthrottled in the background ⭐
 
 ---
 
 ## 📖 SD Civitai Browser Neo Release Story
+
+### v0.6.1
+> **Theme: Companion Files Banner + Download Reliability** — contextual architecture guidance on download and a Web Worker fix for background-tab download stalling.
+
+- [x] `_COMPANION_NOTES` dict in `civitai_file_manage.py` — per-architecture notes for Wan 2.2 (generic, HN, LN), FLUX, Qwen, Z-Image, Lumina
+- [x] `get_companion_banner(base_model, model_filename, model_name)` — returns an HTML warning banner when downloading a model that requires companion files; injected into the download confirmation flow via `civitai_api.py`
+- [x] Wan 2.2 HN/LN detection — regex `(?<![A-Z])HN(?![A-Z])` / `LN` on filename + model name selects the correct tailored note (`WAN_HN` / `WAN_LN`)
+- [x] Fix: `setDownloadProgressBar()` replaced `setInterval(..., 500)` with `_createWorkerInterval()` — inline Web Worker runs the 500 ms tick in a background thread, unaffected by browser Page Visibility throttling; all four `clearInterval` call sites replaced with `worker.stop()` which also revokes the blob URL
 
 ### v0.6.0
 > **Theme: Creator Management** — favorite / ban creators with instant JS filtering and persistent `.txt` storage, inspired by [SignalFlagZ/sd-webui-civbrowser](https://github.com/SignalFlagZ/sd-webui-civbrowser).
@@ -197,6 +202,11 @@ Examples:
 - Export dashboard data to CSV / JSON
 - Top models ranking per type (by folder count / size)
 - Orphan folder detection (local files with no CivitAI match)
+
+### v0.6.1 — Companion Banner + Download Fix *(complete)*
+- Companion files banner for multi-file architectures ✅
+- Wan 2.2 HN/LN role detection in banner ✅
+- Web Worker fix for background-tab download stalling ✅
 
 ### v0.6.0 — Creator Management *(complete)*
 - Favorite / ban creators directly in the UI ✅
