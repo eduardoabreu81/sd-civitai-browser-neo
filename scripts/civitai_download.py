@@ -33,6 +33,10 @@ total_count = 0
 current_count = 0
 dl_manager_count = 0
 
+# threading.Event: SET = not downloading (safe to cancel/cleanup), CLEARED = download in progress
+_not_downloading = threading.Event()
+_not_downloading.set()
+
 def random_number(prev=None):
     number = str(random.randint(10000, 99999))
     while number == prev:
@@ -134,14 +138,8 @@ def create_model_item(dl_url, model_filename, install_path, model_name, version_
     sub_folder = os.path.normpath(os.path.relpath(install_path, main_folder))
 
     model_json = {'items': filtered_items}
-    model_versions = _api.update_model_versions(model_id)
-    try:
-        (preview_html, _, _, _, _, _, _, _, _, _, _, existing_path, _) = _api.update_model_info(None, model_versions.get('value'), False, model_id)
-    except Exception as e:
-        debug_print(f"Error processing model {model_id}: {e}")
-        # Return None to skip this model
-        return None
 
+    # Duplicate guard
     for item in gl.download_queue:
         if item['dl_url'] == dl_url:
             return None
@@ -159,11 +157,12 @@ def create_model_item(dl_url, model_filename, install_path, model_name, version_
         'model_id': model_id,
         'create_json': create_json,
         'model_json': model_json,
-        'model_versions': model_versions,
-        'preview_html': preview_html['value'],
-        'existing_path': existing_path['value'],
+        'model_versions': None,        # fetched lazily in download_create_thread
+        'preview_html': '',            # fetched lazily in download_create_thread
+        'existing_path': install_path, # fetched lazily in download_create_thread
         'from_batch': from_batch,
-        'sub_folder': sub_folder
+        'sub_folder': sub_folder,
+        '_api_ready': False,
     }
 
     _dl_log.log_queued(item)
@@ -391,14 +390,10 @@ def download_cancel():
     else:
         item = None
 
-    while True:
-        if not gl.isDownloading:
-            if item:
-                model_string = f"{item['model_name']} ({item['model_id']})"
-                _file.delete_model(0, item['model_filename'], model_string, item['version_name'], False, model_ver=item['model_versions'], model_json=item['model_json'])
-            break
-        else:
-            time.sleep(0.5)
+    _not_downloading.wait(timeout=60)
+    if item:
+        model_string = f"{item['model_name']} ({item['model_id']})"
+        _file.delete_model(0, item['model_filename'], model_string, item['version_name'], False, model_ver=item['model_versions'], model_json=item['model_json'])
     return
 
 def download_cancel_all():
@@ -407,17 +402,15 @@ def download_cancel_all():
 
     if gl.download_queue:
         item = gl.download_queue[0]
+    else:
+        item = None
 
-    while True:
-        if not gl.isDownloading:
-            if item:
-                model_string = f"{item['model_name']} ({item['model_id']})"
-                _file.delete_model(0, item['model_filename'], model_string, item['version_name'], False, model_ver=item['model_versions'], model_json=item['model_json'])
-            _dl_log.log_all_cancelled()
-            gl.download_queue = []
-            break
-        else:
-            time.sleep(0.5)
+    _not_downloading.wait(timeout=60)
+    if item:
+        model_string = f"{item['model_name']} ({item['model_id']})"
+        _file.delete_model(0, item['model_filename'], model_string, item['version_name'], False, model_ver=item['model_versions'], model_json=item['model_json'])
+    _dl_log.log_all_cancelled()
+    gl.download_queue = []
     return
 
 def convert_size(size):
@@ -587,7 +580,22 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
                         progress(0, desc=f"Encountered an error during download of: '{file_name}' Please try again.")
                     gl.download_fail = True
                     return
-                time.sleep(5)
+                # #5 Aria2 RPC unreachable — restart and re-add the download
+                print("Aria2 RPC unreachable, attempting to reconnect...")
+                start_aria2_rpc()
+                time.sleep(3)
+                try:
+                    _reconnect_resp = requests.post(aria2_rpc_url, timeout=5, data=json.dumps({
+                        'jsonrpc': '2.0', 'id': '1', 'method': 'aria2.addUri',
+                        'params': ['token:' + rpc_secret, [download_link], options]
+                    }))
+                    _reconnect_data = json.loads(_reconnect_resp.text)
+                    if 'result' in _reconnect_data:
+                        gid = _reconnect_data['result']
+                        print(f"Aria2 reconnected, resumed download of '{file_name}'.")
+                except Exception:
+                    pass
+                time.sleep(2)
     except:
         if progress != None:
             progress(0, desc=f"Encountered an error during download of: '{file_name}' Please try again.")
@@ -766,10 +774,24 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
     gl.recent_model = item['model_name']
     gl.last_version = item['version_name']
 
+    # #2 Lazy API fetch: deferred from enqueue time for batch performance
+    if not item.get('_api_ready'):
+        _lazy_versions = _api.update_model_versions(item['model_id'])
+        if _lazy_versions:
+            item['model_versions'] = _lazy_versions
+        try:
+            _lazy_result = _api.update_model_info(None, (item['model_versions'] or {}).get('value'), False, item['model_id'])
+            item['preview_html'] = _lazy_result[0].get('value', '') if isinstance(_lazy_result[0], dict) else ''
+            item['existing_path'] = _lazy_result[11].get('value', item['install_path']) if isinstance(_lazy_result[11], dict) else item['install_path']
+        except Exception as _e:
+            debug_print(f"[Lazy fetch] Could not load API data for {item['model_name']}: {_e}")
+        item['_api_ready'] = True
+
     # Fix #3: do not mutate item dict — use a local effective path
     effective_install_path = item['existing_path'] if item['from_batch'] else item['install_path']
 
     gl.isDownloading = True
+    _not_downloading.clear()  # signal: download in progress
     _dl_log.log_downloading(item['dl_id'])
     _file.make_dir(effective_install_path)
 
@@ -863,6 +885,7 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
     if len(gl.download_queue) != 0:
         gl.download_queue.pop(0)
     gl.isDownloading = False
+    _not_downloading.set()  # signal: download finished, safe to cancel/cleanup
     time.sleep(2)
 
     if len(gl.download_queue) == 0:
@@ -995,6 +1018,7 @@ def _restore_queue_item(data):
         'existing_path':  existing_path_val,
         'from_batch':     data.get('from_batch', False),
         'sub_folder':     data.get('sub_folder', ''),
+        '_api_ready':     True,  # already fetched above
     }
 
 

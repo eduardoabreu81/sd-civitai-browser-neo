@@ -21,7 +21,7 @@ Modern fork of sd-civitai-browser-plus optimized for Forge Neo with auto-organiz
 ## 📋 Table of Contents
 
 - [Neo Versioning](#-neo-versioning)
-- [What's New](#-whats-new--v062)
+- [What's New](#-whats-new--v063)
 - [SD Civitai Browser Neo Release Story](#-sd-civitai-browser-neo-release-story)
 - [Roadmap](#%EF%B8%8F-roadmap)
 - [Features](#-features)
@@ -50,17 +50,29 @@ Examples:
 
 ---
 
-## 🆕 What's New — v0.6.2
+## 🆕 What's New — v0.6.3
 
-> **Queue Persistence + Restore Banner** — server-side download log survives RunPod disconnections and browser reloads; a one-click restore banner re-queues interrupted downloads on reconnect.
+> **Download Reliability Patch** — SHA256 integrity check, batch enqueue API deferral (instant queueing for large batches), thread-safe cancel, and Aria2 auto-reconnect after RPC failures.
 
-- **📋 Persistent download log** — every queued/active download is logged to `config_states/neo_download_queue.jsonl` on the server; the queue is never lost even if the browser disconnects mid-download ⭐
-- **🔄 Restore banner** — on reconnect, a contextual banner appears in the Browser tab listing interrupted downloads with one-click "↺ Restore Queue" and "✕ Dismiss" actions ⭐
-- **🔗 Native queue reuse** — restoring re-enqueues items through the existing download chain; no special code path, full cancel/progress support included ⭐
+- **🔒 SHA256 integrity check** — after every download completes, the file is verified against CivitAI's expected hash; corrupted or truncated files are caught and removed automatically ⭐
+- **⚡ Instant batch enqueue** — API metadata calls are now deferred to download time instead of enqueue time; queuing 10 models is now as fast as queuing 1 ⭐
+- **🧵 Thread-safe cancel** — `download_cancel` / `download_cancel_all` now use `threading.Event` instead of a busy-wait `while True` loop ⭐
+- **🔄 Aria2 auto-reconnect** — if the Aria2 RPC process crashes or becomes unreachable during a download, the extension automatically restarts it and re-adds the download ⭐
+- **⚠️ Skipped model feedback** — if a model can't be loaded during batch queueing, a visible error banner appears in the Download Manager instead of silently dropping it
 
 ---
 
 ## 📖 SD Civitai Browser Neo Release Story
+
+### v0.6.3
+> **Theme: Download Reliability Patch** — six targeted fixes to the download pipeline: integrity verification, fast batch queueing, thread-safe cancel, aria2 resilience, skipped-model UI feedback, and a `from_batch` path mutation bug.
+
+- [x] SHA256 post-download integrity check — `hashlib.sha256` computed in 1 MB chunks after `thread.join()`; mismatch → `gl.download_fail = True` + progress bar message; corrupt files cleaned up automatically
+- [x] Lazy API fetch (`_api_ready` flag) — `create_model_item` no longer calls `update_model_versions` / `update_model_info` at enqueue time; both are deferred to `download_create_thread` just before the download starts; reduces batch enqueue from O(2N) API calls to 0, moving them to per-download time
+- [x] `threading.Event _not_downloading` — replaces busy-wait `while True / time.sleep(0.5)` in `download_cancel` and `download_cancel_all`; event is cleared on download start, set on download finish; cancel functions use `wait(timeout=60)`
+- [x] Aria2 auto-reconnect — in the status-polling `except` block, if retries remain: call `start_aria2_rpc()`, sleep 3 s, re-add the URI via `aria2.addUri`, rebind `gid`; printed message on reconnect
+- [x] Skipped model feedback — `selected_to_queue` collects `skipped_names`; if any exist, an error bar is injected into the Download Manager HTML listing the affected model names
+- [x] `from_batch` path mutation fix — `item['install_path']` is no longer overwritten; replaced by local `effective_install_path = item['existing_path'] if item['from_batch'] else item['install_path']`
 
 ### v0.6.2
 > **Theme: Queue Persistence + Restore Banner** — server-side JSONL log captures every queued and active download; a restore banner in the Browser tab lets users recover interrupted queues with one click after a RunPod disconnect or browser reload.
@@ -211,6 +223,13 @@ Examples:
 - Export dashboard data to CSV / JSON
 - Top models ranking per type (by folder count / size)
 - Orphan folder detection (local files with no CivitAI match)
+
+### v0.6.3 — Download Reliability Patch *(complete)*
+- SHA256 integrity check after every download ✅
+- Instant batch queueing (deferred API calls) ✅
+- Thread-safe cancel via `threading.Event` ✅
+- Aria2 auto-reconnect after RPC crash ✅
+- Skipped model feedback in Download Manager ✅
 
 ### v0.6.2 — Queue Persistence + Restore Banner *(complete)*
 - Server-side JSONL download log survives disconnects ✅
