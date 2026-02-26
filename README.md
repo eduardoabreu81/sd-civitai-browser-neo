@@ -14,7 +14,7 @@
 
 </div>
 
-Modern fork of sd-civitai-browser-plus optimized for Forge Neo with auto-organization features and support for latest model architectures (FLUX, Pony, Illustrious, Wan, Qwen, Z-Image, and more).
+Modern evolution of sd-civitai-browser-plus rebuilt from the ground up for Forge Neo — with auto-organization, disk usage dashboard, creator management, and native support for the latest model architectures (FLUX, Wan, Qwen, Pony, Illustrious, and more). Gradio 4.x only.
 
 ---
 

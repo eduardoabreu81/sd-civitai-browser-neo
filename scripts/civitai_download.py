@@ -821,6 +821,19 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
             gl.download_fail = True
             if progress is not None:
                 progress(0, desc=f"Integrity check failed for '{item['model_filename']}' — file may be corrupted.")
+        else:
+            # Pre-populate Forge's SHA256 cache so the model loads instantly without recalculation
+            try:
+                from modules import hashes as _hashes
+                _h = _hashes.cache("hashes")
+                _h[path_to_new_file] = {
+                    "mtime": os.path.getmtime(path_to_new_file),
+                    "sha256": actual_sha256.lower()
+                }
+                _hashes.dump_cache()
+                debug_print(f"[SHA256 cache] Pre-cached for '{item['model_filename']}' — Forge will skip hash calculation on first load.")
+            except Exception as _e:
+                debug_print(f"[SHA256 cache] Could not pre-populate Forge hash cache: {_e}")
 
     if not gl.cancel_status or gl.download_fail:
         if os.path.exists(path_to_new_file):
