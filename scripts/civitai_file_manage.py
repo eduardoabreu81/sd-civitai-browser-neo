@@ -779,6 +779,9 @@ def card_update(gr_components, model_name, list_versions, is_install):
             for version in version_choices
         ]
 
+    if not version_choices_clean:
+        return model_name, list_versions, version_choices
+
     first_version_installed = '[Installed]' in version_choices_clean[0]
     any_later_version_installed = any('[Installed]' in version for version in version_choices_clean[1:])
 
