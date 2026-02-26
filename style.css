@@ -35,6 +35,9 @@
 .civmodelcardinstalled {
     box-shadow: 0 0 2px 2px aquamarine;
 }
+.civmodelcardcrossfamily {
+    box-shadow: 0 0 2px 2px #5b9bd5;
+}
 
 /* --- Favorite creator card --- */
 .civcard-favorite {
@@ -95,6 +98,11 @@
     border-color: orange;
     background: transparent;
     box-shadow: 0 0 4px 1px rgba(255, 165, 0, 0.5);
+}
+.card-legend .legend-dot.cross-family {
+    border-color: #5b9bd5;
+    background: transparent;
+    box-shadow: 0 0 4px 1px rgba(91, 155, 213, 0.5);
 }
 .card-legend .legend-dot.early-access {
     border-color: gold;
@@ -300,9 +308,51 @@
 }
 
 .civmodelcard:hover .badges-container .model-type-badge,
-.civmodelcard:hover .badges-container .nsfw-badge {
+.civmodelcard:hover .badges-container .nsfw-badge,
+.civmodelcard:hover .badges-container .status-badge {
     opacity: 0;
     transform: translateX(-10px);
+}
+
+/* Status Badge (New / Updated) */
+.status-badge {
+    display: flex;
+    height: 22px;
+    padding: 4px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 10px;
+    box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(6px);
+    font-size: 0.75em;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    pointer-events: none !important;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    width: fit-content;
+}
+.status-badge.new {
+    background: rgba(16, 185, 129, 0.85);
+    border-color: rgba(52, 211, 153, 0.6);
+    color: #fff;
+}
+.status-badge.updated {
+    background: rgba(34, 197, 94, 0.75);
+    border-color: rgba(74, 222, 128, 0.5);
+    color: #ecfdf5;
+}
+
+/* Base model separator / abbreviation inside type badge (e.g. "Checkpoint | IL") */
+.model-type-badge .base-model-sep {
+    margin: 0 3px;
+    opacity: 0.45;
+    font-weight: 400;
+}
+.model-type-badge .base-model-short {
+    font-weight: 700;
 }
 
 /* Modern Custom-Checkbox */
