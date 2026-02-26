@@ -322,7 +322,9 @@ def on_ui_tabs():
                     '<span class="legend-separator"></span>'
                     '<span class="legend-item"><span class="legend-dot installed"></span>Installed &amp; up to date</span>'
                     '<span class="legend-separator"></span>'
-                    '<span class="legend-item"><span class="legend-dot outdated"></span>Update available</span>'
+                    '<span class="legend-item"><span class="legend-dot outdated"></span>Update available (same family)</span>'
+                    '<span class="legend-separator"></span>'
+                    '<span class="legend-item"><span class="legend-dot cross-family"></span>New family variant available</span>'
                     '<span class="legend-separator"></span>'
                     '<span class="legend-item"><span class="legend-dot early-access"></span>Early Access (paid)</span>'
                     '</div>'
@@ -1716,6 +1718,16 @@ def on_ui_settings():
             section=browser,
             category_id=cat_id
         ).info('Display NSFW badge on model cards that are marked as NSFW content')
+    )
+
+    shared.opts.add_option(
+        'show_civitai_status_badges',
+        shared.OptionInfo(
+            default=True,
+            label='Show status badges on model cards (New / Updated + base model)',
+            section=browser,
+            category_id=cat_id
+        ).info('Displays green "New" or "Updated" badge and base model abbreviation (e.g. IL, Pony, FLUX) on the type badge — similar to the CivitAI website. Disable if you prefer a cleaner / smaller card layout.')
     )
 
     shared.opts.add_option(

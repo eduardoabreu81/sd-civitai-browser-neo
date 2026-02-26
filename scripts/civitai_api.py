@@ -47,6 +47,77 @@ def is_early_access(version_data):
     avail = version_data.get('availability')
     return isinstance(avail, str) and avail == 'EarlyAccess'
 
+# Short abbreviations for base model names used in card badges
+BASE_MODEL_SHORT = {
+    'illustrious':          'IL',
+    'illustrious xl':       'IL',
+    'noobai':               'Nai',
+    'noobai xl':            'Nai',
+    'pony':                 'Pony',
+    'sdxl 1.0':             'XL',
+    'sdxl':                 'XL',
+    'sdxl turbo':           'XL',
+    'sd 1.5':               'SD1',
+    'sd 1.4':               'SD1',
+    'sd 2.0':               'SD2',
+    'sd 2.1':               'SD2',
+    'flux.1 d':             'F1',
+    'flux.1 s':             'F1',
+    'flux.1':               'F1',
+    'flux':                 'F1',
+    'wan video 1.3':        'Wan',
+    'wan 2.1':              'Wan',
+    'wan 2.2':              'Wan',
+    'wan':                  'Wan',
+    'qwen':                 'Qwen',
+    'z-image':              'ZiT',
+    'lumina':               'Lum',
+    'hunyuanvideo':         'HYV',
+    'hunyuan video':        'HYV',
+    'ltxv':                 'LTXV',
+    'cosmos':               'Cosm',
+    'other':                'Other',
+}
+
+def get_base_model_short(base_model: str) -> str:
+    """Return short abbreviation for a base model name, or '' if unknown"""
+    if not base_model:
+        return ''
+    key = base_model.strip().lower()
+    if key in BASE_MODEL_SHORT:
+        return BASE_MODEL_SHORT[key]
+    # Prefix fallback (e.g. "Illustrious XL v0.1" → IL)
+    for k, v in BASE_MODEL_SHORT.items():
+        if key.startswith(k):
+            return v
+    return ''
+
+STATUS_BADGE_DAYS = 14  # days window for "New" / "Updated" badges
+
+def get_status_badge_type(item) -> str:
+    """Return 'new', 'updated', or '' based on how recently the model/latest version was published"""
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    threshold = timedelta(days=STATUS_BADGE_DAYS)
+
+    def parse_dt(s):
+        if not s:
+            return None
+        try:
+            return datetime.fromisoformat(s.replace('Z', '+00:00'))
+        except Exception:
+            return None
+
+    model_published = parse_dt(item.get('publishedAt', ''))
+    versions = item.get('modelVersions', [])
+    latest_published = parse_dt(versions[0].get('publishedAt', '')) if versions else None
+
+    if latest_published and (now - latest_published) < threshold:
+        if model_published and (now - model_published) < threshold:
+            return 'new'      # Both model and latest version are recent
+        return 'updated'      # Model exists but received a new version recently
+    return ''
+
 # This nsfwlevel system is not accurate...
 def is_model_nsfw(model_data, nsfw_level=12):
     """Determine if a model is NSFW based on its metadata and first image"""
@@ -233,6 +304,15 @@ def model_list_html(json_data):
         early_access = is_early_access(display_version) if display_version else False
         early_access_class = 'early-access' if early_access else ''
 
+        # Status badges: New / Updated + base model abbreviation (optional setting)
+        show_status_badges = getattr(opts, 'show_civitai_status_badges', True)
+        if show_status_badges:
+            base_model_short = get_base_model_short(base_model)
+            status_badge_type = get_status_badge_type(item)
+        else:
+            base_model_short = ''
+            status_badge_type = ''
+
         # Image or video preview
         images = display_version.get('images', []) if display_version else []
         if images:
@@ -326,7 +406,14 @@ def model_list_html(json_data):
                 if has_outdated:
                     installstatus = 'civmodelcardoutdated'
                 else:
-                    installstatus = 'civmodelcardinstalled'
+                    # Check for cross-family versions: other families available that the user hasn't installed
+                    has_cross_family = False
+                    if precise_check and available_map:
+                        for fam in available_map:
+                            if fam not in installed_map:
+                                has_cross_family = True
+                                break
+                    installstatus = 'civmodelcardcrossfamily' if has_cross_family else 'civmodelcardinstalled'
 
         # Model name for JS and HTML
         model_name_js = model_name.replace("'", "\\'")
@@ -335,7 +422,13 @@ def model_list_html(json_data):
         full_name = escape(model_name)
 
         ## Badges
-        # Model Type Badge ( + Early Access)
+        # Base model suffix for type badge (e.g. "| IL")
+        bm_suffix = (
+            f' <span class="base-model-sep">|</span>'
+            f' <span class="base-model-short">{base_model_short}</span>'
+        ) if base_model_short else ''
+
+        # Model Type Badge ( + Early Access + base model abbreviation)
         if early_access:
             # Gold badge with a lightning icon
             model_type_badge = (
@@ -343,11 +436,17 @@ def model_list_html(json_data):
                 '<svg class="early-access-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor">'
                 '<path d="M13 2L3 14h9l-1 8 10-12h-8z"/>'
                 '</svg>'
-                f'{get_display_type(item["type"])}'
+                f'{get_display_type(item["type"])}{bm_suffix}'
                 '</div>'
             )
         else:
-            model_type_badge = f'<div class="model-type-badge {item["type"].lower()}">{get_display_type(item["type"])}</div>'
+            model_type_badge = f'<div class="model-type-badge {item["type"].lower()}">{get_display_type(item["type"])}{bm_suffix}</div>'
+
+        # Status Badge (New / Updated)
+        if status_badge_type:
+            status_badge = f'<div class="status-badge {status_badge_type}">{status_badge_type.capitalize()}</div>'
+        else:
+            status_badge = ''
 
         # NSFW Badge - only show for nsfw cards and if setting is enabled
         show_nsfw_badge = getattr(opts, 'show_nsfw_badge', True)
@@ -370,7 +469,7 @@ def model_list_html(json_data):
             f'base-model="{base_model}" date="{date}" data-creator="{escape(model_uploader_card)}" '
             f'onclick="select_model(\'{model_string}\', event)">'
             f'<div class="card-header">'
-            f'<div class="badges-container">{model_type_badge}{nsfw_badge}</div>'
+            f'<div class="badges-container">{model_type_badge}{status_badge}{nsfw_badge}</div>'
         )
 
         # Show delete button for up-to-date installed models;

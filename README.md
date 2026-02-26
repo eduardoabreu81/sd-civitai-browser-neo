@@ -341,7 +341,7 @@ Examples:
 
 ### 🃏 Model Cards
 
-- **Color-coded borders**: green = installed, orange = update available, blue = early access, none = not installed
+- **Color-coded borders**: aquamarine = installed & up to date, orange = update available (same family), blue = new family variant available, gold = early access / favorite creator, none = not installed
 - **Color legend bar** — always-visible reference above the card grid ⭐
 - **NSFW badge** on cards marked as adult content (configurable)
 - **"Paid" badge** (💎) for early access models
