@@ -359,6 +359,76 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
     )
 
 
+def _build_model_list_for_update(items):
+    """Convert gl.update_items entries into a JSON model_list for selected_to_queue."""
+    model_list = []
+    for item in items:
+        # Each entry needs to look like "Model Name (model_id)"
+        model_list.append(f"{item['model_name']} ({item['model_id']})")
+    return json.dumps(model_list)
+
+
+def update_all_models(download_start, create_json, current_html):
+    """Enqueue all models in gl.update_items for update (respects retention policy)."""
+    items = list(gl.update_items)
+    if not items:
+        html = download_manager_html(current_html)
+        number = download_start
+        return (
+            gr.update(interactive=False, visible=False),
+            gr.update(interactive=False, visible=False),
+            gr.update(interactive=False, visible=False),
+            gr.update(value=number),
+            gr.update(value='<div style="min-height: 100px;"></div>'),
+            gr.update(value=html)
+        )
+    model_list_json = _build_model_list_for_update(items)
+    return selected_to_queue(model_list_json, None, download_start, create_json, current_html)
+
+
+def download_single_update(trigger_value, download_start, create_json, current_html):
+    """Enqueue a single model update. trigger_value is 'model_id|family'."""
+    if not trigger_value or '|' not in trigger_value:
+        html = download_manager_html(current_html)
+        number = download_start
+        return (
+            gr.update(interactive=False, visible=False),
+            gr.update(interactive=False, visible=False),
+            gr.update(interactive=False, visible=False),
+            gr.update(value=number),
+            gr.update(value='<div style="min-height: 100px;"></div>'),
+            gr.update(value=html)
+        )
+    # Find the matching item in gl.update_items
+    try:
+        parts = trigger_value.split('|', 1)
+        model_id_str = parts[0].strip()
+        family_str   = parts[1].strip().upper()
+        model_id_int = int(model_id_str)
+    except Exception:
+        return update_all_models(download_start, create_json, current_html)  # fallback
+
+    matched = [i for i in gl.update_items
+               if i['model_id'] == model_id_int and
+               (i.get('family') or '').upper() == family_str]
+    if not matched:
+        # Try without family match (no-family models)
+        matched = [i for i in gl.update_items if i['model_id'] == model_id_int]
+
+    if not matched:
+        html = download_manager_html(current_html)
+        return (
+            gr.update(interactive=False, visible=False),
+            gr.update(interactive=False, visible=False),
+            gr.update(interactive=False, visible=False),
+            gr.update(value=download_start),
+            gr.update(value='<div style="min-height: 100px;"></div>'),
+            gr.update(value=html)
+        )
+    model_list_json = _build_model_list_for_update(matched[:1])
+    return selected_to_queue(model_list_json, None, download_start, create_json, current_html)
+
+
 def gr_progress_threadable():
     """
     Gradio progress bars can no longer be updated from a separate thread,

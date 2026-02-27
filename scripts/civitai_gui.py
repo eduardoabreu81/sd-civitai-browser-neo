@@ -278,6 +278,7 @@ def on_ui_tabs():
             gr.Markdown('## 🔍 Browse CivitAI Models', elem_id='browser_header')
             gr.Markdown('Search, discover, and download models directly from CivitAI.')
             restore_banner_html = gr.HTML(value='', elem_id='restore_banner')
+            update_mode_banner = gr.HTML(value='', elem_id='update_mode_banner')
             
             with gr.Row(elem_id='searchRow'):
                 with gr.Accordion(label='', open=False, elem_id=filterBox):
@@ -614,6 +615,10 @@ def on_ui_tabs():
         restore_queue_input     = gr.Textbox(elem_id='restore_queue_input',     visible=False)
         restore_action_trigger  = gr.Textbox(elem_id='restore_action_trigger',  visible=False)
         dismiss_restore_trigger = gr.Textbox(elem_id='dismiss_restore_trigger', visible=False)
+        # Hidden: update mode triggers
+        update_all_trigger      = gr.Textbox(elem_id='update_all_trigger',      visible=False)
+        update_single_trigger   = gr.Textbox(elem_id='update_single_trigger',   visible=False)
+        exit_update_mode_trigger = gr.Textbox(elem_id='exit_update_mode_trigger', visible=False)
         
         # Hidden elements for quick delete by SHA256 (from model cards)
         delete_trigger_sha256 = gr.Textbox(elem_id='sha256', visible=False)
@@ -1499,6 +1504,41 @@ def on_ui_tabs():
             fn=_file.load_to_browser,
             inputs=load_to_browser_inputs,
             outputs=browser_outdated_list
+        ).then(
+            fn=_file.enter_update_mode,
+            outputs=[update_mode_banner]
+        )
+
+        update_all_trigger.change(
+            fn=_download.update_all_models,
+            inputs=[download_start, create_json, download_manager_html],
+            outputs=[
+                download_model,
+                cancel_model,
+                cancel_all_model,
+                download_start,
+                download_progress,
+                download_manager_html
+            ]
+        )
+
+        update_single_trigger.change(
+            fn=_download.download_single_update,
+            inputs=[update_single_trigger, download_start, create_json, download_manager_html],
+            outputs=[
+                download_model,
+                cancel_model,
+                cancel_all_model,
+                download_start,
+                download_progress,
+                download_manager_html
+            ]
+        )
+
+        exit_update_mode_trigger.change(
+            fn=_file.exit_update_mode,
+            inputs=load_to_browser_inputs,
+            outputs=[update_mode_banner, list_html_input, get_prev_page, get_next_page, page_slider]
         )
 
         load_to_browser_installed.click(

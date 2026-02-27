@@ -1599,6 +1599,130 @@ def version_match(file_paths, api_response, log=False):
 
     return updated_models, outdated_models
 
+
+def collect_update_items(outdated_set, api_response, file_paths):
+    """Build gl.update_items: one entry per outdated family per model.
+
+    Returns a list of dicts:
+        {'model_id', 'model_name', 'model_type', 'family',
+         'installed_ver', 'latest_ver', 'preview_url'}
+    Multi-family models (e.g. DollFace PONY + IL) produce two entries.
+    """
+    precise_check = getattr(opts, 'precise_version_check', True)
+
+    # Collect installed SHA256 hashes
+    installed_hashes = set()
+    for path in file_paths:
+        json_path = f"{os.path.splitext(path)[0]}.json"
+        data = _api.safe_json_load(json_path)
+        if data:
+            sha = data.get('sha256', '')
+            if sha:
+                installed_hashes.add(sha.upper())
+
+    outdated_ids = {int(entry[0].replace('&ids=', '')) for entry in outdated_set}
+
+    items = []
+    for model in api_response.get('items', []):
+        model_id = model.get('id')
+        if model_id not in outdated_ids:
+            continue
+
+        model_name = model.get('name', '')
+        model_type = model.get('type', 'Unknown')
+        model_versions = model.get('modelVersions', [])
+
+        # First image URL (preview thumbnail)
+        preview_url = None
+        for ver in model_versions:
+            for img in ver.get('images', []):
+                url = img.get('url', '')
+                if url:
+                    preview_url = url
+                    break
+            if preview_url:
+                break
+
+        if not precise_check:
+            # No family grouping — one entry for the whole model
+            inst_ver_name = None
+            for ver in model_versions:
+                for file_entry in ver.get('files', []):
+                    sha = file_entry.get('hashes', {}).get('SHA256', '').upper()
+                    if sha in installed_hashes:
+                        inst_ver_name = ver.get('name', '?')
+                        break
+                if inst_ver_name:
+                    break
+            avail_ver_name = model_versions[0].get('name', '?') if model_versions else '?'
+            items.append({
+                'model_id': model_id,
+                'model_name': model_name,
+                'model_type': model_type,
+                'family': None,
+                'installed_ver': inst_ver_name or '?',
+                'latest_ver': avail_ver_name,
+                'preview_url': preview_url,
+            })
+        else:
+            # Per-family comparison — one entry per outdated installed family
+            installed_by_family = {}   # family -> (ver_name, ver_parts)
+            available_by_family = {}   # family -> first (latest) ver_name for that family
+            installed_no_family = None  # ver_name for models without a family tag
+
+            for ver in model_versions:
+                ver_name = ver.get('name', '')
+                family, ver_parts = extract_version_from_ver_name(ver_name)
+
+                if family and family not in available_by_family:
+                    available_by_family[family] = ver_name  # first = newest in API
+
+                for file_entry in ver.get('files', []):
+                    sha = file_entry.get('hashes', {}).get('SHA256', '').upper()
+                    if sha in installed_hashes:
+                        if family:
+                            if family not in installed_by_family:
+                                installed_by_family[family] = (ver_name, ver_parts)
+                        else:
+                            if installed_no_family is None:
+                                installed_no_family = (ver_name, ver_parts)
+                        break
+
+            # Per-family entries
+            for fam_key, (inst_ver_name, inst_parts) in installed_by_family.items():
+                avail_ver_name = available_by_family.get(fam_key)
+                if not avail_ver_name:
+                    continue
+                _, avail_parts = extract_version_from_ver_name(avail_ver_name)
+                if compare_version_parts(inst_parts, avail_parts) < 0:
+                    items.append({
+                        'model_id': model_id,
+                        'model_name': model_name,
+                        'model_type': model_type,
+                        'family': fam_key,
+                        'installed_ver': inst_ver_name,
+                        'latest_ver': avail_ver_name,
+                        'preview_url': preview_url,
+                    })
+
+            # No-family fallback
+            if installed_no_family and not installed_by_family:
+                inst_ver_name, inst_parts = installed_no_family
+                avail_ver_name = model_versions[0].get('name', '?') if model_versions else '?'
+                _, avail_parts = extract_version_from_ver_name(avail_ver_name)
+                if compare_version_parts(inst_parts, avail_parts) < 0:
+                    items.append({
+                        'model_id': model_id,
+                        'model_name': model_name,
+                        'model_type': model_type,
+                        'family': None,
+                        'installed_ver': inst_ver_name,
+                        'latest_ver': avail_ver_name,
+                        'preview_url': preview_url,
+                    })
+
+    return items
+
 def get_content_choices(scan_choices=False):
     content_list = [
         'Checkpoint', 'TextualInversion', 'LORA', 'Poses', 'Controlnet', 'Detection',
@@ -1810,6 +1934,9 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
         updated_set = set(updated_models)
         outdated_set = set(outdated_models)
         outdated_set = {model for model in outdated_set if model[0] not in {updated_model[0] for updated_model in updated_set}}
+
+        # Collect per-family detail for Update Mode cards
+        gl.update_items = collect_update_items(outdated_set, api_response, file_paths)
 
         all_model_ids = [model[0] for model in outdated_set]
         all_model_names = [model[1] for model in outdated_set]
@@ -3832,6 +3959,7 @@ def export_dashboard_json():
 
 def scan_finish():
     set_globals('reset')
+    gl.update_mode = False
     return (
         gr.update(interactive=True, visible=True),
         gr.update(interactive=True, visible=True),
@@ -3840,6 +3968,47 @@ def scan_finish():
         gr.update(interactive=True, visible=True),
         gr.update(interactive=False, visible=False),
         gr.update(interactive=not no_update, visible=not no_update)
+    )
+
+
+def _render_update_mode_banner(count):
+    """Return the full HTML for the Update Mode banner + mode switcher."""
+    retention = getattr(opts, 'civitai_neo_update_retention', 'replace')
+    return f'''
+<div class="civupdate-bar" id="civupdate-bar">
+  <div class="civupdate-switcher">
+    <button class="mode-pill" onclick="exitUpdateMode()">🔍 Search CivitAI</button>
+    <button class="mode-pill mode-pill-active">🔄 Update Local Models ({count})</button>
+  </div>
+  <div class="civupdate-action-bar">
+    <span class="civupdate-count">🔄 <strong>{count}</strong> update{"s" if count != 1 else ""} available</span>
+    <button class="civupdate-btn-all" onclick="updateAllModels()">⬆️ Update All ({count})</button>
+    <span class="civupdate-retention">Retention: {retention}</span>
+  </div>
+</div>'''
+
+
+def enter_update_mode():
+    """Called via .then() after load_to_browser_outdated — activates the Update Mode banner."""
+    gl.update_mode = True
+    count = len(gl.update_items)
+    if count == 0:
+        return gr.update(value='')
+    return gr.update(value=_render_update_mode_banner(count))
+
+
+def exit_update_mode(content_type, sort_type, period_type, use_search_term, search_term,
+                     tile_count, base_filter, nsfw, exact_search):
+    """Deactivates Update Mode, clears banner, and returns to a normal browser state."""
+    gl.update_mode = False
+    gl.update_items = []
+    placeholder = '<div style="font-size: 24px; text-align: center; margin: 50px;">Click the search icon to load models.<br>Use the filter icon to filter results.</div>'
+    return (
+        gr.update(value=''),           # update_mode_banner cleared
+        gr.update(value=placeholder),  # list_html reset
+        gr.update(interactive=False),  # prev page
+        gr.update(interactive=False),  # next page
+        gr.update(value=1, maximum=1), # page slider
     )
 
 ## === ANXETY EDITs ===
