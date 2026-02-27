@@ -168,6 +168,74 @@ def create_model_item(dl_url, model_filename, install_path, model_name, version_
     _dl_log.log_queued(item)
     return item
 
+
+def _resolve_versions_to_download(versions_list, model_folder):
+    """Return the list of model versions to download for a batch update.
+
+    For models with multiple installed families (e.g. Pony V1 AND Illustrious V1
+    on the same page), returns the latest available version for each installed
+    family so every family is updated in one batch action.
+
+    Falls back to [versions_list[0]] (original behaviour) when:
+    - The model folder cannot be scanned, or
+    - No family-tagged installed versions are detected.
+    """
+    if not versions_list:
+        return []
+
+    # Collect SHA256 hashes from local JSON files in the model folder
+    installed_hashes = set()
+    if model_folder and os.path.isdir(str(model_folder)):
+        for root, _, files in os.walk(str(model_folder), followlinks=True):
+            for fname in files:
+                if fname.endswith('.json'):
+                    try:
+                        data = _api.safe_json_load(os.path.join(root, fname))
+                        if data:
+                            sha = data.get('sha256', '')
+                            if sha:
+                                installed_hashes.add(sha.upper())
+                    except Exception:
+                        pass
+
+    if not installed_hashes:
+        return [versions_list[0]]
+
+    # Map: family -> latest available version (index 0 in API response = most recent)
+    latest_by_family = {}
+    installed_families = set()
+
+    for ver in versions_list:
+        ver_name = ver.get('name', '')
+        family, _ = _file.extract_version_from_ver_name(ver_name)
+        if family and family not in latest_by_family:
+            latest_by_family[family] = ver
+
+        for file_entry in ver.get('files', []):
+            sha = file_entry.get('hashes', {}).get('SHA256', '').upper()
+            if sha and sha in installed_hashes:
+                if family:
+                    installed_families.add(family)
+                break
+
+    if not installed_families:
+        # No recognised family found as installed — fresh download or non-family model
+        return [versions_list[0]]
+
+    # One latest version per installed family (de-duplicated by version id)
+    seen_ids = set()
+    result = []
+    for fam in installed_families:
+        ver = latest_by_family.get(fam)
+        if ver:
+            vid = ver.get('id')
+            if vid not in seen_ids:
+                result.append(ver)
+                seen_ids.add(vid)
+
+    return result if result else [versions_list[0]]
+
+
 def selected_to_queue(model_list, subfolder, download_start, create_json, current_html):
     global total_count, current_count
     if gl.download_queue:
@@ -183,77 +251,93 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
     ## === ANXETY EDITs ===
     for model_string in model_list:
         model_name, model_id = _api.extract_model_info(model_string)
+        item_found = None
         for item in gl.json_data['items']:
             if int(item['id']) == int(model_id):
-                desc = item['description']
-                content_type = item['type']
-                version = item.get('modelVersions', [])[0]
-                version_name = version.get('name')
-                version_id = version.get('id')
-                output_basemodel = version.get('baseModel')
-                is_nsfw = is_model_nsfw(item)
-                creator = item.get('creator', {})
-                model_uploader = creator.get('username', 'Unknown')
-                files = version.get('files', [])
-                primary_file = next((file for file in files if file.get('primary', False)), None)
-
-                if primary_file:
-                    model_filename = _api.cleaned_name(primary_file.get('name'))
-                    model_sha256 = primary_file.get('hashes', {}).get('SHA256')
-                    dl_url = primary_file.get('downloadUrl')
-                else:
-                    model_filename = _api.cleaned_name(files[0].get('name'))
-                    model_sha256 = files[0].get('hashes', {}).get('SHA256')
-                    dl_url = files[0].get('downloadUrl')
+                item_found = item
                 break
+
+        if not item_found:
+            skipped_names.append(model_name)
+            debug_print(f"Skipped model {model_name} ({model_id}) — not found in json_data")
+            continue
+
+        desc = item_found['description']
+        content_type = item_found['type']
+        is_nsfw = is_model_nsfw(item_found)
+        creator = item_found.get('creator', {})
+        model_uploader = creator.get('username', 'Unknown')
+        versions_list = item_found.get('modelVersions', [])
+
+        if not versions_list:
+            skipped_names.append(model_name)
+            continue
 
         model_folder = _api.contenttype_folder(content_type, desc)
 
-        # Check if auto-organization is enabled
-        auto_organize = getattr(opts, 'civitai_neo_auto_organize', False)
-        from_batch = True  # default: treat as batch (no manual subfolder)
+        # Resolve which versions to download (one per installed family for multi-family models)
+        versions_to_download = _resolve_versions_to_download(versions_list, model_folder)
 
-        if auto_organize and output_basemodel:
-            # Use auto-organization: determine folder from baseModel
-            from scripts.civitai_file_manage import normalize_base_model
-            base_folder = normalize_base_model(output_basemodel)
-            
-            if base_folder:
-                # Create subfolder path for organized download
-                if not base_folder.startswith(os.sep):
-                    base_folder = os.sep + base_folder
-                install_path = str(model_folder) + base_folder
+        for version in versions_to_download:
+            version_name = version.get('name')
+            version_id = version.get('id')
+            output_basemodel = version.get('baseModel')
+            files = version.get('files', [])
+            primary_file = next((f for f in files if f.get('primary', False)), None)
+
+            if primary_file:
+                model_filename = _api.cleaned_name(primary_file.get('name'))
+                model_sha256 = primary_file.get('hashes', {}).get('SHA256')
+                dl_url = primary_file.get('downloadUrl')
+            elif files:
+                model_filename = _api.cleaned_name(files[0].get('name'))
+                model_sha256 = files[0].get('hashes', {}).get('SHA256')
+                dl_url = files[0].get('downloadUrl')
             else:
-                # No folder (user disabled "Other" folder and model is unrecognized)
-                install_path = str(model_folder)
-        else:
-            # Original behavior: use custom subfolders or default
-            default_subfolder = _api.sub_folder_value(content_type, desc)
-            if default_subfolder != 'None':
-                default_subfolder = _file.convertCustomFolder(default_subfolder, output_basemodel, is_nsfw, model_uploader, model_name, model_id, version_name, version_id)
+                skipped_names.append(f"{model_name} ({version_name})")
+                continue
 
-            if subfolder and subfolder != 'None' and subfolder != 'Only available if the selected files are of the same model type':
-                from_batch = False
-                if platform.system() == 'Windows':
-                    subfolder = re.sub(r'[/:*?"<>|]', '', subfolder)
+            # Check if auto-organization is enabled
+            auto_organize = getattr(opts, 'civitai_neo_auto_organize', False)
+            from_batch = True  # default: treat as batch (no manual subfolder)
 
-                if not subfolder.startswith(os.sep):
-                    subfolder = os.sep + subfolder
-                install_path = str(model_folder) + subfolder
-            else:
-                from_batch = True
-                if default_subfolder != 'None':
-                    install_path = str(model_folder) + default_subfolder
+            if auto_organize and output_basemodel:
+                # Use auto-organization: determine folder from baseModel
+                from scripts.civitai_file_manage import normalize_base_model
+                base_folder = normalize_base_model(output_basemodel)
+                if base_folder:
+                    if not base_folder.startswith(os.sep):
+                        base_folder = os.sep + base_folder
+                    install_path = str(model_folder) + base_folder
                 else:
                     install_path = str(model_folder)
+            else:
+                # Original behavior: use custom subfolders or default
+                default_subfolder = _api.sub_folder_value(content_type, desc)
+                if default_subfolder != 'None':
+                    default_subfolder = _file.convertCustomFolder(default_subfolder, output_basemodel, is_nsfw, model_uploader, model_name, model_id, version_name, version_id)
 
-        model_item = create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch)
-        if model_item:
-            gl.download_queue.append(model_item)
-            total_count += 1
-        else:
-            skipped_names.append(model_name)
-            debug_print(f"Skipped model {model_name} ({model_id}) due to processing error")
+                if subfolder and subfolder != 'None' and subfolder != 'Only available if the selected files are of the same model type':
+                    from_batch = False
+                    if platform.system() == 'Windows':
+                        subfolder = re.sub(r'[/:*?"<>|]', '', subfolder)
+                    if not subfolder.startswith(os.sep):
+                        subfolder = os.sep + subfolder
+                    install_path = str(model_folder) + subfolder
+                else:
+                    from_batch = True
+                    if default_subfolder != 'None':
+                        install_path = str(model_folder) + default_subfolder
+                    else:
+                        install_path = str(model_folder)
+
+            model_item = create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch)
+            if model_item:
+                gl.download_queue.append(model_item)
+                total_count += 1
+            else:
+                skipped_names.append(f"{model_name} ({version_name})")
+                debug_print(f"Skipped model {model_name} ({model_id}){f' version {version_name}' if version_name else ''} due to processing error")
 
     html = download_manager_html(current_html)
     if skipped_names:

@@ -418,6 +418,23 @@ def model_list_html(json_data):
                                 break
                     installstatus = 'civmodelcardcrossfamily' if has_cross_family else 'civmodelcardinstalled'
 
+            # Multi-family badge: when multiple distinct families are installed on the same model
+            # (e.g. Pony V1 AND Illustrious V1), show all abbreviations: "PONY · IL"
+            if show_status_badges and len(installed_map) > 1:
+                shorts = []
+                seen_shorts = set()
+                for ver in model_versions:
+                    ver_name = ver.get('name', '')
+                    fam, _ = _file.extract_version_from_ver_name(ver_name)
+                    if fam and fam in installed_map:
+                        bm = ver.get('baseModel', '')
+                        short = get_base_model_short(bm)
+                        if short and short not in seen_shorts:
+                            shorts.append(short)
+                            seen_shorts.add(short)
+                if len(shorts) > 1:
+                    base_model_short = ' · '.join(shorts)
+
         # Model name for JS and HTML
         model_name_js = model_name.replace("'", "\\'")
         model_string = escape(f"{model_name_js} ({model_id})")
