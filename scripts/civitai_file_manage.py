@@ -1510,29 +1510,11 @@ def version_match(file_paths, api_response, log=False):
     if log:
         print(f"[LOG] {len(installed_hashes)} installed model hashes found")
 
-    # === 2. Determine installed versions and families ===
-    installed_map = {}  # family -> list of versions
-    installed_all = []  # all versions regardless of family
-
-    for model in api_response.get('items', []):
-        for ver in model.get('modelVersions', []):
-            ver_name = ver.get('name', '')
-            family, ver_parts = extract_version_from_ver_name(ver_name)
-
-            for file_entry in ver.get('files', []):
-                sha = file_entry.get('hashes', {}).get('SHA256', '').upper()
-                if sha in installed_hashes:
-                    if precise_check and family:
-                        installed_map.setdefault(family, []).append(ver_parts)
-                        if log:
-                            print(f"[LOG] Family '{family}' version {ver_parts} is installed")
-                    else:
-                        installed_all.append(ver_parts)
-                        if log:
-                            print(f"[LOG] Version {ver_parts} is installed (without family)")
-                    break
-
-    # === 3. Compare with available versions ===
+    # === 2. Compare per model ===
+    # NOTE: installed_map is computed per-model to avoid cross-model contamination.
+    # A global installed_map would mix version numbers from different models sharing the
+    # same family name (e.g. "Pony"), causing false "up-to-date" results for multi-family
+    # models whenever any other model of the same family is installed at a higher version.
     for model in api_response.get('items', []):
         model_id = model.get('id')
         model_name = model.get('name')
@@ -1541,8 +1523,11 @@ def version_match(file_paths, api_response, log=False):
         if not model_versions:
             continue
 
-        available_map = {}  # dictionary: { family_name: [list of versions] } — all versions grouped by family
-        available_all = []  # list of all versions without grouping by family (used if precise_check=False)
+        # Build available_map and installed_map for THIS model only
+        available_map = {}  # family -> list of all available version parts
+        available_all = []  # all versions without family grouping
+        installed_map = {}  # family -> list of installed version parts (this model only)
+        installed_all = []  # installed versions without family grouping
 
         for ver in model_versions:
             ver_name = ver.get('name', '')
@@ -1553,10 +1538,28 @@ def version_match(file_paths, api_response, log=False):
             else:
                 available_all.append(ver_parts)
 
+            # Check if any file of this version is installed (this model's files only)
+            for file_entry in ver.get('files', []):
+                sha = file_entry.get('hashes', {}).get('SHA256', '').upper()
+                if sha in installed_hashes:
+                    if precise_check and family:
+                        installed_map.setdefault(family, []).append(ver_parts)
+                        if log:
+                            print(f"[LOG] '{model_name}' family '{family}' version {ver_parts} is installed")
+                    else:
+                        installed_all.append(ver_parts)
+                        if log:
+                            print(f"[LOG] '{model_name}' version {ver_parts} is installed (without family)")
+                    break
+
+        # Skip models that are not installed at all
+        if not installed_map and not installed_all:
+            continue
+
         has_outdated = False
 
         if precise_check and available_map:
-            # Сomparison by families
+            # Comparison by families
             for fam_key, avail_versions in available_map.items():
                 installed_versions = installed_map.get(fam_key, [])
                 if not installed_versions:
@@ -1574,7 +1577,7 @@ def version_match(file_paths, api_response, log=False):
                     print(f"[LOG] '{model_name}' family '{fam_key}': up-to-date ({max_inst} >= {max_avail})")
 
         else:
-            # Сomparison without families
+            # Comparison without families
             if not installed_all:
                 continue
             max_inst = max(installed_all, key=lambda x: x or [0])
