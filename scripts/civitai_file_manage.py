@@ -1486,110 +1486,129 @@ def compare_version_parts(a_parts, b_parts):
 
 def version_match(file_paths, api_response, log=False):
     """
-    Checking model updates by version.
-    - If opts.precise_version_check = False:
-        Compares only versions (without families).
-    - If True:
-        Compares versions by family, if family exists.
-        If family=None — switches to comparison without family.
+    Check which installed models have a newer version available on CivitAI.
+
+    Strategy (avoids fragile version-string regex parsing):
+    - Uses the CivitAI `baseModel` field per version as the "family" key.
+    - Uses the position in `modelVersions` as the version indicator:
+      index 0 = newest (CivitAI API guarantee). A higher index means older.
+    - If `precise_version_check` is True (default): compares per-baseModel family.
+      A model is outdated if any installed version-id is not the newest for its baseModel.
+    - If False: a model is outdated if any installed version is not at index 0 overall.
+
+    Falls back to SHA256 matching when modelVersionId is absent from the .json sidecar.
     """
     precise_check = getattr(opts, 'precise_version_check', True)
     updated_models = []
     outdated_models = []
 
-    # === 1. Collecting installed SHA256 ===
-    installed_hashes = set()
+    # === 1. Collect installed SHA256s and optionally cached modelVersionIds ===
+    installed_hashes = set()           # str (upper) → present
+    hash_to_cached_ver_id = {}         # sha256 → int modelVersionId (from .json, may be absent)
+
     for path in file_paths:
         json_path = f"{os.path.splitext(path)[0]}.json"
         data = _api.safe_json_load(json_path)
         if data:
-            sha = data.get('sha256', '')
+            sha = data.get('sha256', '').upper()
             if sha:
-                installed_hashes.add(sha.upper())
+                installed_hashes.add(sha)
+                vid = data.get('modelVersionId')
+                if vid:
+                    try:
+                        hash_to_cached_ver_id[sha] = int(vid)
+                    except (ValueError, TypeError):
+                        pass
 
     if log:
-        print(f"[LOG] {len(installed_hashes)} installed model hashes found")
+        print(f"[LOG] {len(installed_hashes)} installed hashes, "
+              f"{len(hash_to_cached_ver_id)} with cached versionId")
 
     # === 2. Compare per model ===
-    # NOTE: installed_map is computed per-model to avoid cross-model contamination.
-    # A global installed_map would mix version numbers from different models sharing the
-    # same family name (e.g. "Pony"), causing false "up-to-date" results for multi-family
-    # models whenever any other model of the same family is installed at a higher version.
     for model in api_response.get('items', []):
         model_id = model.get('id')
-        model_name = model.get('name')
+        model_name = model.get('name', '')
         model_versions = model.get('modelVersions', [])
 
         if not model_versions:
             continue
 
-        # Build available_map and installed_map for THIS model only
-        available_map = {}  # family -> list of all available version parts
-        available_all = []  # all versions without family grouping
-        installed_map = {}  # family -> list of installed version parts (this model only)
-        installed_all = []  # installed versions without family grouping
+        # Map: versionId → (index, baseModel, ver_name)
+        # Index 0 = newest version for the model (CivitAI API contract)
+        ver_meta = {}  # ver_id -> {'idx': int, 'base': str, 'name': str}
+        for idx, ver in enumerate(model_versions):
+            vid = ver.get('id')
+            if vid is not None:
+                ver_meta[vid] = {
+                    'idx': idx,
+                    'base': (ver.get('baseModel') or '').strip(),
+                    'name': ver.get('name', ''),
+                }
 
+        # For each baseModel, the newest available index is the minimum index
+        # among all versions sharing that baseModel.
+        base_to_newest_idx = {}  # baseModel → int (smallest index = newest)
+        for vm in ver_meta.values():
+            bm = vm['base']
+            if bm not in base_to_newest_idx or vm['idx'] < base_to_newest_idx[bm]:
+                base_to_newest_idx[bm] = vm['idx']
+
+        # Find which version IDs of THIS model are installed
+        installed_ver_ids = []  # list of (ver_id, baseModel, ver_name)
         for ver in model_versions:
-            ver_name = ver.get('name', '')
-            family, ver_parts = extract_version_from_ver_name(ver_name)
-
-            if precise_check and family:
-                available_map.setdefault(family, []).append(ver_parts)
-            else:
-                available_all.append(ver_parts)
-
-            # Check if any file of this version is installed (this model's files only)
+            vid = ver.get('id')
+            found = False
             for file_entry in ver.get('files', []):
                 sha = file_entry.get('hashes', {}).get('SHA256', '').upper()
                 if sha in installed_hashes:
-                    if precise_check and family:
-                        installed_map.setdefault(family, []).append(ver_parts)
-                        if log:
-                            print(f"[LOG] '{model_name}' family '{family}' version {ver_parts} is installed")
-                    else:
-                        installed_all.append(ver_parts)
-                        if log:
-                            print(f"[LOG] '{model_name}' version {ver_parts} is installed (without family)")
+                    bm = (ver.get('baseModel') or '').strip()
+                    vname = ver.get('name', '')
+                    installed_ver_ids.append((vid, bm, vname))
+                    if log:
+                        print(f"[LOG] '{model_name}' ver '{vname}' (id={vid}, base='{bm}') is installed")
+                    found = True
                     break
+            if found:
+                continue
+            # Fallback: match via cached modelVersionId in .json
+            if vid is not None:
+                for sha, cached_vid in hash_to_cached_ver_id.items():
+                    if cached_vid == vid and sha in installed_hashes:
+                        bm = (ver.get('baseModel') or '').strip()
+                        vname = ver.get('name', '')
+                        installed_ver_ids.append((vid, bm, vname))
+                        if log:
+                            print(f"[LOG] '{model_name}' ver '{vname}' (id={vid}, base='{bm}') "
+                                  f"matched via cached versionId")
+                        break
 
-        # Skip models that are not installed at all
-        if not installed_map and not installed_all:
+        if not installed_ver_ids:
             continue
 
         has_outdated = False
 
-        if precise_check and available_map:
-            # Comparison by families
-            for fam_key, avail_versions in available_map.items():
-                installed_versions = installed_map.get(fam_key, [])
-                if not installed_versions:
-                    continue
-
-                max_inst = max(installed_versions, key=lambda x: x or [0])
-                max_avail = max(avail_versions, key=lambda x: x or [0])
-                cmp = compare_version_parts(max_inst, max_avail)
-
-                if cmp < 0:
+        if precise_check:
+            # Per-baseModel check: is the installed version the newest for its base?
+            for vid, bm, vname in installed_ver_ids:
+                inst_idx = ver_meta.get(vid, {}).get('idx', 0) if vid is not None else 0
+                newest_idx = base_to_newest_idx.get(bm, 0)
+                if inst_idx > newest_idx:
                     has_outdated = True
                     if log:
-                        print(f"[LOG] '{model_name}' family '{fam_key}': outdated ({max_inst} < {max_avail})")
+                        print(f"[LOG] '{model_name}' base='{bm}' ver='{vname}': "
+                              f"outdated (idx {inst_idx} > newest {newest_idx})")
                 elif log:
-                    print(f"[LOG] '{model_name}' family '{fam_key}': up-to-date ({max_inst} >= {max_avail})")
-
+                    print(f"[LOG] '{model_name}' base='{bm}' ver='{vname}': up-to-date")
         else:
-            # Comparison without families
-            if not installed_all:
-                continue
-            max_inst = max(installed_all, key=lambda x: x or [0])
-            max_avail = max(available_all, key=lambda x: x or [0])
-            cmp = compare_version_parts(max_inst, max_avail)
-
-            if cmp < 0:
-                has_outdated = True
-                if log:
-                    print(f"[LOG] '{model_name}': outdated ({max_inst} < {max_avail})")
-            elif log:
-                print(f"[LOG] '{model_name}': up-to-date ({max_inst} >= {max_avail})")
+            # Global check: is the installed version the globally newest (index 0)?
+            for vid, bm, vname in installed_ver_ids:
+                inst_idx = ver_meta.get(vid, {}).get('idx', 0) if vid is not None else 0
+                if inst_idx > 0:
+                    has_outdated = True
+                    if log:
+                        print(f"[LOG] '{model_name}' ver='{vname}': outdated (idx {inst_idx} > 0)")
+                elif log:
+                    print(f"[LOG] '{model_name}' ver='{vname}': up-to-date (idx 0)")
 
         model_type = model.get('type', 'Unknown')
         if has_outdated:
@@ -1601,7 +1620,10 @@ def version_match(file_paths, api_response, log=False):
 
 
 def collect_update_items(outdated_set, api_response, file_paths):
-    """Build gl.update_items: one entry per outdated family per model.
+    """Build gl.update_items: one entry per outdated baseModel family per model.
+
+    Uses the CivitAI `baseModel` field (reliable) and array index (0 = newest)
+    instead of fragile version-string regex parsing.
 
     Returns a list of dicts:
         {'model_id', 'model_name', 'model_type', 'family',
@@ -1643,81 +1665,67 @@ def collect_update_items(outdated_set, api_response, file_paths):
             if preview_url:
                 break
 
+        # Build index map: versionId → index (0 = newest)
+        ver_id_to_idx = {ver.get('id'): idx for idx, ver in enumerate(model_versions)}
+
+        # Find all installed versions for this model
+        # installed_versions: list of (idx, baseModel, ver_name)
+        installed_versions = []
+        for ver in model_versions:
+            vid = ver.get('id')
+            idx = ver_id_to_idx.get(vid, 0)
+            bm = (ver.get('baseModel') or '').strip()
+            vname = ver.get('name', '?')
+            for file_entry in ver.get('files', []):
+                sha = file_entry.get('hashes', {}).get('SHA256', '').upper()
+                if sha in installed_hashes:
+                    installed_versions.append((idx, bm, vname))
+                    break
+
+        if not installed_versions:
+            continue
+
         if not precise_check:
             # No family grouping — one entry for the whole model
-            inst_ver_name = None
-            for ver in model_versions:
-                for file_entry in ver.get('files', []):
-                    sha = file_entry.get('hashes', {}).get('SHA256', '').upper()
-                    if sha in installed_hashes:
-                        inst_ver_name = ver.get('name', '?')
-                        break
-                if inst_ver_name:
-                    break
+            # Pick the installed version with the highest index (oldest) to show
+            oldest_inst = max(installed_versions, key=lambda x: x[0])
+            inst_idx, _, inst_ver_name = oldest_inst
             avail_ver_name = model_versions[0].get('name', '?') if model_versions else '?'
-            items.append({
-                'model_id': model_id,
-                'model_name': model_name,
-                'model_type': model_type,
-                'family': None,
-                'installed_ver': inst_ver_name or '?',
-                'latest_ver': avail_ver_name,
-                'preview_url': preview_url,
-            })
+            if inst_idx > 0:
+                items.append({
+                    'model_id': model_id,
+                    'model_name': model_name,
+                    'model_type': model_type,
+                    'family': None,
+                    'installed_ver': inst_ver_name,
+                    'latest_ver': avail_ver_name,
+                    'preview_url': preview_url,
+                })
         else:
-            # Per-family comparison — one entry per outdated installed family
-            installed_by_family = {}   # family -> (ver_name, ver_parts)
-            available_by_family = {}   # family -> first (latest) ver_name for that family
-            installed_no_family = None  # ver_name for models without a family tag
-
+            # Per-baseModel: find the newest available version for each baseModel
+            # base → (newest_idx, newest_ver_name)
+            base_newest = {}
             for ver in model_versions:
-                ver_name = ver.get('name', '')
-                family, ver_parts = extract_version_from_ver_name(ver_name)
+                bm = (ver.get('baseModel') or '').strip()
+                idx = ver_id_to_idx.get(ver.get('id'), 0)
+                if bm not in base_newest or idx < base_newest[bm][0]:
+                    base_newest[bm] = (idx, ver.get('name', '?'))
 
-                if family and family not in available_by_family:
-                    available_by_family[family] = ver_name  # first = newest in API
-
-                for file_entry in ver.get('files', []):
-                    sha = file_entry.get('hashes', {}).get('SHA256', '').upper()
-                    if sha in installed_hashes:
-                        if family:
-                            if family not in installed_by_family:
-                                installed_by_family[family] = (ver_name, ver_parts)
-                        else:
-                            if installed_no_family is None:
-                                installed_no_family = (ver_name, ver_parts)
-                        break
-
-            # Per-family entries
-            for fam_key, (inst_ver_name, inst_parts) in installed_by_family.items():
-                avail_ver_name = available_by_family.get(fam_key)
-                if not avail_ver_name:
+            # For each installed version, emit a card if it's not the newest for its base
+            seen_bases = set()  # avoid duplicate cards for the same base
+            for inst_idx, bm, inst_ver_name in installed_versions:
+                if bm in seen_bases:
                     continue
-                _, avail_parts = extract_version_from_ver_name(avail_ver_name)
-                if compare_version_parts(inst_parts, avail_parts) < 0:
+                newest_idx, newest_ver_name = base_newest.get(bm, (0, '?'))
+                if inst_idx > newest_idx:
+                    seen_bases.add(bm)
                     items.append({
                         'model_id': model_id,
                         'model_name': model_name,
                         'model_type': model_type,
-                        'family': fam_key,
+                        'family': bm or None,
                         'installed_ver': inst_ver_name,
-                        'latest_ver': avail_ver_name,
-                        'preview_url': preview_url,
-                    })
-
-            # No-family fallback
-            if installed_no_family and not installed_by_family:
-                inst_ver_name, inst_parts = installed_no_family
-                avail_ver_name = model_versions[0].get('name', '?') if model_versions else '?'
-                _, avail_parts = extract_version_from_ver_name(avail_ver_name)
-                if compare_version_parts(inst_parts, avail_parts) < 0:
-                    items.append({
-                        'model_id': model_id,
-                        'model_name': model_name,
-                        'model_type': model_type,
-                        'family': None,
-                        'installed_ver': inst_ver_name,
-                        'latest_ver': avail_ver_name,
+                        'latest_ver': newest_ver_name,
                         'preview_url': preview_url,
                     })
 
