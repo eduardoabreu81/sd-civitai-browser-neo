@@ -1690,3 +1690,187 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
 }
+
+/* ── Update Mode ─────────────────────────────────── */
+
+/* Mode switcher — two pills: Search CivitAI | Update Local Models */
+.civupdate-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.civupdate-switcher {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.mode-pill {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 20px;
+    color: #ccc;
+    font-size: 13px;
+    padding: 5px 16px;
+    cursor: pointer;
+    transition: background 0.18s, border-color 0.18s, color 0.18s;
+}
+.mode-pill:hover {
+    background: rgba(255,255,255,0.12);
+    color: #fff;
+}
+.mode-pill-active {
+    background: rgba(255, 140, 0, 0.2);
+    border-color: #e07b00;
+    color: #ffb347;
+    font-weight: 600;
+    cursor: default;
+}
+
+/* Action bar shown below the switcher in Update Mode */
+.civupdate-action-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    background: rgba(255, 140, 0, 0.09);
+    border: 1px solid rgba(224, 123, 0, 0.5);
+    border-radius: 8px;
+    padding: 8px 14px;
+}
+
+.civupdate-count {
+    flex: 1;
+    font-size: 13px;
+    color: #ddd;
+    min-width: 180px;
+}
+
+.civupdate-btn-all {
+    background: #e07b00;
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 14px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.18s;
+}
+.civupdate-btn-all:hover { background: #ff9520; }
+
+.civupdate-retention {
+    font-size: 11.5px;
+    color: #999;
+    white-space: nowrap;
+}
+
+/* Update-mode card grid (reuses .civmodelcards base) */
+.update-mode-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 4px 0;
+}
+
+.update-mode-card {
+    border: 2px solid #e07b00 !important;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 8px;
+    background: var(--card-background-fill, #1e1e2e);
+    position: relative;
+}
+
+.update-card-thumb {
+    width: 100%;
+    aspect-ratio: 2/3;
+    overflow: hidden;
+    background: #2a2a40;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.update-card-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.update-card-no-thumb {
+    font-size: 36px;
+    opacity: 0.15;
+}
+
+.update-card-caption {
+    padding: 6px 8px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.update-card-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #ddd;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.update-card-badges {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.update-badge {
+    display: inline-block;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+}
+
+.update-badge-type {
+    background: rgba(99,179,237,0.15);
+    color: #63b3ed;
+}
+
+/* Family-specific colours */
+.update-badge-family.pony    { background: rgba(236,153,75,0.2);  color: #ec994b; }
+.update-badge-family.illustrious,
+.update-badge-family.il      { background: rgba(160,130,240,0.2); color: #b896ff; }
+.update-badge-family.sdxl    { background: rgba(72,199,142,0.2);  color: #48c78e; }
+.update-badge-family.flux    { background: rgba(90,210,235,0.2);  color: #5ad2eb; }
+.update-badge-family         { background: rgba(180,180,180,0.15); color: #ccc;   }
+
+.update-card-versions {
+    font-size: 11px;
+    color: #aaa;
+}
+.ver-old { text-decoration: line-through; color: #888; }
+.ver-arrow { color: #666; }
+.ver-new { color: #7ec18a; font-weight: 600; }
+
+.update-card-btn {
+    align-self: flex-end;
+    margin-top: 2px;
+    background: #e07b00;
+    border: none;
+    border-radius: 5px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 4px 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+    width: 100%;
+}
+.update-card-btn:hover { background: #ff9520; }

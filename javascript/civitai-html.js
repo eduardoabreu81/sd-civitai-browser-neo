@@ -1722,3 +1722,48 @@ function deleteInstalledModel(event, modelString, sha256) {
         }
     }, 100);
 }
+
+
+// ── Update Mode ──────────────────────────────────────────────────────────────
+
+/**
+ * Trigger the Python backend to enqueue ALL models from gl.update_items.
+ * Called by the "⬆️ Update All" button in the update mode action bar.
+ */
+function updateAllModels() {
+    const trigger = gradioApp().querySelector('#update_all_trigger textarea');
+    if (!trigger) return;
+    trigger.value = String(Date.now());
+    updateInput(trigger);
+}
+
+/**
+ * Trigger the Python backend to enqueue a SINGLE model update.
+ * Called by the ⬆ button on an individual update card.
+ * @param {string|number} modelId  - the CivitAI model id
+ * @param {string}        family   - the installed family (e.g. 'PONY', 'IL', '')
+ */
+function updateSingleModel(modelId, family) {
+    const trigger = gradioApp().querySelector('#update_single_trigger textarea');
+    if (!trigger) return;
+    trigger.value = `${modelId}|${family || ''}`;
+    updateInput(trigger);
+    // Visual feedback: dim the card
+    const card = gradioApp().querySelector(
+        `.update-mode-card[data-model-id="${modelId}"][data-family="${(family || '').toUpperCase()}"]`
+    );
+    if (card) card.style.opacity = '0.4';
+}
+
+/**
+ * Exit Update Mode: clear the banner and tell Python to reset the page state.
+ */
+function exitUpdateMode() {
+    const trigger = gradioApp().querySelector('#exit_update_mode_trigger textarea');
+    if (!trigger) return;
+    trigger.value = String(Date.now());
+    updateInput(trigger);
+    // Immediately clear the banner
+    const banner = gradioApp().querySelector('#update_mode_banner');
+    if (banner) banner.innerHTML = '';
+}
