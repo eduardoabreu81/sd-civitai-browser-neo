@@ -95,7 +95,9 @@ def get_base_model_short(base_model: str) -> str:
 STATUS_BADGE_DAYS = 14  # days window for "New" / "Updated" badges
 
 def get_status_badge_type(item) -> str:
-    """Return 'new', 'updated', or '' based on how recently the model/latest version was published"""
+    """Return 'new', 'updated', or '' based on how recently the latest version was published.
+    Mirrors CivitAI's logic: 'new' if model has only 1 version (just created),
+    'updated' if model has multiple versions and the latest is recent."""
     from datetime import timedelta
     now = datetime.now(timezone.utc)
     threshold = timedelta(days=STATUS_BADGE_DAYS)
@@ -108,15 +110,16 @@ def get_status_badge_type(item) -> str:
         except Exception:
             return None
 
-    model_published = parse_dt(item.get('publishedAt', ''))
     versions = item.get('modelVersions', [])
-    latest_published = parse_dt(versions[0].get('publishedAt', '')) if versions else None
+    if not versions:
+        return ''
 
-    if latest_published and (now - latest_published) < threshold:
-        if model_published and (now - model_published) < threshold:
-            return 'new'      # Both model and latest version are recent
-        return 'updated'      # Model exists but received a new version recently
-    return ''
+    latest_published = parse_dt(versions[0].get('publishedAt', ''))
+    if not latest_published or (now - latest_published) >= threshold:
+        return ''  # Latest version is not recent
+
+    # Recent version: New = only 1 version (just created), Updated = multiple versions
+    return 'new' if len(versions) == 1 else 'updated'
 
 # This nsfwlevel system is not accurate...
 def is_model_nsfw(model_data, nsfw_level=12):
