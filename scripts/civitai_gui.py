@@ -743,7 +743,7 @@ def on_ui_tabs():
 
         list_html_input.change(fn=all_visible, inputs=list_html_input, outputs=select_all)
 
-        def update_models_dropdown(input):
+        def update_models_dropdown(input, base_filter=None):
             # If there is no loaded model data, reset all UI elements and show a message
             if not gl.json_data:
                 return (
@@ -770,7 +770,7 @@ def on_ui_tabs():
 
             model_string = re.sub(r'\.\d{3}$', '', input)
             model_name, model_id = _api.extract_model_info(model_string)
-            model_versions = _api.update_model_versions(model_id)
+            model_versions = _api.update_model_versions(model_id, base_filter=base_filter)
 
             # Get detailed model info for the selected version
             (
@@ -812,7 +812,7 @@ def on_ui_tabs():
 
         model_select.change(
             fn=update_models_dropdown,
-            inputs=[model_select],
+            inputs=[model_select, base_filter],
             outputs=[
                 list_models,
                 list_versions,

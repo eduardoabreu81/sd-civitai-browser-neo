@@ -998,7 +998,7 @@ def insert_metadata(page_nr, api_url=None):
     return gl.json_data
 
 ## === ANXETY EDITs ===
-def update_model_versions(model_id, json_input=None):
+def update_model_versions(model_id, json_input=None, base_filter=None):
     if json_input:
         api_json = json_input
     else:
@@ -1065,7 +1065,20 @@ def update_model_versions(model_id, json_input=None):
                     name += ' (Early Access)'
                 display_version_names.append(name)
             default_installed = next((name for name in display_version_names if '[Installed]' in name), None)
-            default_value = default_installed or (display_version_names[0] if display_version_names else None)
+
+            # If a base_filter is active, prefer the newest version matching the filter
+            if base_filter:
+                filter_normalized = [b.lower() for b in base_filter]
+                default_value = None
+                for i, v in enumerate(version_names):
+                    version_obj = next((ver for ver in versions if ver['name'] == v), None)
+                    if version_obj and version_obj.get('baseModel', '').lower() in filter_normalized:
+                        default_value = display_version_names[i]
+                        break
+                if default_value is None:
+                    default_value = default_installed or (display_version_names[0] if display_version_names else None)
+            else:
+                default_value = default_installed or (display_version_names[0] if display_version_names else None)
 
             return gr.update(choices=display_version_names, value=default_value, interactive=True)  # Version List
 
