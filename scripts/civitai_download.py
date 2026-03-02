@@ -1144,25 +1144,23 @@ def _restore_queue_item(data):
         if existing.get('dl_url') == data['dl_url']:
             return None
 
-    model_versions = _api.update_model_versions(model_id)
+    # Fetch from API first — gl.json_data may be empty/None at restore time
+    api_url = f'https://civitai.com/api/v1/models/{model_id}'
+    raw = _api.request_civit_api(api_url)
+    model_json = {'items': [raw]} if raw and isinstance(raw, dict) else {'items': []}
+
+    model_versions = _api.update_model_versions(model_id, json_input=model_json if model_json['items'] else None)
     if not model_versions:
         return None
 
     preview_html_val = ''
     existing_path_val = data['install_path']
-    model_json = {'items': []}
 
     try:
-        result = _api.update_model_info(None, model_versions.get('value'), False, model_id)
+        result = _api.update_model_info(None, model_versions.get('value'), False, model_id, json_input=model_json if model_json['items'] else None)
         # update_model_info returns a 13-tuple; index 0 = preview_html, index 11 = existing_path
         preview_html_val = result[0].get('value', '') if isinstance(result[0], dict) else ''
         existing_path_val = result[11].get('value', data['install_path']) if isinstance(result[11], dict) else data['install_path']
-
-        # Re-fetch model JSON for metadata saving
-        api_url = f'https://civitai.com/api/v1/models/{model_id}'
-        raw = _api.request_civit_api(api_url)
-        if raw and isinstance(raw, dict):
-            model_json = {'items': [raw]}
     except Exception as e:
         debug_print(f"[Restore] Could not fetch API data for model {model_id}: {e}")
 

@@ -1004,6 +1004,9 @@ def update_model_versions(model_id, json_input=None):
     else:
         api_json = gl.json_data
 
+    if not api_json or 'items' not in api_json:
+        return None
+
     for item in api_json['items']:
         if int(item['id']) == int(model_id):
             content_type = item['type']
