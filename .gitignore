@@ -1,2 +1,5 @@
 # Copilot instructions (local only)
 .github/copilot-instructions.md
+
+# SpecStory history (may contain secrets)
+.specstory/
