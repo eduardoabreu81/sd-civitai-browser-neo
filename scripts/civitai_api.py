@@ -1150,6 +1150,14 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
         default_file = None
         model_filename = None
         sha256_value = None
+        model_folder = None
+        model_name = ''
+        content_type = ''
+        desc = ''
+        is_nsfw = False
+        model_uploader = 'Unknown'
+        version_name = ''
+        version_id = None
         for item in api_data['items']:
             if int(item['id']) == int(model_id):
                 content_type = item['type']
@@ -1562,6 +1570,24 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
 
         if only_html:
             return output_html
+
+        if model_folder is None:
+            # Model not found in api_data (e.g. lazy fetch with stale gl.json_data)
+            return (
+                gr.update(value=None),
+                gr.update(value=None, interactive=False),
+                gr.update(value=''),
+                gr.update(visible=True, value='Download model'),
+                gr.update(interactive=False),
+                gr.update(visible=False, interactive=False),
+                gr.update(choices=None, value=None, interactive=False),
+                gr.update(value=None, interactive=False),
+                gr.update(value=None),
+                gr.update(value=None),
+                gr.update(value=None),
+                gr.update(interactive=False, value=None),
+                gr.update(choices=None, value=None, interactive=False)
+            )
 
         folder_location = 'None'
         default_subfolder = 'None'
