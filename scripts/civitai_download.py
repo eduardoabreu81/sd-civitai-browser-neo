@@ -449,7 +449,12 @@ def gr_progress_threadable():
 
     def _update_progress():
         if value[2]:
-            gr_progress(value[0], desc=value[1])
+            try:
+                gr_progress(value[0], desc=value[1])
+            except Exception:
+                # SSE/WebSocket connection dropped (e.g. screen lock, browser lost focus).
+                # Silently ignore — the download thread continues unaffected.
+                pass
             value[2] = False
 
     def join(thread):
@@ -956,9 +961,14 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
     else:
         thread = threading.Thread(target=download_file_old, args=(item['dl_url'], path_to_new_file, item['model_id'], progress))
     thread.start()
-    if progress != None and hasattr(progress, 'join'):
-        progress.join(thread)
-    else:
+    try:
+        if progress != None and hasattr(progress, 'join'):
+            progress.join(thread)
+        else:
+            thread.join()
+    except Exception:
+        # If the progress channel throws (client disconnected / screen locked),
+        # fall back to a plain join so download always completes before cleanup.
         thread.join()
 
     # Fix #1: SHA256 integrity check after download
