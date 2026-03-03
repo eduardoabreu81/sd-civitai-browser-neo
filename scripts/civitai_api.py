@@ -205,12 +205,25 @@ def contenttype_folder(content_type, desc=None, custom_folder=None):
     }
 
     def _resolve_embeddings_folder(main_models, main_data):
-        """Detect embeddings folder: new Neo puts it inside models/, old Forge at webui root."""
+        """Detect embeddings folder: new Neo puts it inside models/, old Forge at webui root.
+        If both exist with content, prefer new layout (models/embeddings) and warn the user."""
         new_path = main_models / 'embeddings'   # Forge Neo (new): models/embeddings
         old_path = main_data / 'embeddings'     # Forge classic / old: <webui_root>/embeddings
-        if new_path.exists():
+        new_exists = new_path.exists()
+        old_exists = old_path.exists()
+        if new_exists and old_exists:
+            new_has_files = any(new_path.iterdir())
+            old_has_files = any(old_path.iterdir())
+            if new_has_files and old_has_files:
+                debug_print(
+                    f"[Embeddings] Both '{new_path}' and '{old_path}' exist and have files. "
+                    f"Using '{new_path}' (Forge Neo layout). "
+                    f"Consider moving files from '{old_path}' to '{new_path}'."
+                )
+            return new_path  # always prefer new layout when both exist
+        if new_exists:
             return new_path
-        if old_path.exists():
+        if old_exists:
             return old_path
         return new_path  # default to new layout when neither exists yet
 
