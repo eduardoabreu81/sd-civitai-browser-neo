@@ -188,7 +188,7 @@ def contenttype_folder(content_type, desc=None, custom_folder=None):
     content_type_map = {
         'modelFolder': lambda: main_models,
         'Checkpoint': lambda: resolve_path('ckpt_dir', resolve_path('ckpt_dirs', main_models / 'Stable-diffusion')),
-        'TextualInversion': lambda: resolve_path('embeddings_dir', main_data / 'embeddings'),
+        'TextualInversion': lambda: resolve_path('embeddings_dir', _resolve_embeddings_folder(main_models, main_data)),
         'AestheticGradient': lambda: (Path(custom_folder) if custom_folder else ext_dir / 'stable-diffusion-webui-aesthetic-gradients') / 'aesthetic_embeddings',
         'LORA': lambda: resolve_path('lora_dir', main_models / 'Lora'),
         'LoCon': lambda: resolve_path('lora_dir', main_models / 'Lora'), # 💩
@@ -204,17 +204,33 @@ def contenttype_folder(content_type, desc=None, custom_folder=None):
         'Upscaler': lambda: _resolve_upscaler_folder(desc_upper, main_models, resolve_path)
     }
 
+    def _resolve_embeddings_folder(main_models, main_data):
+        """Detect embeddings folder: new Neo puts it inside models/, old Forge at webui root."""
+        new_path = main_models / 'embeddings'   # Forge Neo (new): models/embeddings
+        old_path = main_data / 'embeddings'     # Forge classic / old: <webui_root>/embeddings
+        if new_path.exists():
+            return new_path
+        if old_path.exists():
+            return old_path
+        return new_path  # default to new layout when neither exists yet
+
     def _resolve_upscaler_folder(desc, main_models, resolve_path):
-        # Helper for upscaler folder logic
+        """Detect upscaler folder: new Neo consolidates everything under ESRGAN/.
+        Falls back to ESRGAN/ when the specific subfolder doesn't exist on disk."""
+        esrgan = resolve_path('esrgan_models_path', main_models / 'ESRGAN')
         if 'SWINIR' in desc:
-            return resolve_path('swinir_models_path', main_models / 'SwinIR')
+            specific = resolve_path('swinir_models_path', main_models / 'SwinIR')
+            return specific if specific.exists() else esrgan
         if 'REALESRGAN' in desc:
-            return resolve_path('realesrgan_models_path', main_models / 'RealESRGAN')
+            specific = resolve_path('realesrgan_models_path', main_models / 'RealESRGAN')
+            return specific if specific.exists() else esrgan
         if 'GFPGAN' in desc:
-            return resolve_path('gfpgan_models_path', main_models / 'GFPGAN')
+            specific = resolve_path('gfpgan_models_path', main_models / 'GFPGAN')
+            return specific if specific.exists() else esrgan
         if 'BSRGAN' in desc:
-            return resolve_path('bsrgan_models_path', main_models / 'BSRGAN')
-        return resolve_path('esrgan_models_path', main_models / 'ESRGAN')
+            specific = resolve_path('bsrgan_models_path', main_models / 'BSRGAN')
+            return specific if specific.exists() else esrgan
+        return esrgan
 
     # Get the folder resolver function for the content type
     folder_resolver = content_type_map.get(content_type)
@@ -1748,13 +1764,15 @@ def sub_folder_value(content_type, desc=None):
     if content_type == 'LORA':
         folder = getattr(opts, 'LORA_default_subfolder', 'None')
     elif content_type == 'Upscaler':
+        folder = getattr(opts, 'ESRGAN_default_subfolder', 'None')  # default
+        desc_upper = (desc or '').upper()
         for upscale_type in ['SWINIR', 'REALESRGAN', 'GFPGAN', 'BSRGAN']:
-            if upscale_type in desc:
-                folder = getattr(opts, f"{upscale_type}_default_subfolder", 'None')
-        folder = getattr(opts, 'ESRGAN_default_subfolder', 'None')
+            if upscale_type in desc_upper:
+                folder = getattr(opts, f"{upscale_type}_default_subfolder", folder)
+                break  # stop at first match — was missing before, caused ESRGAN to always win
     else:
         folder = getattr(opts, f"{content_type}_default_subfolder", 'None')
-    if folder == None:
+    if folder is None:
         return 'None'
     return folder
 
