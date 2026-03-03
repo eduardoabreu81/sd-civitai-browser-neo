@@ -999,7 +999,10 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
             except Exception as _e:
                 debug_print(f"[SHA256 cache] Could not pre-populate Forge hash cache: {_e}")
 
-    if not gl.cancel_status or gl.download_fail:
+    # Only save metadata / run post-processing when the download actually succeeded.
+    # The previous condition `or gl.download_fail` was a logic error: truthy fail values
+    # (e.g. 'EARLY_ACCESS') caused saves to run even though nothing was downloaded.
+    if not gl.cancel_status and not gl.download_fail:
         if os.path.exists(path_to_new_file):
             unpackList = []
             if unpack_zip:
@@ -1032,17 +1035,21 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
     base_name_preview = base_name + '.preview'
 
     if gl.download_fail:
-        for root, dirs, files in os.walk(effective_install_path, followlinks=True):
-            for file in files:
-                file_base_name = os.path.splitext(file)[0]
-                if file_base_name == base_name or file_base_name == base_name_preview:
-                    path_file = os.path.join(root, file)
-                    os.remove(path_file)
+        # EARLY_ACCESS and NO_API: download never started, no file was created by
+        # this attempt — preserve any pre-existing file from a previous good download.
+        download_never_started = gl.download_fail in ('EARLY_ACCESS', 'NO_API')
+        if not download_never_started:
+            for root, dirs, files in os.walk(effective_install_path, followlinks=True):
+                for file in files:
+                    file_base_name = os.path.splitext(file)[0]
+                    if file_base_name == base_name or file_base_name == base_name_preview:
+                        path_file = os.path.join(root, file)
+                        os.remove(path_file)
 
         if gl.cancel_status:
             print(f"Cancelled download of '{item['model_filename']}'")
         else:
-            if gl.download_fail != 'NO_API':
+            if gl.download_fail not in ('NO_API', 'EARLY_ACCESS'):
                 print(f"Error occured during download of '{item['model_filename']}'")
 
     if gl.cancel_status:
