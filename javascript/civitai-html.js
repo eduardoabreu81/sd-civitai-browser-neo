@@ -1082,8 +1082,11 @@ function genInfo_to_txt2img(genInfo, do_slice = true) {
     let pasteButton = gradioApp().querySelector('#paste');
     if (genInfo) {
         insert.value = do_slice ? genInfo.slice(5) : genInfo;
-        insert.dispatchEvent(new Event('input', {bubbles: true}));
-        pasteButton.dispatchEvent(new Event('click', {bubbles: true}));
+        // updateInput notifies Gradio 4's React layer that the value changed
+        updateInput(insert);
+        // Must use .click() or MouseEvent — generic Event('click') is silently
+        // ignored by Gradio 4's button handler in some browser/focus states
+        pasteButton.click();
     }
 }
 
