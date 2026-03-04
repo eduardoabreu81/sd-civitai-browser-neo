@@ -2297,7 +2297,7 @@ def _debug_log(message):
     Enable in Settings > CivitAI Browser Neo > Debug Organization Logs
     """
     if getattr(opts, 'civitai_neo_debug_organize', False):
-        print(f"[DEBUG] {message}")
+        debug_print(message)
 
 def normalize_base_model(base_model):
     """
