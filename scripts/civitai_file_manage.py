@@ -692,6 +692,8 @@ def get_image_path(install_path, api_response, sub_folder):
     return image_path
 
 def save_images(preview_html, model_filename, install_path, sub_folder, api_response=None):
+    if not preview_html:
+        return
     image_path = get_image_path(install_path, api_response, sub_folder)
     img_urls = re.findall(r'data-sampleimg="true" src=[\'"]?([^\'" >]+)', preview_html)
 
