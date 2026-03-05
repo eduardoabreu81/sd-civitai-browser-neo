@@ -1641,8 +1641,9 @@ def collect_update_items(outdated_set, api_response, file_paths):
     """
     precise_check = getattr(opts, 'precise_version_check', True)
 
-    # Collect installed SHA256 hashes
+    # Collect installed SHA256 hashes and map each hash to its file path
     installed_hashes = set()
+    sha_to_path = {}
     for path in file_paths:
         json_path = f"{os.path.splitext(path)[0]}.json"
         data = _api.safe_json_load(json_path)
@@ -1650,6 +1651,7 @@ def collect_update_items(outdated_set, api_response, file_paths):
             sha = data.get('sha256', '')
             if sha:
                 installed_hashes.add(sha.upper())
+                sha_to_path[sha.upper()] = path
 
     outdated_ids = {int(entry[0].replace('&ids=', '')) for entry in outdated_set}
 
@@ -1688,17 +1690,14 @@ def collect_update_items(outdated_set, api_response, file_paths):
             for file_entry in ver.get('files', []):
                 sha = file_entry.get('hashes', {}).get('SHA256', '').upper()
                 if sha in installed_hashes:
-                    installed_versions.append((idx, bm, vname))
-                    break
-
-        if not installed_versions:
+                installed_versions.append((idx, bm, vname, sha_to_path.get(sha, '')))
             continue
 
         if not precise_check:
             # No family grouping — one entry for the whole model
             # Pick the installed version with the highest index (oldest) to show
             oldest_inst = max(installed_versions, key=lambda x: x[0])
-            inst_idx, _, inst_ver_name = oldest_inst
+            inst_idx, _, inst_ver_name, old_file = oldest_inst
             avail_ver_name = model_versions[0].get('name', '?') if model_versions else '?'
             if inst_idx > 0:
                 items.append({
@@ -1709,6 +1708,7 @@ def collect_update_items(outdated_set, api_response, file_paths):
                     'installed_ver': inst_ver_name,
                     'latest_ver': avail_ver_name,
                     'preview_url': preview_url,
+                    'old_file': old_file,
                 })
         else:
             # Per-baseModel: find the newest available version for each baseModel
@@ -1722,7 +1722,7 @@ def collect_update_items(outdated_set, api_response, file_paths):
 
             # For each installed version, emit a card if it's not the newest for its base
             seen_bases = set()  # avoid duplicate cards for the same base
-            for inst_idx, bm, inst_ver_name in installed_versions:
+            for inst_idx, bm, inst_ver_name, old_file in installed_versions:
                 if bm in seen_bases:
                     continue
                 newest_idx, newest_ver_name = base_newest.get(bm, (0, '?'))
@@ -1736,6 +1736,7 @@ def collect_update_items(outdated_set, api_response, file_paths):
                         'installed_ver': inst_ver_name,
                         'latest_ver': newest_ver_name,
                         'preview_url': preview_url,
+                        'old_file': old_file,
                     })
 
     return items

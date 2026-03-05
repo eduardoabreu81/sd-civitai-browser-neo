@@ -116,7 +116,7 @@ elif os_type == 'Linux':
 class TimeOutFunction(Exception):
     pass
 
-def create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch=False):
+def create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch=False, old_file_path=None):
     global dl_manager_count
     if model_id:
         model_id = int(model_id)
@@ -163,6 +163,7 @@ def create_model_item(dl_url, model_filename, install_path, model_name, version_
         'from_batch': from_batch,
         'sub_folder': sub_folder,
         '_api_ready': False,
+        'old_file_path': old_file_path,  # retention: path of old file being replaced (may differ from new filename)
     }
 
     _dl_log.log_queued(item)
@@ -331,7 +332,19 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
                     else:
                         install_path = str(model_folder)
 
-            model_item = create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch)
+            # For update-mode queuing: find the old installed file path from gl.update_items
+            # so retention can be applied even when old and new filenames differ.
+            old_file_path = None
+            if gl.update_items:
+                for _upd in gl.update_items:
+                    if _upd.get('model_id') == int(model_id):
+                        upd_family = (_upd.get('family') or '').upper()
+                        new_family = (output_basemodel or '').upper()
+                        if not upd_family or not new_family or upd_family == new_family:
+                            old_file_path = _upd.get('old_file', '') or None
+                            break
+
+            model_item = create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch, old_file_path=old_file_path)
             if model_item:
                 gl.download_queue.append(model_item)
                 total_count += 1
@@ -1041,6 +1054,12 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
                 _file.save_preview(path_to_new_file, item['model_json'], True, item['model_sha256'])
                 if save_all_images:
                     _file.save_images(item['preview_html'], item['model_filename'], effective_install_path, item['sub_folder'], api_response=item['model_json'])
+
+                # Retention policy for updates where old and new filenames differ.
+                # (Same-filename case is already handled inside download_file via handle_existing_model_file.)
+                old_fp = item.get('old_file_path', '')
+                if old_fp and os.path.exists(old_fp) and os.path.abspath(old_fp) != os.path.abspath(path_to_new_file):
+                    _file.handle_existing_model_file(old_fp)
 
     base_name = os.path.splitext(item['model_filename'])[0]
     base_name_preview = base_name + '.preview'
