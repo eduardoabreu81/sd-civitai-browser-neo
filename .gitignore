@@ -1,5 +1,39 @@
-# Copilot instructions (local only)
+# ============================================
+# Documentação privada de contexto para IA
+# ============================================
 .github/copilot-instructions.md
-
-# SpecStory history (may contain secrets)
+AGENTS.local.md
+docs/PROJECT_LOG.md
 .specstory/
+
+# ============================================
+# Runtime / Cache / Estado da aplicação
+# ============================================
+config_states/
+lib/models/
+aria2/running
+aria2/_
+favoriteCreators.txt
+bannedCreators.txt
+
+# ============================================
+# Python
+# ============================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+
+# ============================================
+# IDE / Editors
+# ============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
