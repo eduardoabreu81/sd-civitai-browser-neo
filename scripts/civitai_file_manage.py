@@ -3992,7 +3992,7 @@ def _render_update_mode_banner(count):
   </div>
   <div class="civupdate-action-bar">
     <span class="civupdate-count">🔄 <strong>{count}</strong> update{"s" if count != 1 else ""} available</span>
-    <button class="civupdate-btn-all" onclick="updateAllModels()">⬆️ Update All ({count})</button>
+    <button class="civupdate-btn-all" id="civupdate-update-btn" onclick="updateOrSelectedModels()">⬆️ Update All ({count})</button>
     <span class="civupdate-retention">Retention: {retention}</span>
   </div>
 </div>'''

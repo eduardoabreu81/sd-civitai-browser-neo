@@ -334,8 +334,11 @@ def update_mode_page_html(content_type_filter, base_filter, tile_count, current_
         )
         type_badge_html = f'<span class="update-badge update-badge-type">{type_badge}</span>'
         js_update = f"updateSingleModel('{model_id}','{fam_up}')"
+        chk_id    = f"upchk-{model_id}-{fam_up}"
 
         cards_html.append(f'''<figure class="civmodelcard update-mode-card" data-model-id="{model_id}" data-family="{fam_up}">
+  <input type="checkbox" class="model-checkbox update-card-checkbox" id="{chk_id}" data-model-id="{model_id}" data-family="{fam_up}" onchange="syncUpdateBtn()">
+  <label for="{chk_id}" class="custom-checkbox"><span class="checkbox-checkmark"></span></label>
   <div class="civmodelcard-img-wrapper update-card-thumb">{thumb_html}</div>
   <figcaption class="update-card-caption">
     <div class="update-card-name" title="{model_name}">{model_name}</div>

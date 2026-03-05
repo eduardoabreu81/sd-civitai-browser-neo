@@ -386,6 +386,31 @@ def update_all_models(download_start, create_json, current_html):
     return selected_to_queue(model_list_json, None, download_start, create_json, current_html)
 
 
+def update_selected_models(trigger_value, download_start, create_json, current_html):
+    """Enqueue only the checked/selected models from Update Mode."""
+    try:
+        selected = json.loads(trigger_value)  # [{model_id, family}, ...]
+    except Exception:
+        return update_all_models(download_start, create_json, current_html)
+    if not selected:
+        return update_all_models(download_start, create_json, current_html)
+    selected_set = {(int(s['model_id']), s['family'].upper()) for s in selected}
+    items = [i for i in gl.update_items
+             if (i['model_id'], (i.get('family') or '').upper()) in selected_set]
+    if not items:
+        html = download_manager_html(current_html)
+        return (
+            gr.update(interactive=False, visible=False),
+            gr.update(interactive=False, visible=False),
+            gr.update(interactive=False, visible=False),
+            gr.update(value=download_start),
+            gr.update(value='<div style="min-height: 100px;"></div>'),
+            gr.update(value=html)
+        )
+    model_list_json = _build_model_list_for_update(items)
+    return selected_to_queue(model_list_json, None, download_start, create_json, current_html)
+
+
 def download_single_update(trigger_value, download_start, create_json, current_html):
     """Enqueue a single model update. trigger_value is 'model_id|family'."""
     if not trigger_value or '|' not in trigger_value:

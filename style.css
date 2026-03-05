@@ -152,6 +152,10 @@
     border-color: #2ee59d;
 }
 
+.update-mode-card:has(.update-card-checkbox:checked) {
+    border-color: #2ee59d !important;
+}
+
 /* --- Model Card Header --- */
 .card-header {
     position: absolute;

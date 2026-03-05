@@ -1741,6 +1741,44 @@ function updateAllModels() {
 }
 
 /**
+ * Called by the "Update All / Update Selected" button.
+ * If any checkboxes are checked, updates only those; otherwise updates all.
+ */
+function updateOrSelectedModels() {
+    const checked = Array.from(gradioApp().querySelectorAll('.update-card-checkbox:checked'));
+    if (checked.length > 0) {
+        const items = checked.map(cb => ({
+            model_id: cb.dataset.modelId,
+            family:   cb.dataset.family || ''
+        }));
+        const trigger = gradioApp().querySelector('#update_selected_trigger textarea');
+        if (!trigger) return;
+        trigger.value = JSON.stringify(items);
+        updateInput(trigger);
+        // Visual feedback: dim selected cards
+        checked.forEach(cb => {
+            const card = cb.closest('.update-mode-card');
+            if (card) card.style.opacity = '0.4';
+        });
+    } else {
+        updateAllModels();
+    }
+}
+
+/**
+ * Called by each checkbox onchange — updates the action-bar button label.
+ */
+function syncUpdateBtn() {
+    const btn     = gradioApp().querySelector('#civupdate-update-btn');
+    if (!btn) return;
+    const checked = gradioApp().querySelectorAll('.update-card-checkbox:checked').length;
+    const total   = gradioApp().querySelectorAll('.update-card-checkbox').length;
+    btn.textContent = checked > 0
+        ? `\u2b06\ufe0f Update Selected (${checked})`
+        : `\u2b06\ufe0f Update All (${total})`;
+}
+
+/**
  * Trigger the Python backend to enqueue a SINGLE model update.
  * Called by the ⬆ button on an individual update card.
  * @param {string|number} modelId  - the CivitAI model id
