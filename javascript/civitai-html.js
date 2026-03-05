@@ -782,6 +782,7 @@ function multi_model_select(modelName, modelType, isChecked) {
 
     updateInput(selected_model_list);
     updateInput(selected_type_list);
+    syncUpdateBtn();
 }
 
 function sendClick(location) {
@@ -1742,22 +1743,17 @@ function updateAllModels() {
 
 /**
  * Called by the "Update All / Update Selected" button.
- * If any checkboxes are checked, updates only those; otherwise updates all.
+ * If any update-grid checkboxes are checked, updates only those; otherwise updates all.
  */
 function updateOrSelectedModels() {
-    const checked = Array.from(gradioApp().querySelectorAll('.update-card-checkbox:checked'));
-    if (checked.length > 0) {
-        const items = checked.map(cb => ({
-            model_id: cb.dataset.modelId,
-            family:   cb.dataset.family || ''
-        }));
+    if (selectedModels.length > 0) {
         const trigger = gradioApp().querySelector('#update_selected_trigger textarea');
         if (!trigger) return;
-        trigger.value = JSON.stringify(items);
+        trigger.value = JSON.stringify(selectedModels);
         updateInput(trigger);
-        // Visual feedback: dim selected cards
-        checked.forEach(cb => {
-            const card = cb.closest('.update-mode-card');
+        // Visual feedback: dim checked cards
+        gradioApp().querySelectorAll('.model-checkbox:checked').forEach(cb => {
+            const card = cb.closest('.civmodelcard');
             if (card) card.style.opacity = '0.4';
         });
     } else {
@@ -1766,15 +1762,15 @@ function updateOrSelectedModels() {
 }
 
 /**
- * Called by each checkbox onchange — updates the action-bar button label.
+ * Syncs the Update All/Selected button label with the current selection count.
  */
 function syncUpdateBtn() {
-    const btn     = gradioApp().querySelector('#civupdate-update-btn');
+    const btn = gradioApp().querySelector('#civupdate-update-btn');
     if (!btn) return;
-    const checked = gradioApp().querySelectorAll('.update-card-checkbox:checked').length;
-    const total   = gradioApp().querySelectorAll('.update-card-checkbox').length;
-    btn.textContent = checked > 0
-        ? `\u2b06\ufe0f Update Selected (${checked})`
+    const n     = selectedModels.length;
+    const total = gradioApp().querySelectorAll('.model-checkbox').length;
+    btn.textContent = n > 0
+        ? `\u2b06\ufe0f Update Selected (${n})`
         : `\u2b06\ufe0f Update All (${total})`;
 }
 
