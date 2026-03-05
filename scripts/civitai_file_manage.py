@@ -688,6 +688,13 @@ def get_image_path(install_path, api_response, sub_folder):
                 image_path = os.path.join(image_path, sub_folder.lstrip('/').lstrip('\\'))
         else:
             image_path = Path(image_location)
+    else:
+        # For TextualInversion (embeddings), save gallery images in a subfolder so
+        # Forge's embedding scanner doesn't log "no embedded information found" for
+        # every downloaded preview PNG file.
+        content_type = json_info.get('type', '')
+        if content_type == 'TextualInversion':
+            image_path = os.path.join(install_path, 'images')
     make_dir(image_path)
     return image_path
 
