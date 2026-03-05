@@ -36,6 +36,7 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ### v0.7.0 — Forge Neo Compatibility Update
 
+- **Update Selected** — in Update Mode, check any subset of outdated cards and click "Update Selected (N)" to queue only those; button reverts to "Update All" when nothing is selected
 - **Smart version selection by base model filter** — when you have a base model filter active (e.g. Illustrious), clicking a card automatically selects the most recent version for that family, skipping versions from other families
 - **Fixed update detection for broken session restores** — downloads queued in a previous session now restore correctly even when the browser hasn't loaded any search results yet
 - **Fixed model info crash on lazy fetch** — model info panel no longer crashes when the download queue tries to enrich a model that isn't in the current search results
