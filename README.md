@@ -41,16 +41,6 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 - **No preview images for wildcards** — `save_preview` and `save_images` are skipped for Wildcards (no useful location for them)
 - **Configurable base-model split for wildcards** — new setting `Organize wildcards by base model` (off by default, since most wildcards are architecture-agnostic)
 
-### v0.7.0 — Forge Neo Compatibility Update
-
-- **Update Selected** — in Update Mode, check any subset of outdated cards and click "Update Selected (N)" to queue only those; button reverts to "Update All" when nothing is selected
-- **Smart version selection by base model filter** — when you have a base model filter active (e.g. Illustrious), clicking a card automatically selects the most recent version for that family, skipping versions from other families
-- **Fixed update detection for broken session restores** — downloads queued in a previous session now restore correctly even when the browser hasn't loaded any search results yet
-- **Fixed model info crash on lazy fetch** — model info panel no longer crashes when the download queue tries to enrich a model that isn't in the current search results
-- **Embeddings folder auto-detection** — supports both old Forge layout (`embeddings/`) and new Forge Neo layout (`models/embeddings/`); picks the correct one automatically, and warns if both exist with files
-- **Upscaler folder compatibility** — SwinIR, RealESRGAN, GFPGAN and BSRGAN now correctly fall back to the unified `ESRGAN/` folder when running on Forge Neo (which consolidates all upscalers there)
-- **Fixed upscaler subfolder selection** — a bug where the custom subfolder setting for SwinIR/RealESRGAN/etc. was always being overwritten by the ESRGAN setting has been corrected
-
 ---
 
 ## 📖 Changelog
