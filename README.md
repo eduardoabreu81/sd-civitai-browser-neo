@@ -120,16 +120,13 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ## 🗺️ Roadmap
 
+### v0.7.0 — Forge Neo Compatibility *(complete)* ✅
+
 ### v0.7.1 — Wildcard Download Improvements *(current)*
 - Wildcards get their own subfolder per download (compatible with sd-dynamic-prompts)
 - Flat zip extraction for wildcards — no double-nesting
 - Skip preview/images for wildcards
 - New settings: `wildcard_own_folder` (ON) and `wildcard_organize_by_base` (OFF)
-
-### v0.7.0 — Forge Neo Compatibility
-- Smart version selection matching the active base model filter ✅
-- Session restore crash fix ✅
-- Forge Neo folder layout compatibility (embeddings, upscalers) ✅
 
 ### v0.8.0 — Advanced Curation *(planned)*
 - Saved search presets
