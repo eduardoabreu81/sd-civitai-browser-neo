@@ -1690,8 +1690,8 @@ def collect_update_items(outdated_set, api_response, file_paths):
             for file_entry in ver.get('files', []):
                 sha = file_entry.get('hashes', {}).get('SHA256', '').upper()
                 if sha in installed_hashes:
-                installed_versions.append((idx, bm, vname, sha_to_path.get(sha, '')))
-            continue
+                    installed_versions.append((idx, bm, vname, sha_to_path.get(sha, '')))
+                    break
 
         if not precise_check:
             # No family grouping — one entry for the whole model
