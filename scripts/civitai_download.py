@@ -1038,18 +1038,37 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
     # (e.g. 'EARLY_ACCESS') caused saves to run even though nothing was downloaded.
     if not gl.cancel_status and not gl.download_fail:
         if os.path.exists(path_to_new_file):
+            # Determine content type once — used for both zip extraction and post-download saves
+            _item_content_type = ((item.get('model_json') or {}).get('items') or [{}])[0].get('type', '')
+            _is_wildcard_dl = _item_content_type == 'Wildcards'
             unpackList = []
             if unpack_zip:
                 try:
                     if path_to_new_file.endswith('.zip'):
                         directory = Path(os.path.dirname(path_to_new_file))
-                        zip_handler = ZipHandler(path_to_new_file)
+                        if _is_wildcard_dl:
+                            # Wildcards: flat extraction — files only, no internal folder structure.
+                            # Prevents double-nesting (e.g. wildcards/pack/pack/file.txt).
+                            import zipfile as _zipfile
+                            with _zipfile.ZipFile(path_to_new_file, 'r') as zf:
+                                for member in zf.infolist():
+                                    if member.is_dir():
+                                        continue
+                                    filename = os.path.basename(member.filename)
+                                    if not filename:
+                                        continue
+                                    target_path = os.path.join(str(directory), filename)
+                                    with zf.open(member) as src, open(target_path, 'wb') as dst:
+                                        dst.write(src.read())
+                                    unpackList.append(filename)
+                        else:
+                            zip_handler = ZipHandler(path_to_new_file)
 
-                        for _, decoded_name in zip_handler.name_map.items():
-                            unpackList.append(decoded_name)
+                            for _, decoded_name in zip_handler.name_map.items():
+                                unpackList.append(decoded_name)
 
-                        zip_handler.extract_all(directory)
-                        zip_handler.zip_ref.close()
+                            zip_handler.extract_all(directory)
+                            zip_handler.zip_ref.close()
 
                         print(f"Successfully extracted {item['model_filename']} to {directory}")
                         os.remove(path_to_new_file)
@@ -1058,8 +1077,6 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
                 except Exception as e:
                     print(f"Failed to extract {item['model_filename']} with error: {e}")
             if not gl.cancel_status:
-                _item_content_type = ((item.get('model_json') or {}).get('items') or [{}])[0].get('type', '')
-                _is_wildcard_dl = _item_content_type == 'Wildcards'
                 if item['create_json']:
                     _file.save_model_info(effective_install_path, item['model_filename'], item['sub_folder'], item['model_sha256'], item['preview_html'], api_response=item['model_json'])
                 info_to_json(path_to_new_file, item['model_id'], item['model_sha256'], unpackList)

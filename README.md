@@ -34,6 +34,12 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ## 🆕 What's New
 
+### v0.7.x — Wildcard Download Improvements
+
+- **Wildcards get their own subfolder** — each wildcard pack downloads into `wildcards/<model-name>/` by default, making it compatible with sd-dynamic-prompts `__subfolder/name__` syntax
+- **No preview images for wildcards** — `save_preview` and `save_images` are skipped for Wildcards (no useful location for them)
+- **Configurable base-model split for wildcards** — new setting `Organize wildcards by base model` (off by default, since most wildcards are architecture-agnostic)
+
 ### v0.7.0 — Forge Neo Compatibility Update
 
 - **Update Selected** — in Update Mode, check any subset of outdated cards and click "Update Selected (N)" to queue only those; button reverts to "Update All" when nothing is selected
@@ -126,6 +132,8 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 - Saved search presets
 - Favorites in creator/user search
 - Additional browser quality-of-life improvements
+- **Organization by Tag — Phase 1**: save CivitAI tags to `.json` sidecar; editable user-tags field in model panel for manual assignment
+- **Organization by Tag — Phase 2**: in Manage tab, pick "anchor" tags → models with that tag sort into `<type>/<tag>/` subfolders (independent of base-model organization)
 
 ### v1.0.0 — First Stable Release *(planned)*
 - All known issues resolved
