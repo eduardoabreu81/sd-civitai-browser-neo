@@ -300,9 +300,11 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
 
             # Check if auto-organization is enabled
             auto_organize = getattr(opts, 'civitai_neo_auto_organize', False)
+            is_wildcard = content_type == 'Wildcards'
+            wildcard_by_base = getattr(opts, 'civitai_neo_wildcard_organize_by_base', False)
             from_batch = True  # default: treat as batch (no manual subfolder)
 
-            if auto_organize and output_basemodel:
+            if auto_organize and output_basemodel and (not is_wildcard or wildcard_by_base):
                 # Use auto-organization: determine folder from baseModel
                 from scripts.civitai_file_manage import normalize_base_model
                 base_folder = normalize_base_model(output_basemodel)
@@ -331,6 +333,14 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
                         install_path = str(model_folder) + default_subfolder
                     else:
                         install_path = str(model_folder)
+
+            # Wildcards: place each download into its own subfolder
+            # (e.g. wildcards/emotion-pack/emotion-pack.txt)
+            # compatible with sd-dynamic-prompts __subfolder/name__ syntax
+            if is_wildcard and getattr(opts, 'civitai_neo_wildcard_own_folder', True):
+                safe_name = re.sub(r'[<>:"/\\|?*]', '', model_name).strip()
+                if safe_name:
+                    install_path = os.path.join(install_path, safe_name)
 
             # For update-mode queuing: find the old installed file path from gl.update_items
             # so retention can be applied even when old and new filenames differ.
@@ -1048,12 +1058,15 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
                 except Exception as e:
                     print(f"Failed to extract {item['model_filename']} with error: {e}")
             if not gl.cancel_status:
+                _item_content_type = ((item.get('model_json') or {}).get('items') or [{}])[0].get('type', '')
+                _is_wildcard_dl = _item_content_type == 'Wildcards'
                 if item['create_json']:
                     _file.save_model_info(effective_install_path, item['model_filename'], item['sub_folder'], item['model_sha256'], item['preview_html'], api_response=item['model_json'])
                 info_to_json(path_to_new_file, item['model_id'], item['model_sha256'], unpackList)
-                _file.save_preview(path_to_new_file, item['model_json'], True, item['model_sha256'])
-                if save_all_images:
-                    _file.save_images(item['preview_html'], item['model_filename'], effective_install_path, item['sub_folder'], api_response=item['model_json'])
+                if not _is_wildcard_dl:
+                    _file.save_preview(path_to_new_file, item['model_json'], True, item['model_sha256'])
+                    if save_all_images:
+                        _file.save_images(item['preview_html'], item['model_filename'], effective_install_path, item['sub_folder'], api_response=item['model_json'])
 
                 # Retention policy for updates where old and new filenames differ.
                 # (Same-filename case is already handled inside download_file via handle_existing_model_file.)

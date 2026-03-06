@@ -2025,6 +2025,26 @@ def on_ui_settings():
             category_id=cat_id
         ).info('When disabled, unrecognized models will be placed in the root folder')
     )
+
+    shared.opts.add_option(
+        'civitai_neo_wildcard_own_folder',
+        shared.OptionInfo(
+            default=True,
+            label='Create a subfolder per wildcard download',
+            section=organization,
+            category_id=cat_id
+        ).info('Places each downloaded wildcard in its own subfolder (e.g. wildcards/emotion-pack/emotion-pack.txt). Compatible with sd-dynamic-prompts __subfolder/name__ syntax.')
+    )
+
+    shared.opts.add_option(
+        'civitai_neo_wildcard_organize_by_base',
+        shared.OptionInfo(
+            default=False,
+            label='Organize wildcards by base model (SDXL/, Pony/, etc.)',
+            section=organization,
+            category_id=cat_id
+        ).info('When enabled, wildcards are also sorted into base model subfolders like Checkpoints and LORAs. Most wildcards are architecture-agnostic, so this is OFF by default.')
+    )
     
     shared.opts.add_option(
         'civitai_neo_debug_organize',
