@@ -34,9 +34,10 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ## 🆕 What's New
 
-### v0.7.x — Wildcard Download Improvements
+### v0.7.1 — Wildcard Download Improvements
 
 - **Wildcards get their own subfolder** — each wildcard pack downloads into `wildcards/<model-name>/` by default, making it compatible with sd-dynamic-prompts `__subfolder/name__` syntax
+- **Flat zip extraction for wildcards** — files inside the zip are placed directly in the target folder with no internal folder structure, preventing double-nesting
 - **No preview images for wildcards** — `save_preview` and `save_images` are skipped for Wildcards (no useful location for them)
 - **Configurable base-model split for wildcards** — new setting `Organize wildcards by base model` (off by default, since most wildcards are architecture-agnostic)
 
@@ -53,6 +54,12 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 ---
 
 ## 📖 Changelog
+
+### v0.7.1 — Wildcard Download Improvements
+- Own subfolder per wildcard download (sd-dynamic-prompts compatible)
+- Flat zip extraction — no double-nesting when the zip has internal folders
+- Skip preview/gallery images for Wildcards
+- New settings: `wildcard_own_folder` (ON by default), `wildcard_organize_by_base` (OFF by default)
 
 ### v0.6.3 — Download Reliability
 - **File integrity check** — every download is verified against CivitAI's expected hash after completing; corrupted or incomplete files are detected and removed automatically
@@ -123,7 +130,13 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ## 🗺️ Roadmap
 
-### v0.7.0 — Forge Neo Compatibility *(current)*
+### v0.7.1 — Wildcard Download Improvements *(current)*
+- Wildcards get their own subfolder per download (compatible with sd-dynamic-prompts)
+- Flat zip extraction for wildcards — no double-nesting
+- Skip preview/images for wildcards
+- New settings: `wildcard_own_folder` (ON) and `wildcard_organize_by_base` (OFF)
+
+### v0.7.0 — Forge Neo Compatibility
 - Smart version selection matching the active base model filter ✅
 - Session restore crash fix ✅
 - Forge Neo folder layout compatibility (embeddings, upscalers) ✅
