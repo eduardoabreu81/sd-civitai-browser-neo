@@ -300,7 +300,9 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
 
             # Check if auto-organization is enabled
             auto_organize = getattr(opts, 'civitai_neo_auto_organize', False)
-            is_wildcard = content_type == 'Wildcards'
+            # Detect wildcards by content_type OR by resolved folder path (double protection
+            # in case content_type is None or uses an unexpected casing/variant)
+            is_wildcard = (content_type == 'Wildcards') or ('wildcard' in str(model_folder).lower())
             wildcard_by_base = getattr(opts, 'civitai_neo_wildcard_organize_by_base', False)
             from_batch = True  # default: treat as batch (no manual subfolder)
 
