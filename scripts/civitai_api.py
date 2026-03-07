@@ -1694,8 +1694,12 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
 
         # Check if auto-organization is enabled
         auto_organize = getattr(opts, 'civitai_neo_auto_organize', False)
-        
-        if auto_organize and output_basemodel and folder_location == 'None':
+        # Detect wildcards by content_type OR by resolved folder path (double protection
+        # in case content_type is None or uses an unexpected casing/variant)
+        _is_wildcard_path = (content_type == 'Wildcards') or ('wildcard' in str(model_folder).lower())
+        _wildcard_by_base = getattr(opts, 'civitai_neo_wildcard_organize_by_base', False)
+
+        if auto_organize and output_basemodel and folder_location == 'None' and (not _is_wildcard_path or _wildcard_by_base):
             # Use auto-organization: determine folder from baseModel
             from scripts.civitai_file_manage import normalize_base_model
             base_folder = normalize_base_model(output_basemodel)
