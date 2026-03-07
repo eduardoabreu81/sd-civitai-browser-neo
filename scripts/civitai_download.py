@@ -341,6 +341,7 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
             # compatible with sd-dynamic-prompts __subfolder/name__ syntax
             if is_wildcard and getattr(opts, 'civitai_neo_wildcard_own_folder', True):
                 safe_name = re.sub(r'[<>:"/\\|?*]', '', model_name).strip()
+                safe_name = re.sub(r'_{2,}', '_', safe_name)  # avoid __ delimiter collision with sd-dynamic-prompts
                 if safe_name:
                     install_path = os.path.join(install_path, safe_name)
 
