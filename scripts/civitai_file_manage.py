@@ -523,17 +523,18 @@ def delete_installed_by_sha256(sha256, delete_finish=None):
                         model_name = data.get('model', {}).get('name', 'Unknown Model')
                         print(f"Found model to delete: {model_name} (SHA256: {sha256_upper})")
                         
-                        # Get base filename (without extension)
-                        model_filename = data.get('file', {}).get('name', '')
-                        if not model_filename:
-                            # Try to find associated model file
-                            json_base = os.path.splitext(file)[0]
-                            model_extensions = ['.safetensors', '.ckpt', '.pt', '.pth', '.bin']
-                            for ext in model_extensions:
-                                potential_model = json_base + ext
-                                if os.path.exists(potential_model):
-                                    model_filename = os.path.basename(potential_model)
-                                    break
+                        # Find the model file that shares the same base name as this
+                        # JSON sidecar. The saved JSON has no 'file.name' key, so we
+                        # scan the directory directly using a full path (json_base is
+                        # just a filename — joining with root is required for exists()).
+                        json_base = os.path.splitext(file)[0]
+                        model_extensions = ['.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.zip', '.vae', '.th']
+                        model_filename = ''
+                        for ext in model_extensions:
+                            candidate = os.path.join(root, json_base + ext)
+                            if os.path.exists(candidate):
+                                model_filename = os.path.basename(candidate)
+                                break
                         
                         if model_filename:
                             # Delete model file
