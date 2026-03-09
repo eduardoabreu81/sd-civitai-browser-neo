@@ -34,16 +34,18 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ## 🆕 What's New
 
-### v0.7.1 — Wildcard Download Improvements
+### v0.7.2 — Bug Fixes
 
-- **Wildcards get their own subfolder** — each wildcard pack downloads into `wildcards/<model-name>/` by default, making it compatible with sd-dynamic-prompts `__subfolder/name__` syntax
-- **Flat zip extraction for wildcards** — files inside the zip are placed directly in the target folder with no internal folder structure, preventing double-nesting
-- **No preview images for wildcards** — `save_preview` and `save_images` are skipped for Wildcards (no useful location for them)
-- **Configurable base-model split for wildcards** — new setting `Organize wildcards by base model` (off by default, since most wildcards are architecture-agnostic)
+- **Wildcard folder fix** — with `Auto-Organize` ON and `Organize wildcards by base model` OFF, wildcards were still getting a base-model subfolder (e.g. `wildcards/Illustrious/`) due to a missing guard in the GUI path calculation; now correctly goes to `wildcards/` root
+- **Delete by SHA256 fix** — deleting a model from the card browser was silently failing: the file lookup used a relative path instead of the full directory path, so the model file was never found
 
 ---
 
 ## 📖 Changelog
+
+### v0.7.2 — Bug Fixes
+- Fixed wildcard base-model subfolder being applied in GUI even when `wildcard_organize_by_base` is OFF (`civitai_api.py` path calculation was missing the wildcard guard)
+- Fixed delete-by-SHA256 silently failing — `json_base` path not joined with `root`, making `os.path.exists` search in CWD instead of the model directory
 
 ### v0.7.1 — Wildcard Download Improvements
 - Own subfolder per wildcard download (sd-dynamic-prompts compatible)
@@ -122,11 +124,11 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ### v0.7.0 — Forge Neo Compatibility *(complete)* ✅
 
-### v0.7.1 — Wildcard Download Improvements *(current)*
-- Wildcards get their own subfolder per download (compatible with sd-dynamic-prompts)
-- Flat zip extraction for wildcards — no double-nesting
-- Skip preview/images for wildcards
-- New settings: `wildcard_own_folder` (ON) and `wildcard_organize_by_base` (OFF)
+### v0.7.1 — Wildcard Download Improvements *(complete)* ✅
+
+### v0.7.2 — Bug Fixes *(current)*
+- Wildcard folder no longer gets base-model subfolder when `wildcard_organize_by_base` is OFF
+- Delete from card browser now correctly finds and removes the model file
 
 ### v0.8.0 — Advanced Curation *(planned)*
 - Saved search presets
