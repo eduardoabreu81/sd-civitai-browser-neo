@@ -34,15 +34,21 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ## 🆕 What's New
 
-### v0.7.3 — Per-group Trigger Word Rows
+### v0.7.4 — Wan I2V/T2V Differentiation
 
-- **Individual copy/add buttons per trigger word group** — each group gets its own row with a 📋 copy button (clipboard with ✓ feedback) and a ➕ add-to-prompt button, mirroring the CivitAI website layout
-- **LORA activation tag row** — for LORAs, the `<lora:filename:1>` tag appears as a dedicated first row in purple/monospace
-- **"Add all to prompt"** — when multiple groups exist, a single button at the bottom joins everything at once
+- **Wan model badges now show `I2V`, `T2V` or `TI2V`** instead of a generic `Wan` label — the CivitAI API already returns distinct `baseModel` values per subtype, so each card now correctly identifies what kind of model it is
+- **Optional Wan subfolder split** — new setting *"Organize Wan models into subfolders by type"* (OFF by default): when enabled, downloads and manual organization place files in `Wan/I2V/`, `Wan/T2V/` or `Wan/TI2V/` subfolders, keeping architectures that use different resources physically separated
+- **Flux.2 badges corrected** — `Flux.2 Klein 4B/9B` and `Flux.2 D` models now show `F2` instead of incorrectly falling back to `F1`
 
 ---
 
 ## 📖 Changelog
+
+### v0.7.4 — Wan I2V/T2V Differentiation
+- Wan card badges now distinguish `I2V`, `T2V`, and `TI2V` subtypes (API already returns specific `baseModel` values)
+- New setting `civitai_neo_wan_subfolder_by_type` (OFF by default): splits Wan downloads into `Wan/I2V/`, `Wan/T2V/`, `Wan/TI2V/` subfolders
+- Fixed multi-level subfolder "already organized" check (was using `os.path.basename`, broke for `Wan/I2V` paths)
+- Fixed Flux.2 Klein 4B/9B and Flux.2 D showing `F1` badge — now correctly shows `F2`
 
 ### v0.7.3 — Per-group Trigger Word Rows
 - Each trigger word group gets its own row with individual copy and add-to-prompt buttons
@@ -135,10 +141,12 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ### v0.7.2 — Bug Fixes *(complete)* ✅
 
-### v0.7.3 — Per-group Trigger Word Rows *(current)*
-- Individual copy/add buttons per trigger word group
-- LORA activation tag as dedicated first row
-- "Add all to prompt" when multiple groups exist
+### v0.7.3 — Per-group Trigger Word Rows *(complete)* ✅
+
+### v0.7.4 — Wan I2V/T2V Differentiation *(current)*
+- Wan badges: `I2V`, `T2V`, `TI2V` per subtype
+- Optional `Wan/I2V/`, `Wan/T2V/`, `Wan/TI2V/` subfolder split
+- Flux.2 badge fix (`F2`)
 
 ### v0.8.0 — Advanced Curation *(planned)*
 - Saved search presets
