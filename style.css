@@ -1240,6 +1240,66 @@
     color: var(--button-primary-text-color-hover);
 }
 
+/* Trigger word rows — per-group rows with copy/add buttons */
+#civitai_preview_html .trigger-word-row,
+.civitai-overlay .trigger-word-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--block-border-color);
+}
+#civitai_preview_html .trigger-word-row:last-of-type,
+.civitai-overlay .trigger-word-row:last-of-type {
+    border-bottom: none;
+    margin-bottom: 8px;
+}
+#civitai_preview_html .trigger-word-text,
+.civitai-overlay .trigger-word-text {
+    font-size: 0.8rem;
+    color: var(--body-text-color);
+    word-break: break-word;
+    flex: 1;
+}
+#civitai_preview_html .lora-tag-row .trigger-word-text,
+.civitai-overlay .lora-tag-row .trigger-word-text {
+    font-family: monospace;
+    font-weight: 600;
+    color: #8b5cf6;
+}
+#civitai_preview_html .trigger-word-actions,
+.civitai-overlay .trigger-word-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+#civitai_preview_html .tw-copy-btn,
+#civitai_preview_html .tw-add-btn,
+.civitai-overlay .tw-copy-btn,
+.civitai-overlay .tw-add-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    border-radius: var(--button-small-radius);
+    border: 1px solid var(--block-border-color);
+    background: var(--block-background-fill);
+    color: var(--body-text-color);
+    transition: background 0.15s ease;
+    padding: 0;
+    line-height: 1;
+}
+#civitai_preview_html .tw-copy-btn:hover,
+#civitai_preview_html .tw-add-btn:hover,
+.civitai-overlay .tw-copy-btn:hover,
+.civitai-overlay .tw-add-btn:hover {
+    background: var(--block-border-color);
+}
+
 #civitai_preview_html .version-info-block .block-header,
 #civitai_preview_html .permissions-block .block-header,
 #civitai_preview_html .description-block .block-header {

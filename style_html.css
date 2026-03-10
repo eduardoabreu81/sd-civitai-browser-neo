@@ -262,6 +262,56 @@ body {
     border-color: #6355d8;
 }
 
+/* Trigger word rows — per-group rows with copy/add buttons */
+.trigger-word-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 5px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.trigger-word-row:last-of-type {
+    border-bottom: none;
+    margin-bottom: 8px;
+}
+.trigger-word-text {
+    font-size: 0.8rem;
+    word-break: break-word;
+    flex: 1;
+}
+.lora-tag-row .trigger-word-text {
+    font-family: monospace;
+    font-weight: 600;
+    color: #8b5cf6;
+}
+.trigger-word-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+.tw-copy-btn,
+.tw-add-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.05);
+    color: inherit;
+    transition: background 0.15s ease;
+    padding: 0;
+    line-height: 1;
+}
+.tw-copy-btn:hover,
+.tw-add-btn:hover {
+    background: rgba(255,255,255,0.15);
+}
+
 .version-info-block .block-header,
 .permissions-block .block-header,
 .description-block .block-header {

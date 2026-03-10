@@ -1562,26 +1562,54 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                     '</div>'
                 )
 
-                # Build trigger words block (if trained words exist, or it's a LORA so we can insert the activation syntax)
-                if output_training or is_LORA:
-                    safe_tags = escape(output_training).replace("'", "&#39;") if output_training else ''
-                    display_content = escape(output_training) if output_training else ''
-                    onclick_tags = safe_tags
+                # Build trigger words block — per-group rows with individual copy/add buttons
+                raw_trained_words = selected_version.get('trainedWords', [])
+                def _sanitize_tw(s):
+                    s = re.sub(r'<[^>]*:[^>]*>', '', s)
+                    s = re.sub(r', ?', ', ', s)
+                    return s.strip(', ')
+                sanitized_groups = [_sanitize_tw(g) for g in raw_trained_words if g and _sanitize_tw(g)]
+
+                if sanitized_groups or is_LORA:
+                    rows_html = ''
+                    all_onclick_parts = []
 
                     if is_LORA and model_filename:
                         lora_stem = os.path.splitext(model_filename)[0]
-                        # safe_stem_js: entities for <> so the browser decodes them to actual chars before JS runs
                         safe_stem_js = lora_stem.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace("'", '&#39;')
                         lora_tag_display = f'&lt;lora:{escape(lora_stem)}:1&gt;'
                         lora_tag_onclick = f'&lt;lora:{safe_stem_js}:1&gt;'
-                        display_content = lora_tag_display + (f', {escape(output_training)}' if output_training else '')
-                        onclick_tags = lora_tag_onclick + (f', {safe_tags}' if safe_tags else '')
+                        rows_html += (
+                            f'<div class="trigger-word-row lora-tag-row">'
+                                f'<span class="trigger-word-text">{lora_tag_display}</span>'
+                                f'<div class="trigger-word-actions">'
+                                    f'<button class="tw-copy-btn" onclick="copyTriggerWord(\'{lora_tag_onclick}\', this)" title="Copy">📋</button>'
+                                    f'<button class="tw-add-btn" onclick="sendTagsToPrompt(\'{lora_tag_onclick}\')" title="Add to prompt">➕</button>'
+                                f'</div>'
+                            f'</div>'
+                        )
+                        all_onclick_parts.append(lora_tag_onclick)
 
+                    for group in sanitized_groups:
+                        safe_group = escape(group).replace("'", '&#39;')
+                        rows_html += (
+                            f'<div class="trigger-word-row">'
+                                f'<span class="trigger-word-text">{escape(group)}</span>'
+                                f'<div class="trigger-word-actions">'
+                                    f'<button class="tw-copy-btn" onclick="copyTriggerWord(\'{safe_group}\', this)" title="Copy">📋</button>'
+                                    f'<button class="tw-add-btn" onclick="sendTagsToPrompt(\'{safe_group}\')" title="Add to prompt">➕</button>'
+                                f'</div>'
+                            f'</div>'
+                        )
+                        all_onclick_parts.append(safe_group)
+
+                    all_onclick = ', '.join(all_onclick_parts)
+                    add_all_label = '➕ Add all to prompt' if len(all_onclick_parts) > 1 else '➕ Add to prompt'
                     trained_words_section = (
                         '<div class="trained-words-block">'
                             '<h3 class="block-header">Trigger Words</h3>'
-                            f'<div class="trained-words-content">{display_content}</div>'
-                            f'<button class="add-to-prompt-btn" onclick="sendTagsToPrompt(\'{onclick_tags}\')">➕ Add to prompt</button>'
+                            f'{rows_html}'
+                            f'<button class="add-to-prompt-btn" onclick="sendTagsToPrompt(\'{all_onclick}\')">{add_all_label}</button>'
                         '</div>'
                     )
                 else:
