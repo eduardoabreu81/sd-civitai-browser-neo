@@ -2047,6 +2047,16 @@ def on_ui_settings():
     )
     
     shared.opts.add_option(
+        'civitai_neo_wan_subfolder_by_type',
+        shared.OptionInfo(
+            default=False,
+            label='Organize Wan models into subfolders by type (I2V / T2V / TI2V)',
+            section=organization,
+            category_id=cat_id
+        ).info('When enabled, Wan models are split into Wan/I2V/, Wan/T2V/, Wan/TI2V/ subfolders instead of a single Wan/ folder. Useful because I2V and T2V use different resources.')
+    )
+
+    shared.opts.add_option(
         'civitai_neo_debug_organize',
         shared.OptionInfo(
             default=False,

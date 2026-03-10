@@ -2333,6 +2333,23 @@ def normalize_base_model(base_model):
         for pattern in patterns:
             if pattern.upper() in base_model_upper:
                 _debug_log(f"MATCH! '{pattern}' found in '{base_model_upper}' → Folder: '{folder_name}'")
+
+                # Optional Wan subtype splitting (I2V / T2V / TI2V)
+                if folder_name == 'Wan' and getattr(opts, 'civitai_neo_wan_subfolder_by_type', False):
+                    bmu = base_model_upper
+                    if 'TI2V' in bmu:
+                        subfolder = 'TI2V'
+                    elif 'I2V' in bmu:
+                        subfolder = 'I2V'
+                    elif 'T2V' in bmu:
+                        subfolder = 'T2V'
+                    else:
+                        subfolder = None
+                    if subfolder:
+                        result = os.path.join('Wan', subfolder)
+                        _debug_log(f"Wan subtype split enabled → '{result}'")
+                        return result
+
                 return folder_name
     
     # No match found
@@ -2595,8 +2612,10 @@ def analyze_organization_plan(folders, progress=None):
         current_dir = os.path.dirname(file_path)
         
         # Check if already in correct subfolder
-        current_parent = os.path.basename(current_dir)
-        if current_parent == base_model_folder:
+        # Normalize both sides to handle multi-level folders like 'Wan/I2V'
+        norm_current = os.path.normpath(current_dir)
+        norm_target_suffix = os.path.normpath(base_model_folder)
+        if norm_current.endswith(os.sep + norm_target_suffix) or norm_current == norm_target_suffix:
             # Already organized
             continue
         
