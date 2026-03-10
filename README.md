@@ -34,14 +34,21 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ## 🆕 What's New
 
-### v0.7.2 — Bug Fixes
+### v0.7.3 — Per-group Trigger Word Rows
 
-- **Wildcard folder fix** — with `Auto-Organize` ON and `Organize wildcards by base model` OFF, wildcards were still getting a base-model subfolder (e.g. `wildcards/Illustrious/`) due to a missing guard in the GUI path calculation; now correctly goes to `wildcards/` root
-- **Delete by SHA256 fix** — deleting a model from the card browser was silently failing: the file lookup used a relative path instead of the full directory path, so the model file was never found
+- **Individual copy/add buttons per trigger word group** — each group gets its own row with a 📋 copy button (clipboard with ✓ feedback) and a ➕ add-to-prompt button, mirroring the CivitAI website layout
+- **LORA activation tag row** — for LORAs, the `<lora:filename:1>` tag appears as a dedicated first row in purple/monospace
+- **"Add all to prompt"** — when multiple groups exist, a single button at the bottom joins everything at once
 
 ---
 
 ## 📖 Changelog
+
+### v0.7.3 — Per-group Trigger Word Rows
+- Each trigger word group gets its own row with individual copy and add-to-prompt buttons
+- LORA tag row (`<lora:filename:1>`) shown as first entry in purple/monospace
+- Clipboard copy with ✓ visual feedback (1.5s)
+- "Add all to prompt" button when multiple groups exist
 
 ### v0.7.2 — Bug Fixes
 - Fixed wildcard base-model subfolder being applied in GUI even when `wildcard_organize_by_base` is OFF (`civitai_api.py` path calculation was missing the wildcard guard)
@@ -126,9 +133,12 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ### v0.7.1 — Wildcard Download Improvements *(complete)* ✅
 
-### v0.7.2 — Bug Fixes *(current)*
-- Wildcard folder no longer gets base-model subfolder when `wildcard_organize_by_base` is OFF
-- Delete from card browser now correctly finds and removes the model file
+### v0.7.2 — Bug Fixes *(complete)* ✅
+
+### v0.7.3 — Per-group Trigger Word Rows *(current)*
+- Individual copy/add buttons per trigger word group
+- LORA activation tag as dedicated first row
+- "Add all to prompt" when multiple groups exist
 
 ### v0.8.0 — Advanced Curation *(planned)*
 - Saved search presets
