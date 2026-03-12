@@ -104,6 +104,59 @@ def get_base_model_short(base_model: str) -> str:
             return v
     return ''
 
+# ─────────────────────────────────────────────────────────────────────────────
+# v0.8.1 — Local Trigger Words Lookup
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_local_trigger_words(content_type, model_filename, sha256_value=None):
+    """Try to load trigger words from local .json sidecar file.
+    
+    Args:
+        content_type: Model type (Checkpoint, Lora, etc.)
+        model_filename: The model file name (e.g. "my_model.safetensors")
+        sha256_value: Optional SHA256 hash (for future use in file search)
+    
+    Returns:
+        List of trigger words, or None if file not found or no 'activation text' field
+    """
+    try:
+        if not content_type or not model_filename:
+            return None
+
+        model_folder = contenttype_folder(content_type)
+        if not model_folder:
+            return None
+
+        model_folder = Path(model_folder)
+        name_stem = Path(model_filename).stem
+        candidate_names = [f'{name_stem}.json', f'{model_filename}.json']
+
+        # Fast path: direct files in root folder
+        for candidate in candidate_names:
+            direct = model_folder / candidate
+            if direct.exists():
+                data = safe_json_load(str(direct))
+                if data and data.get('activation text'):
+                    text = data.get('activation text', '')
+                    return [t.strip() for t in re.split(r'[,;\n\r]+', text) if t.strip()]
+
+        # Fallback: recursive search for nested organization paths (e.g. Wan/I2V)
+        for candidate in candidate_names:
+            matches = list(model_folder.rglob(candidate))
+            if not matches:
+                continue
+            # Prefer shortest path first (usually closest to root / primary install path)
+            matches.sort(key=lambda p: len(str(p)))
+            for json_file in matches:
+                data = safe_json_load(str(json_file))
+                if data and data.get('activation text'):
+                    text = data.get('activation text', '')
+                    return [t.strip() for t in re.split(r'[,;\n\r]+', text) if t.strip()]
+
+        return None
+    except Exception:
+        return None
+
 STATUS_BADGE_DAYS = 14  # days window for "New" / "Updated" badges
 
 def get_status_badge_type(item) -> str:
@@ -1575,7 +1628,17 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                 )
 
                 # Build trigger words block — per-group rows with individual copy/add buttons
-                raw_trained_words = selected_version.get('trainedWords', [])
+                # v0.8.1: Try to load local consolidated trigger words from .json first, fallback to API
+                local_trigger_words = None
+                if model_filename and content_type:
+                    local_trigger_words = get_local_trigger_words(content_type, model_filename, sha256_value)
+                
+                # Use local consolidated words if available, otherwise fall back to API
+                if local_trigger_words is not None:
+                    raw_trained_words = local_trigger_words
+                else:
+                    raw_trained_words = selected_version.get('trainedWords', [])
+                
                 def _sanitize_tw(s):
                     s = re.sub(r'<[^>]*:[^>]*>', '', s)
                     s = re.sub(r', ?', ', ', s)
