@@ -143,10 +143,7 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ### v0.7.3 — Per-group Trigger Word Rows *(complete)* ✅
 
-### v0.7.4 — Wan I2V/T2V Differentiation *(current)*
-- Wan badges: `I2V`, `T2V`, `TI2V` per subtype
-- Optional `Wan/I2V/`, `Wan/T2V/`, `Wan/TI2V/` subfolder split
-- Flux.2 badge fix (`F2`)
+### v0.7.4 — Wan I2V/T2V Differentiation *(complete)* ✅
 
 ### v0.8.0 — Advanced Curation *(planned)*
 - Saved search presets
