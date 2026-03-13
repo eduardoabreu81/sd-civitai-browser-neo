@@ -2111,6 +2111,14 @@ def request_civit_api(api_url=None, skip_error_check=False):
             if e.response.status_code == 404:
                 print(f"Model version not found (404): {api_url}")
                 return 'not_found'
+            
+            if e.response.status_code in [500, 502, 503, 504]:
+                if attempt < max_attempts:
+                    wait_time = base_backoff_seconds * (2 ** (attempt - 1))
+                    print(f"[CivitAI Browser Neo] - HTTP {e.response.status_code} Error (attempt {attempt}/{max_attempts}). Retrying in {wait_time}s...")
+                    time.sleep(wait_time)
+                    continue
+            
             print(f"HTTP Error {e.response.status_code}: {e}")
             return 'error'
 
