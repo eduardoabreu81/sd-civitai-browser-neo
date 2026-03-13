@@ -34,15 +34,21 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ## 🆕 What's New
 
-### v0.8.0 — Trigger Word Consolidation
+### v0.8.1 — Trigger Word Group Preservation & API Resilience
 
-- **Unified trigger words from 3 sources** — model metadata now consolidates trigger words from `.safetensors` metadata, local `.json` (`activation text`), and CivitAI API `trainedWords`
-- **Deduplicated and order-preserving merge** — repeated trigger words across sources are merged case-insensitively while preserving first-seen order
-- **Local-first display in model info** — trigger words shown in the panel now prioritize local consolidated cache and fall back to API when local data is missing
+- **Trigger word group formats preserved** — processing large updates no longer flattens the grouping layout from CivitAI API for trigger words.
+- **Improved API resilience** — bulk tag updates now apply exponential backoff retries when random server errors are encountered (HTTP 500, 502, 503, 504), reducing incomplete local indexes.
+- **Button layout updated** — model panel 'Copy' and 'Add to prompt' buttons for trigger words moved to the left for better usability.
 
 ---
 
 ## 📖 Changelog
+
+### v0.8.1 — Trigger Word Bugfixes & Resilience
+- Fixed an issue where the local trigger word fallback process ignored API groups and flattened words into single lines.
+- Fixed an issue where "Update model info & tags" didn't safely persist incoming `trainedWords` groups natively to the local cache.
+- Added exponential backoff retry mechanism to API calls returning temporary 50x server errors, saving "Update models" loops from failing silently on affected files.
+- Moved trigger word row buttons (📋 / ➕) to the left side of the text in the preview panel.
 
 ### v0.8.0 — Trigger Word Consolidation
 - Consolidated trigger words from `.safetensors` metadata, local `.json` `activation text`, and API `trainedWords`
@@ -151,6 +157,8 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 ### v0.7.4 — Wan I2V/T2V Differentiation *(complete)* ✅
 
 ### v0.8.0 — Trigger Word Consolidation *(complete)* ✅
+
+### v0.8.1 — Trigger Word Bugfixes & Resilience *(complete)* ✅
 
 ### v0.9.0 — Advanced Curation *(planned)*
 - Saved search presets
