@@ -34,15 +34,20 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ## 🆕 What's New
 
-### v0.7.4 — Wan I2V/T2V Differentiation
+### v0.8.0 — Trigger Word Consolidation
 
-- **Wan model badges now show `I2V`, `T2V` or `TI2V`** instead of a generic `Wan` label — the CivitAI API already returns distinct `baseModel` values per subtype, so each card now correctly identifies what kind of model it is
-- **Optional Wan subfolder split** — new setting *"Organize Wan models into subfolders by type"* (OFF by default): when enabled, downloads and manual organization place files in `Wan/I2V/`, `Wan/T2V/` or `Wan/TI2V/` subfolders, keeping architectures that use different resources physically separated
-- **Flux.2 badges corrected** — `Flux.2 Klein 4B/9B` and `Flux.2 D` models now show `F2` instead of incorrectly falling back to `F1`
+- **Unified trigger words from 3 sources** — model metadata now consolidates trigger words from `.safetensors` metadata, local `.json` (`activation text`), and CivitAI API `trainedWords`
+- **Deduplicated and order-preserving merge** — repeated trigger words across sources are merged case-insensitively while preserving first-seen order
+- **Local-first display in model info** — trigger words shown in the panel now prioritize local consolidated cache and fall back to API when local data is missing
 
 ---
 
 ## 📖 Changelog
+
+### v0.8.0 — Trigger Word Consolidation
+- Consolidated trigger words from `.safetensors` metadata, local `.json` `activation text`, and API `trainedWords`
+- Added case-insensitive deduplication while preserving original order
+- Model info now uses local consolidated trigger words first, with API fallback when local cache is unavailable
 
 ### v0.7.4 — Wan I2V/T2V Differentiation
 - Wan card badges now distinguish `I2V`, `T2V`, and `TI2V` subtypes (API already returns specific `baseModel` values)
@@ -145,7 +150,9 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ### v0.7.4 — Wan I2V/T2V Differentiation *(complete)* ✅
 
-### v0.8.0 — Advanced Curation *(planned)*
+### v0.8.0 — Trigger Word Consolidation *(complete)* ✅
+
+### v0.9.0 — Advanced Curation *(planned)*
 - Saved search presets
 - Favorites in creator/user search
 - Additional browser quality-of-life improvements
