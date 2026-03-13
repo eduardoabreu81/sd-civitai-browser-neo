@@ -1683,11 +1683,11 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                         lora_tag_onclick = f'&lt;lora:{safe_stem_js}:1&gt;'
                         rows_html += (
                             f'<div class="trigger-word-row lora-tag-row">'
-                                f'<span class="trigger-word-text">{lora_tag_display}</span>'
                                 f'<div class="trigger-word-actions">'
                                     f'<button class="tw-copy-btn" onclick="copyTriggerWord(\'{lora_tag_onclick}\', this)" title="Copy">📋</button>'
                                     f'<button class="tw-add-btn" onclick="sendTagsToPrompt(\'{lora_tag_onclick}\')" title="Add to prompt">➕</button>'
                                 f'</div>'
+                                f'<span class="trigger-word-text">{lora_tag_display}</span>'
                             f'</div>'
                         )
                         all_onclick_parts.append(lora_tag_onclick)
@@ -1696,11 +1696,11 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                         safe_group = escape(group).replace("'", '&#39;')
                         rows_html += (
                             f'<div class="trigger-word-row">'
-                                f'<span class="trigger-word-text">{escape(group)}</span>'
                                 f'<div class="trigger-word-actions">'
                                     f'<button class="tw-copy-btn" onclick="copyTriggerWord(\'{safe_group}\', this)" title="Copy">📋</button>'
                                     f'<button class="tw-add-btn" onclick="sendTagsToPrompt(\'{safe_group}\')" title="Add to prompt">➕</button>'
                                 f'</div>'
+                                f'<span class="trigger-word-text">{escape(group)}</span>'
                             f'</div>'
                         )
                         all_onclick_parts.append(safe_group)
