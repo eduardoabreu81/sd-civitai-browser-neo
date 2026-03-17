@@ -1023,19 +1023,6 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
             gl.download_fail = True
             if progress is not None:
                 progress(0, desc=f"Integrity check failed for '{item['model_filename']}' — file may be corrupted.")
-        else:
-            # Pre-populate Forge's SHA256 cache so the model loads instantly without recalculation
-            try:
-                from modules import hashes as _hashes
-                _h = _hashes.cache("hashes")
-                _h[path_to_new_file] = {
-                    "mtime": os.path.getmtime(path_to_new_file),
-                    "sha256": actual_sha256.lower()
-                }
-                _hashes.dump_cache()
-                debug_print(f"[SHA256 cache] Pre-cached for '{item['model_filename']}' — Forge will skip hash calculation on first load.")
-            except Exception as _e:
-                debug_print(f"[SHA256 cache] Could not pre-populate Forge hash cache: {_e}")
 
     # Only save metadata / run post-processing when the download actually succeeded.
     # The previous condition `or gl.download_fail` was a logic error: truthy fail values
@@ -1084,6 +1071,18 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
                 if item['create_json']:
                     _file.save_model_info(effective_install_path, item['model_filename'], item['sub_folder'], item['model_sha256'], item['preview_html'], api_response=item['model_json'])
                 info_to_json(path_to_new_file, item['model_id'], item['model_sha256'], unpackList)
+
+                if _item_content_type == 'Checkpoint' and os.path.exists(path_to_new_file):
+                    sidecar_path = os.path.splitext(path_to_new_file)[0] + '.json'
+                    sidecar_data = _api.safe_json_load(sidecar_path) if os.path.exists(sidecar_path) else {}
+                    sidecar_data = sidecar_data if isinstance(sidecar_data, dict) else {}
+                    _file.sync_checkpoint_sha256_on_download(
+                        path_to_new_file,
+                        sidecar_data.get('sha256') or item.get('model_sha256'),
+                        model_id=sidecar_data.get('modelId') or item.get('model_id'),
+                        model_version_id=sidecar_data.get('modelVersionId')
+                    )
+
                 if not _is_wildcard_dl:
                     _file.save_preview(path_to_new_file, item['model_json'], True, item['model_sha256'])
                     if save_all_images:

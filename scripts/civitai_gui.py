@@ -393,6 +393,11 @@ def on_ui_tabs():
                 cancel_all_tags = gr.Button(value='Cancel updating model info & tags', interactive=False, visible=False)
             with gr.Row():
                 tag_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+
+            with gr.Row():
+                sync_sha256_cache = gr.Button(value='🔄 Sync checkpoint SHA256 cache', interactive=True, visible=True)
+            with gr.Row():
+                sync_sha256_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
             
             gr.Markdown('---')
             gr.Markdown('### 🖼️ Update Model Previews')
@@ -1319,6 +1324,11 @@ def on_ui_tabs():
                 organize_models,
                 tag_progress
             ]
+        )
+
+        sync_sha256_cache.click(
+            fn=_file.sync_checkpoint_sha256_cache,
+            outputs=[sync_sha256_progress]
         )
 
         tag_start.change(

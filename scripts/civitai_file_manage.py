@@ -59,6 +59,7 @@ def _format_size(size_bytes: int) -> str:
 # Pattern from SignalFlagZ/sd-webui-civbrowser
 # ─────────────────────────────────────────────────────────────────────────────
 _EXT_ROOT = Path(__file__).resolve().parents[1]
+_CHECKPOINT_HASH_DB_PATH = _EXT_ROOT / 'lib' / 'models' / 'checkpoint_hashes.json'
 
 class UserInfo:
     """Persistent comma-separated list of creator usernames stored in a .txt file."""
@@ -856,6 +857,224 @@ def gen_sha256(file_path):
     _api.safe_json_save(json_file, data)
 
     return hash_value
+
+
+def _normalize_sha256(sha256_value):
+    if not sha256_value:
+        return None
+    sha = str(sha256_value).strip().lower()
+    if len(sha) != 64:
+        return None
+    if not re.fullmatch(r'[0-9a-f]{64}', sha):
+        return None
+    return sha
+
+
+def _load_checkpoint_hash_db():
+    data = _api.safe_json_load(_CHECKPOINT_HASH_DB_PATH)
+    if not isinstance(data, dict):
+        return {'version': 1, 'checkpoints': {}}
+
+    checkpoints = data.get('checkpoints', {})
+    if not isinstance(checkpoints, dict):
+        checkpoints = {}
+
+    return {
+        'version': 1,
+        'checkpoints': checkpoints
+    }
+
+
+def _save_checkpoint_hash_db(db_data):
+    os.makedirs(_CHECKPOINT_HASH_DB_PATH.parent, exist_ok=True)
+    _api.safe_json_save(_CHECKPOINT_HASH_DB_PATH, db_data)
+
+
+def _is_checkpoint_file(file_path):
+    ext = os.path.splitext(file_path)[1].lower()
+    return ext in ('.safetensors', '.ckpt')
+
+
+def _checkpoint_cache_key(file_path):
+    checkpoint_root = _api.contenttype_folder('Checkpoint')
+    relative = os.path.basename(file_path)
+
+    if checkpoint_root:
+        try:
+            relative = os.path.relpath(file_path, checkpoint_root)
+        except Exception:
+            relative = os.path.basename(file_path)
+
+    relative = relative.replace('\\', '/')
+    return f'checkpoint/{relative}'
+
+
+def _upsert_forge_hash_cache(file_path, sha256_value, add_only=True):
+    cache_key = _checkpoint_cache_key(file_path)
+    normalized_sha = _normalize_sha256(sha256_value)
+    if not normalized_sha:
+        return False, cache_key
+
+    try:
+        from modules import hashes as _hashes
+        cache_store = _hashes.cache('hashes')
+        existing = cache_store.get(cache_key)
+
+        if add_only and existing:
+            return False, cache_key
+
+        cache_store[cache_key] = {
+            'mtime': os.path.getmtime(file_path),
+            'sha256': normalized_sha
+        }
+        _hashes.dump_cache()
+        return True, cache_key
+    except Exception as e:
+        debug_print(f"[SHA256 sync] Failed to update Forge hash cache for '{file_path}': {e}")
+        return False, cache_key
+
+
+def _cleanup_deleted_checkpoints(db_data, existing_paths):
+    removed_count = 0
+    removed_cache_count = 0
+    existing_set = set(existing_paths)
+
+    try:
+        from modules import hashes as _hashes
+        cache_store = _hashes.cache('hashes')
+    except Exception:
+        cache_store = None
+        _hashes = None
+
+    checkpoints = db_data.get('checkpoints', {})
+    for tracked_path in list(checkpoints.keys()):
+        if tracked_path in existing_set:
+            continue
+
+        removed_count += 1
+        entry = checkpoints.pop(tracked_path, {})
+        cache_key = entry.get('cache_key')
+
+        if cache_store is not None and cache_key and cache_key in cache_store:
+            try:
+                del cache_store[cache_key]
+                removed_cache_count += 1
+            except Exception:
+                pass
+
+    if removed_cache_count > 0 and _hashes is not None:
+        try:
+            _hashes.dump_cache()
+        except Exception:
+            pass
+
+    return removed_count, removed_cache_count
+
+
+def sync_checkpoint_sha256_on_download(file_path, sha256_value, model_id=None, model_version_id=None):
+    if not file_path or not os.path.exists(file_path) or not _is_checkpoint_file(file_path):
+        return
+
+    normalized_sha = _normalize_sha256(sha256_value)
+    if not normalized_sha:
+        return
+
+    abs_path = os.path.abspath(file_path)
+    db_data = _load_checkpoint_hash_db()
+    was_added, cache_key = _upsert_forge_hash_cache(abs_path, normalized_sha, add_only=False)
+
+    db_data['checkpoints'][abs_path] = {
+        'sha256': normalized_sha,
+        'mtime': os.path.getmtime(abs_path),
+        'modelId': model_id,
+        'modelVersionId': model_version_id,
+        'cache_key': cache_key,
+        'synced_to_forge': True,
+        'last_synced': int(time.time())
+    }
+    _save_checkpoint_hash_db(db_data)
+
+    if was_added:
+        debug_print(f"[SHA256 sync] Updated Forge cache for checkpoint: {os.path.basename(abs_path)}")
+
+
+def sync_checkpoint_sha256_cache(progress=gr.Progress() if queue else None):
+    checkpoint_root = _api.contenttype_folder('Checkpoint')
+    if not checkpoint_root or not os.path.exists(checkpoint_root):
+        return gr.update(value='<div style="color: var(--error-text-color);">Checkpoint folder not found.</div>')
+
+    checkpoint_files = []
+    for root, _, files in os.walk(checkpoint_root, followlinks=True):
+        for file_name in files:
+            file_path = os.path.join(root, file_name)
+            if _is_checkpoint_file(file_path):
+                checkpoint_files.append(os.path.abspath(file_path))
+
+    if not checkpoint_files:
+        return gr.update(value='<div style="color: var(--warning-text-color);">No checkpoints found to sync.</div>')
+
+    checkpoint_files = sorted(list(set(checkpoint_files)))
+    db_data = _load_checkpoint_hash_db()
+
+    removed_entries, removed_cache_entries = _cleanup_deleted_checkpoints(db_data, checkpoint_files)
+
+    added_count = 0
+    skipped_existing = 0
+    missing_sha = 0
+    failed_count = 0
+    total_files = len(checkpoint_files)
+
+    for idx, file_path in enumerate(checkpoint_files, start=1):
+        if progress is not None:
+            progress(idx / total_files, desc=f"Syncing checkpoint hashes... {idx}/{total_files}")
+
+        sidecar_path = os.path.splitext(file_path)[0] + '.json'
+        sidecar = _api.safe_json_load(sidecar_path) if os.path.exists(sidecar_path) else {}
+        sidecar = sidecar if isinstance(sidecar, dict) else {}
+
+        sha_from_json = _normalize_sha256(sidecar.get('sha256'))
+        if not sha_from_json:
+            missing_sha += 1
+            continue
+
+        was_added, cache_key = _upsert_forge_hash_cache(file_path, sha_from_json, add_only=True)
+        if was_added:
+            added_count += 1
+        else:
+            skipped_existing += 1
+
+        if not cache_key:
+            failed_count += 1
+            continue
+
+        db_data['checkpoints'][file_path] = {
+            'sha256': sha_from_json,
+            'mtime': os.path.getmtime(file_path),
+            'modelId': sidecar.get('modelId'),
+            'modelVersionId': sidecar.get('modelVersionId'),
+            'cache_key': cache_key,
+            'synced_to_forge': True,
+            'last_synced': int(time.time())
+        }
+
+    _save_checkpoint_hash_db(db_data)
+
+    summary = (
+        '<div style="line-height: 1.5; padding: 8px 0;">'
+        f'<strong>SHA256 cache sync complete.</strong><br>'
+        f'Checkpoints scanned: {total_files}<br>'
+        f'Added to Forge cache: {added_count}<br>'
+        f'Already in Forge cache: {skipped_existing}<br>'
+        f'Missing SHA256 in sidecar: {missing_sha}<br>'
+        f'Removed missing files from local DB: {removed_entries}<br>'
+        f'Removed stale Forge cache entries: {removed_cache_entries}'
+    )
+
+    if failed_count > 0:
+        summary += f'<br>Failed entries: {failed_count}'
+
+    summary += '</div>'
+    return gr.update(value=summary)
 
 def convert_local_images(html):
     soup = BeautifulSoup(html)
