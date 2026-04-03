@@ -39,6 +39,7 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 - **Installed version is now prioritized in Browser version selector** — when a model has any installed version, it becomes the default selected version in the panel, even if newer updates exist.
 - **Delete button consistency for outdated models** — delete actions remain available through the installed-version-first selection behavior.
 - **Multi-version delete failsafe** — quick delete from cards is blocked when more than one installed version exists for the same model; the UI prompts you to select the exact installed version in the Browser panel before deleting.
+- **Hybrid local loading fallback** — installed-model Browser loading still uses CivitAI data when available, but files that cannot be matched on CivitAI are now kept visible as local-only cards instead of being silently dropped.
 
 ### v0.8.2 — Checkpoint SHA256 Cache Sync
 
@@ -59,6 +60,7 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 - Browser version dropdown now defaults to an installed version whenever one exists, even when updates are available.
 - This preserves delete action availability for models that are installed but outdated.
 - Added a delete failsafe for card quick delete: if multiple installed versions exist, quick delete is canceled and the user is instructed to pick the exact installed version in the Browser panel before deleting.
+- Installed-model Browser loading now keeps unmatched files visible as local-only entries while still using API data for matched models.
 
 ### v0.8.1 — Trigger Word Bugfixes & Resilience
 - Fixed an issue where the local trigger word fallback process ignored API groups and flattened words into single lines.

@@ -1009,8 +1009,21 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
     else:
         api_url = gl.url_list.get(current_page)
         gl.from_update_tab = True
-        if api_url and not api_url.startswith('sha256_search_'):
+        if api_url and api_url.startswith('local_only://'):
+            gl.json_data = {'items': [], 'metadata': {}}
+        elif api_url and not api_url.startswith('sha256_search_'):
             gl.json_data = request_civit_api(api_url)
+
+        fallback_items = getattr(gl, 'local_browser_fallback_items', [])
+        if isinstance(gl.json_data, dict) and fallback_items and current_page == 1:
+            existing_ids = {item.get('id') for item in gl.json_data.get('items', [])}
+            merged_items = list(gl.json_data.get('items', []))
+            for fallback_item in fallback_items:
+                if fallback_item.get('id') not in existing_ids:
+                    merged_items.append(fallback_item)
+            gl.json_data['items'] = merged_items
+            if 'metadata' not in gl.json_data or not isinstance(gl.json_data['metadata'], dict):
+                gl.json_data['metadata'] = {}
 
     max_page = 1
     model_list = []
@@ -1307,6 +1320,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
         version_id = None
         for item in api_data['items']:
             if int(item['id']) == int(model_id):
+                is_local_only = bool(item.get('local_only'))
                 content_type = item['type']
                 if content_type == 'LORA':
                     is_LORA = True
@@ -1409,10 +1423,13 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                                 model_folder = os.path.join(contenttype_folder('TextualInversion'))
 
                 model_url = selected_version.get('downloadUrl', '')
-                model_main_url = f"https://civitai.com/models/{item['id']}"
+                model_main_url = f"https://civitai.com/models/{item['id']}" if not is_local_only else ''
 
-                url = f"https://civitai.com/api/v1/model-versions/{selected_version['id']}"
-                api_version = request_civit_api(url)
+                if is_local_only:
+                    api_version = {'images': []}
+                else:
+                    url = f"https://civitai.com/api/v1/model-versions/{selected_version['id']}"
+                    api_version = request_civit_api(url)
 
                 ## === ANXETY EDITs ===
                 # --- HTML Generation ---
@@ -1581,12 +1598,20 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                 )
 
                 # Build header block
-                model_page = (
-                    '<div class="model-page-line">'
-                        '<span class="page-label">Model Page:</span>'
-                        f'<a href={model_main_url}?modelVersionId={selected_version["id"]} target="_blank">{escape(str(model_name))}</a>'
-                    '</div>'
-                )
+                if is_local_only:
+                    model_page = (
+                        '<div class="model-page-line">'
+                            '<span class="page-label">Model Source:</span>'
+                            f'<span>{escape(str(model_name))} (Local file only)</span>'
+                        '</div>'
+                    )
+                else:
+                    model_page = (
+                        '<div class="model-page-line">'
+                            '<span class="page-label">Model Page:</span>'
+                            f'<a href={model_main_url}?modelVersionId={selected_version["id"]} target="_blank">{escape(str(model_name))}</a>'
+                        '</div>'
+                    )
 
                 if not creator or model_uploader == 'User not found':
                     uploader_page = (

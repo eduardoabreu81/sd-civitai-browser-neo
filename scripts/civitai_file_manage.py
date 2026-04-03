@@ -820,6 +820,92 @@ def list_files(folders):
     model_files = sorted(list(set(model_files)))
     return model_files
 
+
+def _detect_content_type_from_path(file_path):
+    upscaler_folders = [
+        _api.contenttype_folder('Upscaler', 'SwinIR'),
+        _api.contenttype_folder('Upscaler', 'RealESRGAN'),
+        _api.contenttype_folder('Upscaler', 'GFPGAN'),
+        _api.contenttype_folder('Upscaler', 'BSRGAN'),
+        _api.contenttype_folder('Upscaler', 'ESRGAN')
+    ]
+    for folder in upscaler_folders:
+        if folder and file_path.startswith(folder):
+            return 'Upscaler'
+
+    content_types = [
+        'Checkpoint', 'TextualInversion', 'LORA', 'Poses', 'Controlnet', 'Detection',
+        'VAE', 'Wildcards', 'AestheticGradient', 'MotionModule', 'Workflows', 'Other'
+    ]
+    for content_type in content_types:
+        folder = _api.contenttype_folder(content_type)
+        if folder and file_path.startswith(folder):
+            return content_type
+
+    return 'Other'
+
+
+def _build_local_fallback_browser_item(file_path):
+    file_name = os.path.basename(file_path)
+    model_name = os.path.splitext(file_name)[0]
+    content_type = _detect_content_type_from_path(file_path)
+    local_id = -(abs(hash(os.path.abspath(file_path))) % 2000000000 + 1)
+
+    file_sha = ''
+    json_file = os.path.splitext(file_path)[0] + '.json'
+    if os.path.exists(json_file):
+        data = _api.safe_json_load(json_file)
+        if data:
+            file_sha = str(data.get('sha256') or '').upper().strip()
+
+    if not file_sha:
+        try:
+            file_sha = str(gen_sha256(file_path) or '').upper().strip()
+        except Exception:
+            file_sha = ''
+
+    try:
+        size_kb = max(1, int(os.path.getsize(file_path) / 1024))
+        mtime = os.path.getmtime(file_path)
+    except Exception:
+        size_kb = 1
+        mtime = time.time()
+
+    published_at = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime(mtime))
+
+    return {
+        'id': local_id,
+        'name': model_name,
+        'type': content_type,
+        'description': 'Local file without CivitAI match',
+        'creator': {'username': 'Local Library', 'image': 'https://rawcdn.githack.com/gist/BlafKing/8d3f7a19e3f72cfddab46ae835037ee6/raw/296e81afbdd268200278beef478f3018b15936de/profile_placeholder.svg'},
+        'tags': ['local-only'],
+        'allowNoCredit': False,
+        'allowCommercialUse': [],
+        'allowDerivatives': False,
+        'allowDifferentLicense': False,
+        'local_only': True,
+        'local_file_path': file_path,
+        'modelVersions': [{
+            'id': local_id,
+            'name': 'Local file',
+            'baseModel': 'Local',
+            'publishedAt': published_at,
+            'availability': 'Unknown',
+            'trainedWords': [],
+            'images': [],
+            'downloadUrl': '',
+            'files': [{
+                'name': file_name,
+                'sizeKB': size_kb,
+                'downloadUrl': '',
+                'hashes': {'SHA256': file_sha},
+                'metadata': {'size': 'Unknown', 'format': 'SafeTensor', 'fp': 'Unknown'},
+                'primary': True
+            }]
+        }]
+    }
+
 def gen_sha256(file_path):
     json_file = os.path.splitext(file_path)[0] + '.json'
 
@@ -2184,6 +2270,7 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
     all_model_ids = []
     file_paths = []
     all_ids = []
+    local_fallback_items = []
 
     for file_path in files:
         if gl.cancel_status:
@@ -2205,19 +2292,25 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
             print('The CivitAI servers did not respond, unable to retrieve Model ID')
         elif model_id == 'Model not found':
             debug_print(f"model: '{file_name}' not found on CivitAI servers.")
+            if from_installed:
+                local_fallback_items.append(_build_local_fallback_browser_item(file_path))
         elif model_id != None:
             all_model_ids.append(f"&ids={model_id}")
             all_ids.append(model_id)
             file_paths.append(file_path)
         elif not model_id:
             print(f"model ID not found for: '{file_name}'")
+            if from_installed:
+                local_fallback_items.append(_build_local_fallback_browser_item(file_path))
         files_done += 1
+
+    gl.local_browser_fallback_items = local_fallback_items
 
     all_items = []
 
     all_model_ids = list(set(all_model_ids))
 
-    if not all_model_ids:
+    if not all_model_ids and not local_fallback_items:
         progress(1, desc='No model IDs could be retrieved.')
         print("Could not retrieve any Model IDs, please make sure to turn on the 'One-Time Hash Generation for externally downloaded models.' option if you haven't already.")
         no_update = True
@@ -2328,10 +2421,12 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
                 gr.update(value=number)
             )
 
-    model_chunks = list(chunks(all_model_ids, tile_count))
-
-    base_url = "https://civitai.com/api/v1/models?limit=100&nsfw=true"
-    gl.url_list = {i + 1: f"{base_url}{''.join(chunk)}" for i, chunk in enumerate(model_chunks)}
+    if all_model_ids:
+        model_chunks = list(chunks(all_model_ids, tile_count))
+        base_url = "https://civitai.com/api/v1/models?limit=100&nsfw=true"
+        gl.url_list = {i + 1: f"{base_url}{''.join(chunk)}" for i, chunk in enumerate(model_chunks)}
+    else:
+        gl.url_list = {1: 'local_only://fallback'}
 
     ## === ANXETY EDITs ===
     if from_ver:
