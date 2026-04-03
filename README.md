@@ -51,16 +51,16 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ## 📖 Changelog
 
-### v0.8.2 — Checkpoint SHA256 Cache Sync
-- Added automatic SHA256 cache sync for checkpoints right after successful download completion.
-- Added a manual `Sync checkpoint SHA256 cache` button in Update Models to reconcile local checkpoints against Forge cache.
-- Added local checkpoint hash registry (`lib/models/checkpoint_hashes.json`) to track synced entries and clean stale records for deleted files.
-
 ### v0.8.3 — Safer Delete Flow for Installed/Outdated Models
 - Browser version dropdown now defaults to an installed version whenever one exists, even when updates are available.
 - This preserves delete action availability for models that are installed but outdated.
 - Added a delete failsafe for card quick delete: if multiple installed versions exist, quick delete is canceled and the user is instructed to pick the exact installed version in the Browser panel before deleting.
 - Installed-model Browser loading now keeps unmatched files visible as local-only entries while still using API data for matched models.
+
+### v0.8.2 — Checkpoint SHA256 Cache Sync
+- Added automatic SHA256 cache sync for checkpoints right after successful download completion.
+- Added a manual `Sync checkpoint SHA256 cache` button in Update Models to reconcile local checkpoints against Forge cache.
+- Added local checkpoint hash registry (`lib/models/checkpoint_hashes.json`) to track synced entries and clean stale records for deleted files.
 
 ### v0.8.1 — Trigger Word Bugfixes & Resilience
 - Fixed an issue where the local trigger word fallback process ignored API groups and flattened words into single lines.
@@ -179,6 +179,8 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 ### v0.8.1 — Trigger Word Bugfixes & Resilience *(complete)* ✅
 
 ### v0.8.2 — Checkpoint SHA256 Cache Sync *(complete)* ✅
+
+### v0.8.3 — Safer Delete Flow for Installed/Outdated Models *(complete)* ✅
 
 ### v0.9.0 — Advanced Curation *(planned)*
 - Saved search presets
