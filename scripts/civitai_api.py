@@ -567,8 +567,9 @@ def model_list_html(json_data):
         model_versions = item.get('modelVersions', [])
         if model_versions:
             precise_check = getattr(opts, 'precise_version_check', True)
-            installed_map, available_map = {}, {}  # family → list of version parts
+            installed_map, available_map = {}, {}  # family -> list of version parts
             installed_all, available_all = [], []  # all versions (no family grouping)
+            installed_versions_found = set()
 
             # --- Collect version and installation info ---
             for version in model_versions:
@@ -591,11 +592,14 @@ def model_list_html(json_data):
                         # Store SHA256 of first installed file found (for delete button)
                         if not installed_file_sha256:
                             installed_file_sha256 = file_sha256
+                        installed_versions_found.add(version_name)
                         if precise_check and family:
                             installed_map.setdefault(family, []).append(version_parts)
                         else:
                             installed_all.append(version_parts)
                         break
+
+            installed_versions_count = len(installed_versions_found)
 
             # Check installed
             has_installed = bool(installed_map or installed_all)
@@ -713,8 +717,8 @@ def model_list_html(json_data):
             sha256_attr = f'data-sha256="{installed_file_sha256}"' if installed_file_sha256 else ''
             card_html += (
                 f'<div class="delete-button-container">'
-                f'<button class="delete-model-btn" {sha256_attr} data-model-name="{model_name_js}" '
-                f'onclick="deleteInstalledModel(event, \'{model_string}\', \'{installed_file_sha256 or ""}\')" title="Delete model">'
+                f'<button class="delete-model-btn" {sha256_attr} data-model-name="{model_name_js}" data-installed-count="{installed_versions_count}" '
+                f'onclick="deleteInstalledModel(event, \'{model_string}\', \'{installed_file_sha256 or ""}\', {installed_versions_count})" title="Delete model">'
                 f'<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor">'
                 f'<path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>'
                 f'</svg>'
@@ -726,8 +730,8 @@ def model_list_html(json_data):
             sha256_attr = f'data-sha256="{installed_file_sha256}"' if installed_file_sha256 else ''
             card_html += (
                 f'<div class="outdated-card-actions">'
-                f'<button class="delete-model-btn" {sha256_attr} data-model-name="{model_name_js}" '
-                f'onclick="deleteInstalledModel(event, \'{model_string}\', \'{installed_file_sha256 or ""}\')" title="Delete model">'
+                f'<button class="delete-model-btn" {sha256_attr} data-model-name="{model_name_js}" data-installed-count="{installed_versions_count}" '
+                f'onclick="deleteInstalledModel(event, \'{model_string}\', \'{installed_file_sha256 or ""}\', {installed_versions_count})" title="Delete model">'
                 f'<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor">'
                 f'<path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>'
                 f'</svg>'
@@ -1191,8 +1195,10 @@ def update_model_versions(model_id, json_input=None, base_filter=None):
                 display_version_names.append(name)
             default_installed = next((name for name in display_version_names if '[Installed]' in name), None)
 
-            # If a base_filter is active, prefer the newest version matching the filter
-            if base_filter:
+            # Always prioritize an installed version as default so delete actions remain available.
+            if default_installed:
+                default_value = default_installed
+            elif base_filter:
                 filter_normalized = [b.lower() for b in base_filter]
                 default_value = None
                 for i, v in enumerate(version_names):
@@ -1201,9 +1207,9 @@ def update_model_versions(model_id, json_input=None, base_filter=None):
                         default_value = display_version_names[i]
                         break
                 if default_value is None:
-                    default_value = default_installed or (display_version_names[0] if display_version_names else None)
+                    default_value = display_version_names[0] if display_version_names else None
             else:
-                default_value = default_installed or (display_version_names[0] if display_version_names else None)
+                default_value = display_version_names[0] if display_version_names else None
 
             return gr.update(choices=display_version_names, value=default_value, interactive=True)  # Version List
 

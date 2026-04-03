@@ -1693,10 +1693,21 @@ function initializeImageViewer() {
 }
 
 // Delete installed model with confirmation
-function deleteInstalledModel(event, modelString, sha256) {
+function deleteInstalledModel(event, modelString, sha256, installedCount = 1) {
     // Stop event propagation to prevent card selection
     event.stopPropagation();
     event.preventDefault();
+
+    const installedTotal = Number(installedCount || 0);
+    if (installedTotal > 1) {
+        select_model(modelString, null);
+        alert(
+            `This model has ${installedTotal} installed versions.\n\n` +
+            'For safety, quick delete is disabled.\n' +
+            'Please choose the exact [Installed] version in the Browser panel and use "Delete model" there.'
+        );
+        return;
+    }
     
     if (!sha256) {
         alert('Error: No SHA256 hash available for this model. Cannot delete.');
