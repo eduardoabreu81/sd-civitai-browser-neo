@@ -4374,7 +4374,7 @@ def enter_update_mode():
 
 
 def exit_update_mode(content_type, sort_type, period_type, use_search_term, search_term,
-                     tile_count, base_filter, only_local_files, nsfw, exact_search):
+                     tile_count, base_filter, nsfw, exact_search):
     """Deactivates Update Mode, clears banner, and returns to a normal browser state."""
     gl.update_mode = False
     gl.update_items = []
@@ -4459,7 +4459,7 @@ def prepare_local_browser_url_list(content_type, tile_count, use_search_term=Non
     return True
 
 
-def load_to_browser(content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, only_local_files, nsfw, exact_search):
+def load_to_browser(content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, nsfw, exact_search):
     global from_ver, from_installed
 
     model_list_return = _api.initial_model_page(
@@ -4474,8 +4474,7 @@ def load_to_browser(content_type, sort_type, period_type, use_search_term, searc
         nsfw,
         exact_search,
         tile_count,
-        True,
-        only_local_files=only_local_files
+        True
     )
     from_ver, from_installed =  False, False
     return (

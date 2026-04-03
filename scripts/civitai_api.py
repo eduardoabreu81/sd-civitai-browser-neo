@@ -956,32 +956,7 @@ def create_api_url(content_type=None, sort_type=None, period_type=None, use_sear
 
 
 ## === ANXETY EDITs ===
-def initial_model_page(content_type=None, sort_type=None, period_type=None, use_search_term=None, search_term=None, current_page=None, base_filter=None, only_liked=None, nsfw=None, exact_search=None, tile_count=None, from_update_tab=False, only_local_files=False):
-
-    if only_local_files and not from_update_tab:
-        loaded = _file.prepare_local_browser_url_list(content_type, tile_count, use_search_term, search_term)
-        if not loaded:
-            no_items_html = '<div style="font-size: 24px; text-align: center; margin: 50px !important;">No local models found for current filters.</div>'
-            return (
-                gr.update(choices=[], value='', interactive=True),
-                gr.update(choices=[], value=''),
-                gr.update(value=no_items_html),
-                gr.update(interactive=False),
-                gr.update(interactive=False),
-                gr.update(value=1, maximum=1),
-                gr.update(interactive=False),
-                gr.update(interactive=False),
-                gr.update(interactive=False, visible=False if gl.isDownloading else True),
-                gr.update(interactive=False, visible=False),
-                gr.update(interactive=False, value=None, visible=True),
-                gr.update(choices=[], value='', interactive=False),
-                gr.update(choices=[], value='', interactive=False),
-                gr.update(value='<div style="min-height: 0px;"></div>'),
-                gr.update(value=None),
-                gr.update(value=None),
-                gr.update(value=None)
-            )
-        from_update_tab = True
+def initial_model_page(content_type=None, sort_type=None, period_type=None, use_search_term=None, search_term=None, current_page=None, base_filter=None, only_liked=None, nsfw=None, exact_search=None, tile_count=None, from_update_tab=False):
     current_inputs = (content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, nsfw, exact_search)
     if current_inputs != gl.previous_inputs and gl.previous_inputs != None or not current_page:
         current_page = 1
@@ -1077,14 +1052,14 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
         gr.update(value=None)                                           # Model Filename
     )
 
-def prev_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, only_local_files, nsfw, exact_search, tile_count):
-    return next_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, only_local_files, nsfw, exact_search, tile_count, isNext=False)
+def prev_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count):
+    return next_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, isNext=False)
 
-def next_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, only_local_files, nsfw, exact_search, tile_count, isNext=True):
+def next_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, isNext=True):
 
-    current_inputs = (content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, nsfw, exact_search, only_local_files)
+    current_inputs = (content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, nsfw, exact_search)
     if current_inputs != gl.previous_inputs and gl.previous_inputs != None:
-        return initial_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, only_local_files=only_local_files)
+        return initial_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count)
 
     api_url = create_api_url(isNext=isNext)
     gl.json_data = request_civit_api(api_url)
