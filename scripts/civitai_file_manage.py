@@ -4374,7 +4374,7 @@ def enter_update_mode():
 
 
 def exit_update_mode(content_type, sort_type, period_type, use_search_term, search_term,
-                     tile_count, base_filter, nsfw, exact_search):
+                     tile_count, base_filter, only_local_files, nsfw, exact_search):
     """Deactivates Update Mode, clears banner, and returns to a normal browser state."""
     gl.update_mode = False
     gl.update_items = []
@@ -4388,10 +4388,95 @@ def exit_update_mode(content_type, sort_type, period_type, use_search_term, sear
     )
 
 ## === ANXETY EDITs ===
-def load_to_browser(content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, nsfw, exact_search):
+def _resolve_browser_local_folders(content_type):
+    folders_to_check = []
+
+    selected_types = content_type if content_type else ['Checkpoint', 'LORA']
+    if isinstance(selected_types, str):
+        selected_types = [selected_types]
+
+    for item in selected_types:
+        if item == 'LORA':
+            folder = _api.contenttype_folder('LORA')
+            if folder:
+                folders_to_check.append(folder)
+        elif item == 'Upscaler':
+            for sub in ['SwinIR', 'RealESRGAN', 'GFPGAN', 'BSRGAN', 'ESRGAN']:
+                folder = _api.contenttype_folder(item, sub)
+                if folder:
+                    folders_to_check.append(folder)
+        else:
+            folder = _api.contenttype_folder(item)
+            if folder:
+                folders_to_check.append(folder)
+
+    folders_to_check = sorted(list(set(folders_to_check)))
+    return folders_to_check
+
+
+def prepare_local_browser_url_list(content_type, tile_count, use_search_term=None, search_term=None):
+    folders_to_check = _resolve_browser_local_folders(content_type)
+    if not folders_to_check:
+        gl.url_list = {}
+        return False
+
+    files = list_files(folders_to_check)
+    if not files:
+        gl.url_list = {}
+        return False
+
+    local_term = (search_term or '').strip().lower()
+    if use_search_term == 'Model name' and local_term:
+        filtered_files = []
+        for file_path in files:
+            stem = os.path.splitext(os.path.basename(file_path))[0].lower()
+            if local_term in stem:
+                filtered_files.append(file_path)
+        files = filtered_files
+
+    all_model_ids = []
+    for file_path in files:
+        model_id = get_models(file_path, gen_hash=False)
+        if model_id in [None, 'offline', 'Model not found']:
+            continue
+        all_model_ids.append(f'&ids={model_id}')
+
+    all_model_ids = sorted(list(set(all_model_ids)))
+    if not all_model_ids:
+        gl.url_list = {}
+        return False
+
+    tile_count = int(tile_count) if tile_count else 27
+    tile_count = max(1, tile_count)
+
+    def chunks(lst, n):
+        for i in range(0, len(lst), n):
+            yield lst[i:i + n]
+
+    model_chunks = list(chunks(all_model_ids, tile_count))
+    base_url = 'https://civitai.com/api/v1/models?limit=100&nsfw=true'
+    gl.url_list = {i + 1: f"{base_url}{''.join(chunk)}" for i, chunk in enumerate(model_chunks)}
+    return True
+
+
+def load_to_browser(content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, only_local_files, nsfw, exact_search):
     global from_ver, from_installed
 
-    model_list_return = _api.initial_model_page(content_type, sort_type, period_type, use_search_term, search_term, 1, base_filter, False, nsfw, exact_search, tile_count, True)
+    model_list_return = _api.initial_model_page(
+        content_type,
+        sort_type,
+        period_type,
+        use_search_term,
+        search_term,
+        1,
+        base_filter,
+        False,
+        nsfw,
+        exact_search,
+        tile_count,
+        True,
+        only_local_files=only_local_files
+    )
     from_ver, from_installed =  False, False
     return (
         *model_list_return,

@@ -21,7 +21,7 @@ from scripts.civitai_global import print, debug_print
 gl.init()
 
 
-def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, sn, es, ss, ts):
+def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, olf, sn, es, ss, ts):
     config = cmd_opts.ui_config_file
 
     # Create a dictionary to map the settings to their respective variables
@@ -36,6 +36,7 @@ def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, sn, es, ss, ts):
         'civitai_interface_neo/Divide cards by date/value': False,  # This is a toggle, so its state does not matter here
         'civitai_interface_neo/Liked models only/value': ol,
         'civitai_interface_neo/Hide installed models/value': hi,
+        'civitai_interface_neo/Only local files/value': olf,
         'civitai_interface_neo/NSFW content/value': sn,
         'civitai_interface_neo/Exact search/value': es,
         'civitai_interface_neo/Tile size:/value': ss,
@@ -298,6 +299,7 @@ def on_ui_tabs():
                         exact_search = gr.Checkbox(label='Exact search', value=True, elem_id=toggle6)
                         only_liked = gr.Checkbox(label='Liked models only', value=False, interactive=show_only_liked, elem_id=toggle4)
                         hide_installed = gr.Checkbox(label='Hide installed models', value=False, elem_id=toggle5)
+                        only_local_files = gr.Checkbox(label='Only local files', value=False, elem_id='toggleLocalOnly')
                         hide_banned_creators = gr.Checkbox(label='Hide banned creators', value=False, elem_id='hideBannedCreators')
                     with gr.Row():
                         size_slider = gr.Slider(label='Tile size:', minimum=8, maximum=20, value=12, step=0.25)
@@ -731,6 +733,7 @@ def on_ui_tabs():
                 create_json,
                 only_liked,
                 hide_installed,
+                only_local_files,
                 show_nsfw,
                 exact_search,
                 size_slider,
@@ -1142,6 +1145,7 @@ def on_ui_tabs():
             page_slider,
             base_filter,
             only_liked,
+            only_local_files,
             show_nsfw,
             exact_search,
             tile_count_slider
@@ -1203,6 +1207,7 @@ def on_ui_tabs():
             search_term,
             tile_count_slider,
             base_filter,
+            only_local_files,
             show_nsfw,
             exact_search
         ]
