@@ -690,6 +690,9 @@ def on_ui_tabs():
         for func in card_updates:
             func.change(fn=None, inputs=current_model, _js='(modelName) => updateCard(modelName)')
 
+        # Ensure realtime card status updates also fire when current_model itself changes.
+        current_model.change(fn=None, inputs=current_model, _js='(modelName) => updateCard(modelName)')
+
         list_html_input.change(fn=None, inputs=size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
         size_slider.change(fn=None, inputs=size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
 

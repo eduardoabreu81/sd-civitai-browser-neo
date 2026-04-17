@@ -2,6 +2,7 @@ import subprocess
 import threading
 import hashlib
 import requests
+import urllib.parse
 import platform
 import random
 import stat
@@ -616,6 +617,14 @@ def convert_size(size):
         size /= 1024
     return f"{size:.2f} GB"
 
+
+def _is_signed_civitai_download(url):
+    try:
+        host = urllib.parse.urlparse(url).netloc.lower()
+    except Exception:
+        return False
+    return 'civitai.red' in host or 'b2.civitai.com' in host or 'b2.civitai.red' in host
+
 def get_download_link(url, model_id):
     headers = _api.get_headers(model_id)
     proxies, ssl = _api.get_proxies()
@@ -679,8 +688,17 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
                 time.sleep(5)
             return
 
+        signed_download = _is_signed_civitai_download(download_link)
+
         if os.path.exists(file_path):
             _file.handle_existing_model_file(file_path)
+        if signed_download:
+            aria2_sidecar = file_path + '.aria2'
+            if os.path.exists(aria2_sidecar):
+                try:
+                    os.remove(aria2_sidecar)
+                except Exception:
+                    pass
 
         if disable_dns:
             dns = 'false'
@@ -689,9 +707,10 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
 
         options = {
             'dir': install_path,
-            'max-connection-per-server': str(f"{split_aria2}"),
-            'split': str(f"{split_aria2}"),
+            'max-connection-per-server': '1' if signed_download else str(f"{split_aria2}"),
+            'split': '1' if signed_download else str(f"{split_aria2}"),
             'async-dns': dns,
+            'continue': 'false' if signed_download else 'true',
             'out': file_name
         }
 
