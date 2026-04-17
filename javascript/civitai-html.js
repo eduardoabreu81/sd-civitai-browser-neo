@@ -80,6 +80,7 @@ function addOrUpdateRule(styleSheet, selector, newRules) {
 
 // === ANXETY EDITs ===
 // Updates card border
+let lastCardSyncRefreshTs = 0;
 function updateCard(modelNameWithSuffix) {
     if (!modelNameWithSuffix || typeof modelNameWithSuffix !== 'string') {
         return;
@@ -115,6 +116,7 @@ function updateCard(modelNameWithSuffix) {
     const parentDiv = document.querySelector('.civmodellist');
     if (parentDiv) {
         const cards = parentDiv.querySelectorAll('.civmodelcard');
+        let matchedCount = 0;
         cards.forEach((card) => {
             let cardMatches = false;
 
@@ -133,11 +135,23 @@ function updateCard(modelNameWithSuffix) {
                 return;
             }
 
+            matchedCount += 1;
+
             statusClasses.forEach((statusClass) => card.classList.remove(statusClass));
             if (additionalClassName) {
                 card.classList.add(additionalClassName);
             }
         });
+
+        // Fallback: if the card was not found in the current DOM snapshot,
+        // trigger a lightweight browser refresh to keep visual status in sync.
+        if (matchedCount === 0) {
+            const now = Date.now();
+            if (now - lastCardSyncRefreshTs > 1500) {
+                lastCardSyncRefreshTs = now;
+                pressRefresh();
+            }
+        }
 
         const hideInstalledToggle =
             gradioApp().querySelector('#toggle5 input[type="checkbox"]') ||
