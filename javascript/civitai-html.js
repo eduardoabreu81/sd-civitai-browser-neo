@@ -81,9 +81,18 @@ function addOrUpdateRule(styleSheet, selector, newRules) {
 // === ANXETY EDITs ===
 // Updates card border
 function updateCard(modelNameWithSuffix) {
+    if (!modelNameWithSuffix || typeof modelNameWithSuffix !== 'string') {
+        return;
+    }
+
     const lastDotIndex = modelNameWithSuffix.lastIndexOf('.');
+    if (lastDotIndex <= 0) {
+        return;
+    }
+
     const modelName = modelNameWithSuffix.slice(0, lastDotIndex);
     const suffix = modelNameWithSuffix.slice(lastDotIndex + 1);
+
     let additionalClassName = '';
     switch (suffix) {
         case 'None':
@@ -98,20 +107,44 @@ function updateCard(modelNameWithSuffix) {
         default:
             return;
     }
+
+    const modelIdMatch = modelName.match(/\((-?\d+)\)\s*$/);
+    const modelId = modelIdMatch ? modelIdMatch[1] : null;
+    const statusClasses = ['civmodelcardinstalled', 'civmodelcardoutdated', 'civmodelcardcrossfamily'];
+
     const parentDiv = document.querySelector('.civmodellist');
     if (parentDiv) {
         const cards = parentDiv.querySelectorAll('.civmodelcard');
         cards.forEach((card) => {
-            const onclickAttr = card.getAttribute('onclick');
-            if (onclickAttr && onclickAttr.includes(`select_model('${modelName}', event)`)) {
-                // Preserve important classes that should not be lost
-                const hasEarlyAccess = card.classList.contains('early-access');
-                const hasNsfw = card.classList.contains('civcardnsfw');
-                const earlyAccessClass = hasEarlyAccess ? ' early-access' : '';
-                const nsfwClass = hasNsfw ? ' civcardnsfw' : '';
-                card.className = `civmodelcard${earlyAccessClass}${nsfwClass} ${additionalClassName}`;
+            let cardMatches = false;
+
+            if (modelId) {
+                const cardModelId = card.getAttribute('data-model-id');
+                cardMatches = cardModelId === modelId;
+            }
+
+            // Backward compatibility for cards rendered before data-model-id existed.
+            if (!cardMatches) {
+                const onclickAttr = card.getAttribute('onclick');
+                cardMatches = !!(onclickAttr && onclickAttr.includes(`select_model('${modelName}', event)`));
+            }
+
+            if (!cardMatches) {
+                return;
+            }
+
+            statusClasses.forEach((statusClass) => card.classList.remove(statusClass));
+            if (additionalClassName) {
+                card.classList.add(additionalClassName);
             }
         });
+
+        const hideInstalledToggle =
+            gradioApp().querySelector('#toggle5 input[type="checkbox"]') ||
+            gradioApp().querySelector('#toggle5L input[type="checkbox"]');
+        if (hideInstalledToggle) {
+            hideInstalled(hideInstalledToggle.checked);
+        }
     }
 }
 

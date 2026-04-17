@@ -704,7 +704,7 @@ def model_list_html(json_data):
         # ModelCard HTML (Header)
         card_html = (
             f'<figure class="civmodelcard {nsfw_class} {early_access_class} {installstatus}{fav_class}" '
-            f'base-model="{base_model}" date="{date}" data-creator="{escape(model_uploader_card)}" '
+            f'base-model="{base_model}" date="{date}" data-model-id="{model_id}" data-creator="{escape(model_uploader_card)}" '
             f'onclick="select_model(\'{model_string}\', event)">'
             f'<div class="card-header">'
             f'<div class="badges-container">{model_type_badge}{status_badge}{nsfw_badge}</div>'
