@@ -605,6 +605,7 @@ def model_list_html(json_data):
             has_installed = bool(installed_map or installed_all)
             if has_installed:
                 has_outdated = False
+                has_latest = False
 
                 def is_outdated(inst, avail):
                     """Compare max installed and available versions"""
@@ -617,17 +618,18 @@ def model_list_html(json_data):
                 if precise_check and available_map:
                     for fam, avail in available_map.items():
                         inst = installed_map.get(fam)
-                        if inst and is_outdated(inst, avail):
+                        if not inst:
+                            continue
+                        if is_outdated(inst, avail):
                             has_outdated = True
-                            break
+                        else:
+                            has_latest = True
                 # Comparison without families
                 elif installed_all and available_all:
                     has_outdated = is_outdated(installed_all, available_all)
+                    has_latest = not has_outdated
 
-                if has_outdated:
-                    installstatus = 'civmodelcardoutdated'
-                else:
-                    # Check for cross-family versions: other families available that the user hasn't installed
+                if has_latest:
                     has_cross_family = False
                     if precise_check and available_map:
                         for fam in available_map:
@@ -635,6 +637,10 @@ def model_list_html(json_data):
                                 has_cross_family = True
                                 break
                     installstatus = 'civmodelcardcrossfamily' if has_cross_family else 'civmodelcardinstalled'
+                elif has_outdated:
+                    installstatus = 'civmodelcardoutdated'
+                else:
+                    installstatus = 'civmodelcardinstalled'
 
             # Multi-family badge: when multiple distinct families are installed on the same model
             # (e.g. Pony V1 AND Illustrious V1), show all abbreviations: "PONY · IL"
