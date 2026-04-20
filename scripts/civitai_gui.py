@@ -127,7 +127,7 @@ def txt2img_output(image_url):
 
 ## === ANXETY EDITs ===
 def get_base_models():
-    api_url = 'https://civitai.com/api/v1/models?baseModels=GetModels'
+    api_url = f'https://{_api.get_civitai_domain()}/api/v1/models?baseModels=GetModels'
     json_return = _api.request_civit_api(api_url, True)
     # The data below is taken from the API response (last synced: 2026-02-18)
     default_options = [
@@ -1110,7 +1110,7 @@ def on_ui_tabs():
                 # If model not found in current data, try to fetch it
                 try:
                     debug_print(f"Fetching API data for model {model_id}")
-                    api_response = _api.request_civit_api(f"https://civitai.com/api/v1/models/{model_id}")
+                    api_response = _api.request_civit_api(f"https://{_api.get_civitai_domain()}/api/v1/models/{model_id}")
                     if not isinstance(preview_html, str):
                         preview_html = str(preview_html) if preview_html else ""
                     _file.save_images(preview_html, model_filename, install_path, sub_folder, api_response=api_response)
@@ -1624,6 +1624,16 @@ def on_ui_settings():
             section=browser,
             category_id=cat_id
         ).info('You can create your own API key in your CivitAI account settings, this required for some downloads. Requires UI reload')
+    )
+
+    shared.opts.add_option(
+        'civitai_sfw_only',
+        shared.OptionInfo(
+            default=False,
+            label='SFW only (use civitai.com)',
+            section=browser,
+            category_id=cat_id
+        ).info('When enabled, all CivitAI links and API calls use civitai.com. Disable for full access via civitai.red. Requires UI reload')
     )
 
     shared.opts.add_option(

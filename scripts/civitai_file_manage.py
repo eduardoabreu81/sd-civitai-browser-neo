@@ -1266,7 +1266,7 @@ def model_from_sent(model_name, content_type):
             output_html = _api.api_error_msg('offline')
             modelID_failed = True
         if not modelID_failed:
-            api_response = _api.request_civit_api(f"https://civitai.com/api/v1/models?ids={modelID}&nsfw=true")
+            api_response = _api.request_civit_api(f"https://{_api.get_civitai_domain()}/api/v1/models?ids={modelID}&nsfw=true")
         if modelID_failed or api_response in ['timeout', 'error', 'offline']:
             return gr.update(value='<p>ERROR</p>', placeholder=_download.random_number()),  # Preview HTML
         if api_response == 'not_found':
@@ -1349,7 +1349,7 @@ def send_to_browser(model_name, content_type, click_first_item):
             modelID_failed = True
 
         if not modelID_failed:
-            gl.json_data = _api.request_civit_api(f"https://civitai.com/api/v1/models?ids={modelID}&nsfw=true")
+            gl.json_data = _api.request_civit_api(f"https://{_api.get_civitai_domain()}/api/v1/models?ids={modelID}&nsfw=true")
             output_html = _api.model_list_html(gl.json_data)
             number = _download.random_number(click_first_item)
 
@@ -1583,7 +1583,7 @@ def save_model_info(install_path, file_name, sub_folder, sha256=None, preview_ht
                 file_hash = gen_sha256(model_file)
                 if file_hash:
                     normalized = _api.normalize_sha256(file_hash)
-                    by_hash_url = f"https://civitai.com/api/v1/model-versions/by-hash/{normalized}"
+                    by_hash_url = f"https://{_api.get_civitai_domain()}/api/v1/model-versions/by-hash/{normalized}"
                     headers = _api.get_headers()
                     proxies, ssl_verify = _api.get_proxies()
                     resp = requests.get(by_hash_url, headers=headers, timeout=(60, 30), proxies=proxies, verify=ssl_verify)
@@ -1791,7 +1791,7 @@ def find_and_save(api_response, sha256=None, file_name=None, json_file=None, no_
                 content['modelVersionId'] = model_version.get('id')
                 changed = True
             if 'modelPageURL' not in content:
-                content['modelPageURL'] = f"https://civitai.com/models/{item.get('id')}?modelVersionId={model_version.get('id')}"
+                content['modelPageURL'] = f"https://{_api.get_civitai_domain()}/models/{item.get('id')}?modelVersionId={model_version.get('id')}"
                 changed = True
         else:
             content['activation text'] = trained_tags
@@ -1803,7 +1803,7 @@ def find_and_save(api_response, sha256=None, file_name=None, json_file=None, no_
             # Always update these fields when overwrite is enabled
             content['modelId'] = item.get('id')
             content['modelVersionId'] = model_version.get('id')
-            content['modelPageURL'] = f"https://civitai.com/models/{item.get('id')}?modelVersionId={model_version.get('id')}"
+            content['modelPageURL'] = f"https://{_api.get_civitai_domain()}/models/{item.get('id')}?modelVersionId={model_version.get('id')}"
             changed = True
 
         _api.safe_json_save(json_file, content)
@@ -1831,7 +1831,7 @@ def get_models(file_path, gen_hash=None):
             sha256 = gen_sha256(file_path)
 
         if sha256:
-            by_hash = f"https://civitai.com/api/v1/model-versions/by-hash/{sha256}"
+            by_hash = f"https://{_api.get_civitai_domain()}/api/v1/model-versions/by-hash/{sha256}"
         else:
             return modelId if modelId else None
 
@@ -1863,7 +1863,7 @@ def get_models(file_path, gen_hash=None):
             data.update({
                 'modelId': modelId,
                 'modelVersionId': modelVersionId,
-                'modelPageURL': f"https://civitai.com/models/{modelId}?modelVersionId={modelVersionId}",
+                'modelPageURL': f"https://{_api.get_civitai_domain()}/models/{modelId}?modelVersionId={modelVersionId}",
                 'sha256': sha256.upper()
             })
             _api.safe_json_save(json_file, data)
@@ -2328,7 +2328,7 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
     if not from_installed:
         model_chunks = list(chunks(all_model_ids, 500))
 
-        base_url = "https://civitai.com/api/v1/models?limit=100&nsfw=true"
+        base_url = f"https://{_api.get_civitai_domain()}/api/v1/models?limit=100&nsfw=true"
         url_list = [f"{base_url}{''.join(chunk)}" for chunk in model_chunks]
 
         url_count = len(all_model_ids) // 100
@@ -2423,7 +2423,7 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
 
     if all_model_ids:
         model_chunks = list(chunks(all_model_ids, tile_count))
-        base_url = "https://civitai.com/api/v1/models?limit=100&nsfw=true"
+        base_url = f"https://{_api.get_civitai_domain()}/api/v1/models?limit=100&nsfw=true"
         gl.url_list = {i + 1: f"{base_url}{''.join(chunk)}" for i, chunk in enumerate(model_chunks)}
     else:
         gl.url_list = {1: 'local_only://fallback'}
@@ -2820,7 +2820,7 @@ def _fetch_api_info_by_hash(file_path, api_info_file):
         _debug_log(f"Invalid SHA256 for: {model_name}")
         return None
 
-    api_url = f"https://civitai.com/api/v1/model-versions/by-hash/{normalized}"
+    api_url = f"https://{_api.get_civitai_domain()}/api/v1/model-versions/by-hash/{normalized}"
     _debug_log(f"API call: {api_url}")
 
     try:
@@ -4549,7 +4549,7 @@ def prepare_local_browser_url_list(content_type, tile_count, use_search_term=Non
             yield lst[i:i + n]
 
     model_chunks = list(chunks(all_model_ids, tile_count))
-    base_url = 'https://civitai.com/api/v1/models?limit=100&nsfw=true'
+    base_url = f"https://{_api.get_civitai_domain()}/api/v1/models?limit=100&nsfw=true"
     gl.url_list = {i + 1: f"{base_url}{''.join(chunk)}" for i, chunk in enumerate(model_chunks)}
     return True
 
