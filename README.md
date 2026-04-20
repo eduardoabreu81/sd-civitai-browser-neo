@@ -34,22 +34,22 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ## 🆕 What's New
 
-### v0.8.3 — Safer Delete Flow for Installed/Outdated Models
+### v0.9.0 — CivitAI Domain Support
 
-- **Installed version is now prioritized in Browser version selector** — when a model has any installed version, it becomes the default selected version in the panel, even if newer updates exist.
-- **Delete button consistency for outdated models** — delete actions remain available through the installed-version-first selection behavior.
-- **Multi-version delete failsafe** — quick delete from cards is blocked when more than one installed version exists for the same model; the UI prompts you to select the exact installed version in the Browser panel before deleting.
-- **Hybrid local loading fallback** — installed-model Browser loading still uses CivitAI data when available, but files that cannot be matched on CivitAI are now kept visible as local-only cards instead of being silently dropped.
-
-### v0.8.2 — Checkpoint SHA256 Cache Sync
-
-- **Automatic cache sync after checkpoint download** — when a checkpoint download finishes successfully, its SHA256 is now written to Forge cache immediately.
-- **Manual sync button in Update Models** — new action `Sync checkpoint SHA256 cache` scans local checkpoints and adds only missing SHA256 entries to Forge cache.
-- **Local checkpoint hash registry** — new local registry tracks synced checkpoints and prunes stale entries when files are deleted from disk.
+- **Full support for the new CivitAI domain split** — CivitAI now separates SFW content (`civitai.com`) from the complete catalog (`civitai.red`). The extension adapts automatically so nothing breaks.
+- **Paste any CivitAI link** — model links from both `civitai.com` and `civitai.red` now open the correct model instantly when pasted into the search box.
+- **New "SFW only" setting** — a simple checkbox in Settings lets you restrict all links and API calls to `civitai.com` if you prefer. Off by default, so the full catalog stays accessible without extra steps.
+- **Smart links in model previews** — "Model Page" and creator profile links in the preview panel now always point to the right domain, whether the model is SFW or NSFW.
 
 ---
 
 ## 📖 Changelog
+
+### v0.9.0 — CivitAI Domain Support
+- Added centralized domain helper to replace all hardcoded `civitai.com` URLs across the extension.
+- Added `civitai_sfw_only` checkbox setting (default: off → `civitai.red`) to toggle between domains.
+- Fixed search-box direct-link parser to recognize both `civitai.com` and `civitai.red` URLs.
+- Updated all API calls, model page links, uploader profile links, `Referer` headers, and JSON sidecar `modelPageURL` fields to use the configured domain.
 
 ### v0.8.3 — Safer Delete Flow for Installed/Outdated Models
 - Browser version dropdown now defaults to an installed version whenever one exists, even when updates are available.
@@ -182,7 +182,9 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ### v0.8.3 — Safer Delete Flow for Installed/Outdated Models *(complete)* ✅
 
-### v0.9.0 — Advanced Curation *(planned)*
+### v0.9.0 — CivitAI Domain Support *(complete)* ✅
+
+### v0.10.0 — Advanced Curation *(planned)*
 - Saved search presets
 - Favorites in creator/user search
 - Additional browser quality-of-life improvements
