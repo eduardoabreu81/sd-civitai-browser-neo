@@ -34,7 +34,7 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ## 🆕 What's New
 
-### v0.9.0 — CivitAI Domain Support
+### v0.9.1 — CivitAI Domain Support & Fixes
 
 - **Full support for the new CivitAI domain split** — CivitAI now separates SFW content (`civitai.com`) from the complete catalog (`civitai.red`). The extension adapts automatically so nothing breaks.
 - **Paste any CivitAI link** — model links from both `civitai.com` and `civitai.red` now open the correct model instantly when pasted into the search box.
@@ -45,7 +45,7 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ## 📖 Changelog
 
-### v0.9.0 — CivitAI Domain Support
+### v0.9.1 — CivitAI Domain Support & Fixes
 - Added centralized domain helper to replace all hardcoded `civitai.com` URLs across the extension.
 - Added `civitai_sfw_only` checkbox setting (default: off → `civitai.red`) to toggle between domains.
 - Fixed search-box direct-link parser to recognize both `civitai.com` and `civitai.red` URLs.
@@ -182,7 +182,7 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ### v0.8.3 — Safer Delete Flow for Installed/Outdated Models *(complete)* ✅
 
-### v0.9.0 — CivitAI Domain Support *(complete)* ✅
+### v0.9.1 — CivitAI Domain Support & Fixes *(complete)* ✅
 
 ### v0.10.0 — Advanced Curation *(planned)*
 - Saved search presets
