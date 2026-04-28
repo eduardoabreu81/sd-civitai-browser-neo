@@ -1003,9 +1003,13 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
     gl.previous_inputs = current_inputs
 
     # ── Update Mode: render from gl.update_items, no API call ──
-    if from_update_tab and gl.update_mode:
+    if gl.update_mode:
+        # When triggered from outside the Update tab (e.g. pressRefresh/page slider),
+        # ignore Browser-tab filters so they don't cross-filter Update Mode results.
+        _ct = content_type if from_update_tab else None
+        _bf = base_filter if from_update_tab else None
         html, max_page, current_page, hasPrev, hasNext = update_mode_page_html(
-            content_type, base_filter, tile_count, current_page)
+            _ct, _bf, tile_count, current_page)
         return (
             gr.update(choices=[], value='', interactive=True),
             gr.update(choices=[], value=''),
@@ -1065,8 +1069,10 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
     model_list = []
     hasPrev, hasNext = False, False
 
-    if not isinstance(gl.json_data, dict):
-        HTML = api_error_msg(gl.json_data)
+    if not isinstance(gl.json_data, dict) or 'items' not in gl.json_data or 'metadata' not in gl.json_data:
+        # Defensive: _search_by_sha256 may return {'ambiguous': ...} or an error string
+        err_key = gl.json_data if not isinstance(gl.json_data, dict) else 'sha256_not_found'
+        HTML = api_error_msg(err_key)
     else:
         gl.json_data = insert_metadata(1)
 
@@ -1354,6 +1360,23 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
         model_uploader = 'Unknown'
         version_name = ''
         version_id = None
+        if not isinstance(api_data, dict) or 'items' not in api_data:
+            # gl.json_data may be in an invalid state (e.g. after a SHA256 ambiguity result)
+            return (
+                gr.update(value=None),
+                gr.update(value=None, interactive=False),
+                gr.update(value=''),
+                gr.update(visible=True, value='Download model'),
+                gr.update(interactive=False),
+                gr.update(visible=False, interactive=False),
+                gr.update(choices=None, value=None, interactive=False),
+                gr.update(value=None, interactive=False),
+                gr.update(value=None),
+                gr.update(value=None),
+                gr.update(value=None),
+                gr.update(interactive=False, value=None),
+                gr.update(choices=None, value=None, interactive=False)
+            )
         for item in api_data['items']:
             if int(item['id']) == int(model_id):
                 is_local_only = bool(item.get('local_only'))

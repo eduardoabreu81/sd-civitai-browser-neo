@@ -69,7 +69,16 @@ def resolve_ambiguity(choice_index):
             except Exception:
                 pass
             item['version_name'] = c.get('version_name') or item.get('version_name')
-            # Keep model_sha256 as-is (it matched the by-hash query)
+            # Update sha256 and filename if the chosen candidate differs (defensive:
+            # candidate may reference a different file within the same version)
+            cand_sha = c.get('sha256')
+            if cand_sha and cand_sha.upper() != (item.get('model_sha256') or '').upper():
+                item['model_sha256'] = cand_sha.upper()
+                debug_print(f"[Ambiguity] Updated SHA256 for '{item.get('model_name')}': {cand_sha[:12]}…")
+            cand_fname = c.get('file_name')
+            if cand_fname and cand_fname != item.get('model_filename'):
+                item['model_filename'] = _api.cleaned_name(cand_fname)
+                debug_print(f"[Ambiguity] Updated filename for '{item.get('model_name')}': {item['model_filename']}")
             item['ambiguous_selected'] = True
 
             # Clear ambiguity HTML and resume download by nudging download_finish
@@ -149,7 +158,7 @@ elif os_type == 'Linux':
 class TimeOutFunction(Exception):
     pass
 
-def create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch=False, old_file_path=None):
+def create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch=False, old_file_path=None, version_id=None):
     global dl_manager_count
     if model_id:
         model_id = int(model_id)
@@ -188,6 +197,7 @@ def create_model_item(dl_url, model_filename, install_path, model_name, version_
         'version_name': version_name,
         'model_sha256': model_sha256,
         'model_id': model_id,
+        'version_id': version_id,
         'create_json': create_json,
         'model_json': model_json,
         'model_versions': None,        # fetched lazily in download_create_thread
@@ -390,7 +400,7 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
                             old_file_path = _upd.get('old_file', '') or None
                             break
 
-            model_item = create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch, old_file_path=old_file_path)
+            model_item = create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch, old_file_path=old_file_path, version_id=version_id)
             if model_item:
                 gl.download_queue.append(model_item)
                 total_count += 1
@@ -1165,10 +1175,35 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
                 sha256_hash.update(_chunk)
         actual_sha256 = sha256_hash.hexdigest().upper()
         if actual_sha256 != item['model_sha256'].upper():
-            print(f"SHA256 mismatch for '{item['model_filename']}': expected {item['model_sha256'][:12]}…, got {actual_sha256[:12]}…")
-            gl.download_fail = True
-            if progress is not None:
-                progress(0, desc=f"Integrity check failed for '{item['model_filename']}' — file may be corrupted.")
+            sha_mismatch_resolved = False
+            version_id = item.get('version_id')
+            if version_id:
+                try:
+                    domain = _api.get_civitai_domain()
+                    api_url = f"https://{domain}/api/v1/model-versions/{version_id}"
+                    proxies, ssl = _api.get_proxies()
+                    response = requests.get(api_url, headers=_api.get_headers(), timeout=(60, 30), proxies=proxies, verify=ssl)
+                    if response.status_code == 200:
+                        data = response.json()
+                        files = data.get('files', [])
+                        primary_file = next((f for f in files if f.get('primary', False)), None)
+                        if not primary_file and files:
+                            primary_file = files[0]
+                        if primary_file:
+                            api_sha = primary_file.get('hashes', {}).get('SHA256', '').upper()
+                            if api_sha and api_sha == actual_sha256:
+                                print(f"SHA256 updated silently for '{item['model_filename']}': old={item['model_sha256'][:12]}…, new={actual_sha256[:12]}…")
+                                item['model_sha256'] = actual_sha256
+                                sha_mismatch_resolved = True
+                except Exception as e:
+                    debug_print(f"[SHA256 recheck] API error for version {version_id}: {e}")
+
+            if not sha_mismatch_resolved:
+                file_size = os.path.getsize(path_to_new_file)
+                print(f"SHA256 mismatch for '{item['model_filename']}': expected {item['model_sha256'][:12]}…, got {actual_sha256[:12]}… (size: {file_size} bytes)")
+                gl.download_fail = True
+                if progress is not None:
+                    progress(0, desc=f"Integrity check failed for '{item['model_filename']}' — file may be corrupted.")
 
     # Only save metadata / run post-processing when the download actually succeeded.
     # The previous condition `or gl.download_fail` was a logic error: truthy fail values
