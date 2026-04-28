@@ -1369,7 +1369,7 @@ def _restore_queue_item(data):
             return None
 
     # Fetch from API first — gl.json_data may be empty/None at restore time
-    api_url = f'https://civitai.com/api/v1/models/{model_id}'
+    api_url = f'https://{_api.get_civitai_domain()}/api/v1/models/{model_id}'
     raw = _api.request_civit_api(api_url)
     model_json = {'items': [raw]} if raw and isinstance(raw, dict) else {'items': []}
 

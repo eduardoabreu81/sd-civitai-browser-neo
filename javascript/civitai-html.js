@@ -144,7 +144,7 @@ function updateCard(modelNameWithSuffix) {
         });
 
         // Fallback: if the card is not yet in the DOM snapshot, retry briefly.
-        // This avoids a full list refresh loop when Hide installed models is on.
+        // If retries exhaust, force a lightweight refresh so filters (Hide installed) re-apply.
         if (matchedCount === 0) {
             const retryCount = cardSyncRetryState[modelNameWithSuffix] || 0;
             if (retryCount < 4) {
@@ -152,6 +152,7 @@ function updateCard(modelNameWithSuffix) {
                 setTimeout(() => updateCard(modelNameWithSuffix), 120);
             } else {
                 delete cardSyncRetryState[modelNameWithSuffix];
+                pressRefresh();
             }
         } else {
             delete cardSyncRetryState[modelNameWithSuffix];
