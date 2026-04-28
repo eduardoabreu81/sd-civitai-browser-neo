@@ -80,7 +80,7 @@ function addOrUpdateRule(styleSheet, selector, newRules) {
 
 // === ANXETY EDITs ===
 // Updates card border
-let lastCardSyncRefreshTs = 0;
+const cardSyncRetryState = {};
 function updateCard(modelNameWithSuffix) {
     if (!modelNameWithSuffix || typeof modelNameWithSuffix !== 'string') {
         return;
@@ -143,14 +143,18 @@ function updateCard(modelNameWithSuffix) {
             }
         });
 
-        // Fallback: if the card was not found in the current DOM snapshot,
-        // trigger a lightweight browser refresh to keep visual status in sync.
+        // Fallback: if the card is not yet in the DOM snapshot, retry briefly.
+        // This avoids a full list refresh loop when Hide installed models is on.
         if (matchedCount === 0) {
-            const now = Date.now();
-            if (now - lastCardSyncRefreshTs > 1500) {
-                lastCardSyncRefreshTs = now;
-                pressRefresh();
+            const retryCount = cardSyncRetryState[modelNameWithSuffix] || 0;
+            if (retryCount < 4) {
+                cardSyncRetryState[modelNameWithSuffix] = retryCount + 1;
+                setTimeout(() => updateCard(modelNameWithSuffix), 120);
+            } else {
+                delete cardSyncRetryState[modelNameWithSuffix];
             }
+        } else {
+            delete cardSyncRetryState[modelNameWithSuffix];
         }
 
         const hideInstalledToggle =

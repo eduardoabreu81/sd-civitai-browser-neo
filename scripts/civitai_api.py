@@ -104,11 +104,6 @@ def get_base_model_short(base_model: str) -> str:
             return v
     return ''
 
-
-def get_civitai_domain():
-    """Return the configured CivitAI domain based on SFW-only toggle."""
-    return 'civitai.com' if getattr(opts, 'civitai_sfw_only', False) else 'civitai.red'
-
 # ─────────────────────────────────────────────────────────────────────────────
 # v0.8.1 — Local Trigger Words Lookup
 # ─────────────────────────────────────────────────────────────────────────────
@@ -851,27 +846,58 @@ def _search_by_sha256(sha256_hash):
     if not normalized_hash or not re.match(r'^[A-F0-9]{64}$', normalized_hash):
         return 'invalid_hash'
 
-    # Search for model version by hash
-    api_url = f"https://{get_civitai_domain()}/api/v1/model-versions/by-hash/{normalized_hash}"
+    # Search for model version by hash across both civitai.com and civitai.red
     headers = get_headers()
     proxies, ssl = get_proxies()
 
+    candidates = []
+    domains = ['https://civitai.com', 'https://civitai.red']
     try:
-        response = requests.get(api_url, headers=headers, timeout=(60, 30), proxies=proxies, verify=ssl)
+        for domain in domains:
+            api_url = f"{domain}/api/v1/model-versions/by-hash/{normalized_hash}"
+            try:
+                response = requests.get(api_url, headers=headers, timeout=(60, 30), proxies=proxies, verify=ssl)
+            except requests.exceptions.RequestException:
+                continue
 
-        if response.status_code == 200:
-            data = response.json()
-            if 'error' in data:
-                return 'sha256_not_found'
+            if response.status_code == 200:
+                data = response.json()
+                if not data or 'error' in data:
+                    continue
 
-            # Get model ID and fetch full model data
-            model_id = data.get('modelId')
-            if not model_id:
-                return 'not_found'
+                # Validate returned version contains file with matching SHA
+                files = data.get('files', []) or []
+                for f in files:
+                    file_sha = (f.get('hashes', {}) or {}).get('SHA256', '')
+                    if file_sha and file_sha.strip().upper() == normalized_hash:
+                        candidates.append({
+                            'domain': domain,
+                            'modelId': data.get('modelId'),
+                            'versionId': data.get('id'),
+                            'version_name': data.get('name'),
+                            'file_name': f.get('name'),
+                            'downloadUrl': f.get('downloadUrl') or data.get('downloadUrl')
+                        })
+                        break
+            elif response.status_code == 404:
+                continue
+            elif response.status_code == 503:
+                return 'offline'
 
-            model_url = f"https://{get_civitai_domain()}/api/v1/models/{model_id}"
+    except Exception:
+        return 'error'
+
+    # Interpret results
+    if not candidates:
+        return 'sha256_not_found'
+    if len(candidates) == 1:
+        candidate = candidates[0]
+        model_id = candidate.get('modelId')
+        if not model_id:
+            return 'not_found'
+        model_url = f"https://civitai.com/api/v1/models/{model_id}"
+        try:
             model_response = requests.get(model_url, headers=headers, timeout=(60, 30), proxies=proxies, verify=ssl)
-
             if model_response.status_code == 200:
                 model_data = model_response.json()
                 return {
@@ -883,23 +909,17 @@ def _search_by_sha256(sha256_hash):
                         'totalPages': 1
                     }
                 }
-            return 'not_found'
-
-        elif response.status_code == 404:
-            return 'sha256_not_found'
-        elif response.status_code == 503:
-            return 'offline'
-        else:
+            else:
+                return 'not_found'
+        except requests.exceptions.RequestException:
             return 'error'
 
-    except requests.exceptions.Timeout:
-        return 'timeout'
-    except (requests.exceptions.RequestException, Exception):
-        return 'error'
+    # Multiple candidates -> return list for disambiguation
+    return {'ambiguous': candidates}
 
 def create_api_url(content_type=None, sort_type=None, period_type=None, use_search_term=None, base_filter=None, only_liked=None, tile_count=None, search_term=None, nsfw=None, exact_search=None, isNext=None):
-    base_url = f'https://{get_civitai_domain()}/api/v1/models'
-    version_url = f'https://{get_civitai_domain()}/api/v1/model-versions'
+    base_url = 'https://civitai.com/api/v1/models'
+    version_url = 'https://civitai.com/api/v1/model-versions'
 
     if isNext != None:
         api_url = gl.json_data['metadata']['nextPage' if isNext else 'prevPage']
@@ -921,14 +941,14 @@ def create_api_url(content_type=None, sort_type=None, period_type=None, use_sear
             if not (search_term.startswith('"') and search_term.endswith('"')) and ' ' in search_term:
                 search_term = f'"{search_term}"'
 
-        if 'civitai.com' in search_term or 'civitai.red' in search_term:
+        if 'civitai.com' in search_term:
             if '/api/download/models' in search_term:
                 # Extract version ID from download URL
                 version_match = re.search(r'models/(\d+)', search_term)
                 if version_match:
                     version_id = version_match.group(1)
                     # Make API request to get model version information
-                    version_api_url = f"https://{get_civitai_domain()}/api/v1/model-versions/{version_id}"
+                    version_api_url = f"https://civitai.com/api/v1/model-versions/{version_id}"
                     version_data = request_civit_api(version_api_url, skip_error_check=True)
 
                     if isinstance(version_data, dict) and 'modelId' in version_data:
@@ -1434,12 +1454,12 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                                 model_folder = os.path.join(contenttype_folder('TextualInversion'))
 
                 model_url = selected_version.get('downloadUrl', '')
-                model_main_url = f"https://{get_civitai_domain()}/models/{item['id']}" if not is_local_only else ''
+                model_main_url = f"https://civitai.com/models/{item['id']}" if not is_local_only else ''
 
                 if is_local_only:
                     api_version = {'images': []}
                 else:
-                    url = f"https://{get_civitai_domain()}/api/v1/model-versions/{selected_version['id']}"
+                    url = f"https://civitai.com/api/v1/model-versions/{selected_version['id']}"
                     api_version = request_civit_api(url)
 
                 ## === ANXETY EDITs ===
@@ -1636,7 +1656,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                     uploader_page = (
                         '<div class="model-uploader-line">'
                             '<span class="uploader-label">Uploaded by:</span>'
-                            f'<a href="https://{get_civitai_domain()}/user/{escape(str(model_uploader))}" target="_blank">{escape(str(model_uploader))}</a>'
+                            f'<a href="https://civitai.com/user/{escape(str(model_uploader))}" target="_blank">{escape(str(model_uploader))}</a>'
                             f'{uploader_avatar}'
                         '</div>'
                     )
@@ -2111,7 +2131,7 @@ def get_headers(referer=None, no_api=None):
         'Content-Type': 'application/json'
     }
     if referer:
-        headers['Referer'] = f"https://{get_civitai_domain()}/models/{referer}"
+        headers['Referer'] = f"https://civitai.com/models/{referer}"
     if api_key and not no_api:
         headers['Authorization'] = f"Bearer {api_key}"
 

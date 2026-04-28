@@ -46,6 +46,38 @@ def random_number(prev=None):
     return number
 
 
+def resolve_ambiguity(choice_index):
+    """Resolve a queued item's ambiguous SHA choice and trigger resume of download thread.
+
+    Returns outputs: download_progress HTML, current_model, download_finish trigger, queue_trigger
+    """
+    try:
+        idx = int(str(choice_index).strip())
+    except Exception:
+        return gr.update(value=''), gr.update(value=None), gr.update(value=None), gr.update(value=None)
+
+    for item in gl.download_queue:
+        if item.get('ambiguous_candidates') and not item.get('ambiguous_selected'):
+            candidates = item.get('ambiguous_candidates')
+            if idx < 0 or idx >= len(candidates):
+                break
+            c = candidates[idx]
+            # Apply chosen candidate
+            try:
+                item['dl_url'] = c.get('downloadUrl') or item.get('dl_url')
+                item['model_id'] = int(c.get('modelId')) if c.get('modelId') else item.get('model_id')
+            except Exception:
+                pass
+            item['version_name'] = c.get('version_name') or item.get('version_name')
+            # Keep model_sha256 as-is (it matched the by-hash query)
+            item['ambiguous_selected'] = True
+
+            # Clear ambiguity HTML and resume download by nudging download_finish
+            return gr.update(value=''), gr.update(value=item.get('model_name')), gr.update(value=random_number()), gr.update(value=None)
+
+    return gr.update(value=''), gr.update(value=None), gr.update(value=None), gr.update(value=None)
+
+
 gl.init()
 
 
@@ -977,8 +1009,7 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
             gr.update(),  # Download Progress HTML
             gr.update(value=None),  # Current Model
             gr.update(value=random_number(download_finish)),  # Download Finish Trigger
-            gr.update(value=queue_trigger),  # Queue Trigger
-            gr.update(interactive=False)  # Cancel All Button
+            gr.update(value=queue_trigger)  # Queue Trigger
         )
 
     item = gl.download_queue[0]
@@ -1001,6 +1032,102 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
         except Exception as _e:
             debug_print(f"[Lazy fetch] Could not load API data for {item['model_name']}: {_e}")
         item['_api_ready'] = True
+
+    # === Ambiguity check for SHA256: query both civitai.com and civitai.red by-hash
+    try:
+        if item.get('model_sha256') and not item.get('ambiguous_checked'):
+            sha = item.get('model_sha256')
+            candidates = []
+            try:
+                # helper: ask both domains for candidates
+                def _find_sha_candidates(sha_val):
+                    res = []
+                    seen = set()
+                    for domain in ('https://civitai.com', 'https://civitai.red'):
+                        try:
+                            url = f"{domain}/api/v1/model-versions/by-hash/{sha_val}"
+                            data = _api.request_civit_api(url)
+                            if isinstance(data, dict) and data.get('id'):
+                                vid = data.get('id')
+                                mid = data.get('modelId')
+                                vname = data.get('name')
+                                files = data.get('files', [])
+                                # use first file entry as representative
+                                for f in files:
+                                    file_sha = (f.get('hashes', {}) or {}).get('SHA256', '')
+                                    dl = f.get('downloadUrl') or data.get('downloadUrl') or ''
+                                    fname = f.get('name')
+                                    key = (mid, vid)
+                                    if key in seen:
+                                        continue
+                                    seen.add(key)
+                                    res.append({
+                                        'modelId': mid,
+                                        'versionId': vid,
+                                        'version_name': vname,
+                                        'file_name': fname,
+                                        'sha256': (file_sha or '').upper(),
+                                        'downloadUrl': dl,
+                                        'domain': domain
+                                    })
+                        except Exception:
+                            pass
+                    return res
+
+                candidates = _find_sha_candidates(sha)
+            except Exception:
+                candidates = []
+
+            item['ambiguous_checked'] = True
+            item['ambiguous_candidates'] = candidates
+
+            # Log ambiguity for debugging and traceability
+            try:
+                debug_print(f"[Debug] Ambiguous SHA detected for {sha}: {len(candidates)} candidates")
+                for c in candidates:
+                    debug_print(f"[Debug] Candidate -> modelId={c.get('modelId')} versionId={c.get('versionId')} file={c.get('file_name')} domain={c.get('domain')}")
+            except Exception:
+                pass
+
+            # If multiple distinct candidates exist and none matches the queued model id/version, pause and ask user
+            if len(candidates) > 1:
+                match = False
+                for c in candidates:
+                    try:
+                        if int(c.get('modelId', -1)) == int(item.get('model_id', -1)):
+                            # prefer candidate that matches the queued model id
+                            item['dl_url'] = c.get('downloadUrl') or item['dl_url']
+                            match = True
+                            break
+                    except Exception:
+                        continue
+
+                if not match:
+                    try:
+                        debug_print(f"[Debug] No matching queued model for SHA {sha}; prompting user to choose candidate for '{item.get('model_name')}'")
+                    except Exception:
+                        pass
+                    # Prepare an HTML chooser and return early so the UI can show selection
+                    html = '<div style="padding:12px;background:#1f1f1f;border-radius:8px;color:#fff">'
+                    html += '<h3>Ambiguous SHA256 detected</h3>'
+                    html += '<p>More than one model/version matches this SHA. Please choose which one to download:</p>'
+                    html += '<ul style="list-style:none;padding:0;margin:0">'
+                    for i, c in enumerate(candidates):
+                        display = f"{c.get('modelId')} / {c.get('versionId')} — {c.get('version_name') or ''} — {c.get('file_name') or ''} ({c.get('domain')})"
+                        # radio inputs; when confirmed they set hidden ambiguity_choice and click hidden confirm button
+                        html += f'<li style="margin:6px 0;padding:6px;border:1px solid #333;border-radius:6px;background:#111"><label style="cursor:pointer"><input type="radio" name="ambig_choice" value="{i}"> {display}</label></li>'
+                    html += '</ul>'
+                    html += '<div style="margin-top:10px"><button onclick="(function(){let v=document.querySelector(\'input[name=\\\'ambig_choice\\\']:checked\'); if(v){let ta=document.getElementById(\'ambiguity_choice\'); if(ta){ta.value=v.value; ta.dispatchEvent(new Event(\'input\'));} let btn=document.getElementById(\'ambiguity_confirm\'); if(btn){btn.click();}} else {alert(\'Please select an option to continue\');}})()">Confirm selection</button></div>'
+                    html += '</div>'
+
+                    return (
+                        gr.update(value=html),  # Download Progress HTML -> shows chooser
+                        gr.update(value=item.get('model_name')),  # Current Model
+                        gr.update(value=None),  # Download Finish Trigger (no-op)
+                        gr.update(value=None)  # Queue Trigger (no-op)
+                    )
+    except Exception:
+        pass
 
     # Fix #3: do not mutate item dict — use a local effective path
     # Fallback to install_path if existing_path is None (e.g. lazy fetch returned value=None)
@@ -1160,13 +1287,11 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
     else:
         finish_nr = download_finish
         queue_nr = random_number(queue_trigger)
-
     return (
         gr.update(),  # Download Progress HTML
         gr.update(value=card_name),  # Current Model
         gr.update(value=finish_nr),  # Download Finish Trigger
         gr.update(value=queue_nr),  # Queue Trigger
-        gr.update(interactive=True if len(gl.download_queue) != 1 else False)  # Cancel All Button
     )
 
 def remove_from_queue(dl_id):
@@ -1244,7 +1369,7 @@ def _restore_queue_item(data):
             return None
 
     # Fetch from API first — gl.json_data may be empty/None at restore time
-    api_url = f'https://{_api.get_civitai_domain()}/api/v1/models/{model_id}'
+    api_url = f'https://civitai.com/api/v1/models/{model_id}'
     raw = _api.request_civit_api(api_url)
     model_json = {'items': [raw]} if raw and isinstance(raw, dict) else {'items': []}
 
