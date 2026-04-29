@@ -120,7 +120,7 @@ function applyPendingCardUpdates() {
             setTimeout(applyPendingCardUpdates, 200);
         }
     });
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
 })();
 
 function updateCard(modelNameWithSuffix, allowRefresh = true) {
