@@ -135,6 +135,17 @@ function applyPendingCardUpdates() {
             document.querySelector('.civmodelcards')
         ].filter(Boolean);
 
+        if (containers.length === 0) {
+            console.log('[updateCard] poller: no containers in DOM');
+            return;
+        }
+
+        containers.forEach((container, idx) => {
+            const visible = !!container.offsetParent;
+            const cardCount = container.querySelectorAll('.civmodelcard').length;
+            console.log('[updateCard] poller check: container', idx, 'visible:', visible, 'cards:', cardCount);
+        });
+
         // Only apply if a container is visible AND actually has cards rendered
         const hasVisibleCards = containers.some((container) => {
             if (!container.offsetParent) return false; // hidden/display:none
