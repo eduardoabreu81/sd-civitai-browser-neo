@@ -115,6 +115,7 @@ function applyPendingCardUpdates() {
             }
         }
         if (foundContainer && pendingCardUpdates.size > 0) {
+            console.log('[updateCard] container appeared — applying', pendingCardUpdates.size, 'pending update(s)');
             // Small delay to let Gradio finish rendering cards inside the container
             setTimeout(applyPendingCardUpdates, 200);
         }
@@ -162,27 +163,34 @@ function updateCard(modelNameWithSuffix, allowRefresh = true) {
         document.querySelector('.civmodelcards')
     ].filter(Boolean);
 
+    console.log('[updateCard] called:', modelNameWithSuffix, 'modelId:', modelId, 'containers:', containers.length, 'allowRefresh:', allowRefresh);
+
     if (containers.length === 0) {
         // No card containers visible — user is on a different tab. Queue for later.
+        console.log('[updateCard] no containers — queued for later');
         pendingCardUpdates.add(modelNameWithSuffix);
         return;
     }
 
     let matchedCount = 0;
-    containers.forEach((parentDiv) => {
+    containers.forEach((parentDiv, idx) => {
         const cards = parentDiv.querySelectorAll('.civmodelcard');
+        console.log('[updateCard] container', idx, 'has', cards.length, 'cards');
         cards.forEach((card) => {
             let cardMatches = false;
+            let matchMethod = '';
 
             if (modelId) {
                 const cardModelId = card.getAttribute('data-model-id');
                 cardMatches = cardModelId === modelId;
+                if (cardMatches) matchMethod = 'data-model-id';
             }
 
             // Backward compatibility for cards rendered before data-model-id existed.
             if (!cardMatches) {
                 const onclickAttr = card.getAttribute('onclick');
                 cardMatches = !!(onclickAttr && onclickAttr.includes(`select_model('${modelName}', event)`));
+                if (cardMatches) matchMethod = 'onclick';
             }
 
             if (!cardMatches) {
@@ -190,6 +198,7 @@ function updateCard(modelNameWithSuffix, allowRefresh = true) {
             }
 
             matchedCount += 1;
+            console.log('[updateCard] MATCH via', matchMethod, '— adding', additionalClassName);
             statusClasses.forEach((statusClass) => card.classList.remove(statusClass));
             if (additionalClassName) {
                 card.classList.add(additionalClassName);
@@ -203,11 +212,13 @@ function updateCard(modelNameWithSuffix, allowRefresh = true) {
     // to avoid expensive API re-fetch (100 items) when a single card is missing.
     if (matchedCount === 0) {
         const retryCount = cardSyncRetryState[modelNameWithSuffix] || 0;
+        console.log('[updateCard] no match — retry', retryCount + 1, '/ 4');
         if (retryCount < 4) {
             cardSyncRetryState[modelNameWithSuffix] = retryCount + 1;
             setTimeout(() => updateCard(modelNameWithSuffix, allowRefresh), 120);
         } else {
             delete cardSyncRetryState[modelNameWithSuffix];
+            console.log('[updateCard] exhausted retries — queued for tab-switch');
             // Instead of forcing a full refresh, queue for later tab-switch
             pendingCardUpdates.add(modelNameWithSuffix);
             if (allowRefresh) {
@@ -217,6 +228,7 @@ function updateCard(modelNameWithSuffix, allowRefresh = true) {
     } else {
         delete cardSyncRetryState[modelNameWithSuffix];
         pendingCardUpdates.delete(modelNameWithSuffix);
+        console.log('[updateCard] success — updated', matchedCount, 'card(s)');
     }
 
     const hideInstalledToggle =
