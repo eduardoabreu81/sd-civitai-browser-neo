@@ -115,22 +115,30 @@ function updateCard(modelNameWithSuffix, allowRefresh = true) {
     const modelId = modelIdMatch ? modelIdMatch[1] : null;
     const statusClasses = ['civmodelcardinstalled', 'civmodelcardoutdated', 'civmodelcardcrossfamily'];
 
+    // DEBUG logging to diagnose card-update failures
+    console.log('[updateCard] called with:', modelNameWithSuffix, 'allowRefresh:', allowRefresh,
+                'extracted modelId:', modelId, 'modelName:', modelName, 'suffix:', suffix);
+
     const parentDiv = document.querySelector('.civmodellist');
     if (parentDiv) {
         const cards = parentDiv.querySelectorAll('.civmodelcard');
+        console.log('[updateCard] found', cards.length, 'cards in DOM');
         let matchedCount = 0;
         cards.forEach((card) => {
             let cardMatches = false;
+            let matchMethod = '';
 
             if (modelId) {
                 const cardModelId = card.getAttribute('data-model-id');
                 cardMatches = cardModelId === modelId;
+                if (cardMatches) matchMethod = 'data-model-id';
             }
 
             // Backward compatibility for cards rendered before data-model-id existed.
             if (!cardMatches) {
                 const onclickAttr = card.getAttribute('onclick');
                 cardMatches = !!(onclickAttr && onclickAttr.includes(`select_model('${modelName}', event)`));
+                if (cardMatches) matchMethod = 'onclick';
             }
 
             if (!cardMatches) {
@@ -138,6 +146,7 @@ function updateCard(modelNameWithSuffix, allowRefresh = true) {
             }
 
             matchedCount += 1;
+            console.log('[updateCard] matched card via', matchMethod, 'for', modelName);
 
             statusClasses.forEach((statusClass) => card.classList.remove(statusClass));
             if (additionalClassName) {
@@ -150,12 +159,14 @@ function updateCard(modelNameWithSuffix, allowRefresh = true) {
         // NOTE: allowRefresh=false skips pressRefresh() — used for post-download triggers
         // to avoid expensive API re-fetch (100 items) when a single card is missing.
         if (matchedCount === 0) {
+            console.log('[updateCard] NO MATCH for', modelName, '— retrying or giving up');
             const retryCount = cardSyncRetryState[modelNameWithSuffix] || 0;
             if (retryCount < 4) {
                 cardSyncRetryState[modelNameWithSuffix] = retryCount + 1;
                 setTimeout(() => updateCard(modelNameWithSuffix, allowRefresh), 120);
             } else {
                 delete cardSyncRetryState[modelNameWithSuffix];
+                console.log('[updateCard] giving up after 4 retries for', modelName);
                 if (allowRefresh) {
                     pressRefresh();
                 }
@@ -170,6 +181,8 @@ function updateCard(modelNameWithSuffix, allowRefresh = true) {
         if (hideInstalledToggle) {
             hideInstalled(hideInstalledToggle.checked);
         }
+    } else {
+        console.log('[updateCard] NO .civmodellist parent found in DOM');
     }
 }
 
