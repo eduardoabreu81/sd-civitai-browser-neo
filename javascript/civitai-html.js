@@ -81,6 +81,47 @@ function addOrUpdateRule(styleSheet, selector, newRules) {
 // === ANXETY EDITs ===
 // Updates card border
 const cardSyncRetryState = {};
+const pendingCardUpdates = new Set();
+
+function applyPendingCardUpdates() {
+    if (pendingCardUpdates.size === 0) return;
+    const toApply = Array.from(pendingCardUpdates);
+    pendingCardUpdates.clear();
+    toApply.forEach((modelNameWithSuffix) => {
+        updateCard(modelNameWithSuffix, false);
+    });
+}
+
+// Watch for card containers appearing in the DOM (e.g. when user switches back to Browser/Update tab)
+(function initCardUpdateObserver() {
+    const observer = new MutationObserver((mutations) => {
+        let foundContainer = false;
+        for (const mutation of mutations) {
+            for (const node of mutation.addedNodes) {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                    if (
+                        node.matches && (node.matches('.civmodellist') || node.matches('.civmodelcards'))
+                    ) {
+                        foundContainer = true;
+                    } else if (node.querySelector) {
+                        if (
+                            node.querySelector('.civmodellist') ||
+                            node.querySelector('.civmodelcards')
+                        ) {
+                            foundContainer = true;
+                        }
+                    }
+                }
+            }
+        }
+        if (foundContainer && pendingCardUpdates.size > 0) {
+            // Small delay to let Gradio finish rendering cards inside the container
+            setTimeout(applyPendingCardUpdates, 200);
+        }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+})();
+
 function updateCard(modelNameWithSuffix, allowRefresh = true) {
     if (!modelNameWithSuffix || typeof modelNameWithSuffix !== 'string') {
         return;
@@ -115,30 +156,33 @@ function updateCard(modelNameWithSuffix, allowRefresh = true) {
     const modelId = modelIdMatch ? modelIdMatch[1] : null;
     const statusClasses = ['civmodelcardinstalled', 'civmodelcardoutdated', 'civmodelcardcrossfamily'];
 
-    // DEBUG logging to diagnose card-update failures
-    console.log('[updateCard] called with:', modelNameWithSuffix, 'allowRefresh:', allowRefresh,
-                'extracted modelId:', modelId, 'modelName:', modelName, 'suffix:', suffix);
+    // Search both Browser-mode (.civmodellist) and Update-mode (.civmodelcards) containers
+    const containers = [
+        document.querySelector('.civmodellist'),
+        document.querySelector('.civmodelcards')
+    ].filter(Boolean);
 
-    const parentDiv = document.querySelector('.civmodellist');
-    if (parentDiv) {
+    if (containers.length === 0) {
+        // No card containers visible — user is on a different tab. Queue for later.
+        pendingCardUpdates.add(modelNameWithSuffix);
+        return;
+    }
+
+    let matchedCount = 0;
+    containers.forEach((parentDiv) => {
         const cards = parentDiv.querySelectorAll('.civmodelcard');
-        console.log('[updateCard] found', cards.length, 'cards in DOM');
-        let matchedCount = 0;
         cards.forEach((card) => {
             let cardMatches = false;
-            let matchMethod = '';
 
             if (modelId) {
                 const cardModelId = card.getAttribute('data-model-id');
                 cardMatches = cardModelId === modelId;
-                if (cardMatches) matchMethod = 'data-model-id';
             }
 
             // Backward compatibility for cards rendered before data-model-id existed.
             if (!cardMatches) {
                 const onclickAttr = card.getAttribute('onclick');
                 cardMatches = !!(onclickAttr && onclickAttr.includes(`select_model('${modelName}', event)`));
-                if (cardMatches) matchMethod = 'onclick';
             }
 
             if (!cardMatches) {
@@ -146,43 +190,40 @@ function updateCard(modelNameWithSuffix, allowRefresh = true) {
             }
 
             matchedCount += 1;
-            console.log('[updateCard] matched card via', matchMethod, 'for', modelName);
-
             statusClasses.forEach((statusClass) => card.classList.remove(statusClass));
             if (additionalClassName) {
                 card.classList.add(additionalClassName);
             }
         });
+    });
 
-        // Fallback: if the card is not yet in the DOM snapshot, retry briefly.
-        // If retries exhaust, force a lightweight refresh so filters (Hide installed) re-apply.
-        // NOTE: allowRefresh=false skips pressRefresh() — used for post-download triggers
-        // to avoid expensive API re-fetch (100 items) when a single card is missing.
-        if (matchedCount === 0) {
-            console.log('[updateCard] NO MATCH for', modelName, '— retrying or giving up');
-            const retryCount = cardSyncRetryState[modelNameWithSuffix] || 0;
-            if (retryCount < 4) {
-                cardSyncRetryState[modelNameWithSuffix] = retryCount + 1;
-                setTimeout(() => updateCard(modelNameWithSuffix, allowRefresh), 120);
-            } else {
-                delete cardSyncRetryState[modelNameWithSuffix];
-                console.log('[updateCard] giving up after 4 retries for', modelName);
-                if (allowRefresh) {
-                    pressRefresh();
-                }
-            }
+    // Fallback: if the card is not yet in the DOM snapshot, retry briefly.
+    // If retries exhaust, queue for when the user returns to the tab (via MutationObserver).
+    // NOTE: allowRefresh=false skips pressRefresh() — used for post-download triggers
+    // to avoid expensive API re-fetch (100 items) when a single card is missing.
+    if (matchedCount === 0) {
+        const retryCount = cardSyncRetryState[modelNameWithSuffix] || 0;
+        if (retryCount < 4) {
+            cardSyncRetryState[modelNameWithSuffix] = retryCount + 1;
+            setTimeout(() => updateCard(modelNameWithSuffix, allowRefresh), 120);
         } else {
             delete cardSyncRetryState[modelNameWithSuffix];
-        }
-
-        const hideInstalledToggle =
-            gradioApp().querySelector('#toggle5 input[type="checkbox"]') ||
-            gradioApp().querySelector('#toggle5L input[type="checkbox"]');
-        if (hideInstalledToggle) {
-            hideInstalled(hideInstalledToggle.checked);
+            // Instead of forcing a full refresh, queue for later tab-switch
+            pendingCardUpdates.add(modelNameWithSuffix);
+            if (allowRefresh) {
+                pressRefresh();
+            }
         }
     } else {
-        console.log('[updateCard] NO .civmodellist parent found in DOM');
+        delete cardSyncRetryState[modelNameWithSuffix];
+        pendingCardUpdates.delete(modelNameWithSuffix);
+    }
+
+    const hideInstalledToggle =
+        gradioApp().querySelector('#toggle5 input[type="checkbox"]') ||
+        gradioApp().querySelector('#toggle5L input[type="checkbox"]');
+    if (hideInstalledToggle) {
+        hideInstalled(hideInstalledToggle.checked);
     }
 }
 
