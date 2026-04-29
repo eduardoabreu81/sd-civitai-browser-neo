@@ -700,7 +700,9 @@ def on_ui_tabs():
             func.change(fn=None, inputs=current_model, _js='(modelName) => updateCard(modelName, false)')
 
         # Ensure realtime card status updates also fire when current_model itself changes.
-        current_model.change(fn=None, inputs=current_model, _js='(modelName) => updateCard(modelName)')
+        # Skip pressRefresh() fallback — current_model changes after download/delete/ambiguity
+        # resolution, and we must not trigger expensive full-page API re-fetches.
+        current_model.change(fn=None, inputs=current_model, _js='(modelName) => updateCard(modelName, false)')
 
         list_html_input.change(fn=None, inputs=size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
         size_slider.change(fn=None, inputs=size_slider, _js='(size) => updateCardSize(size, size * 1.5)')

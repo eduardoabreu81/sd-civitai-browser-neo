@@ -1805,8 +1805,9 @@ function deleteInstalledModel(event, modelString, sha256, installedCount = 1) {
         const deleteButton = gradioApp().querySelector('#delete_trigger_btn');
         if (deleteButton) {
             deleteButton.click();
-            // After deletion completes, update the card visually (remove installed state)
-            setTimeout(() => updateCard(modelString + '.None'), 500);
+            // After deletion completes, update the card visually (remove installed state).
+            // Skip pressRefresh() fallback to avoid expensive full-page API re-fetch.
+            setTimeout(() => updateCard(modelString + '.None', false), 500);
         } else {
             console.error('Could not find #delete_trigger_btn element');
             alert('Error: Delete button not found. Please try using the delete button in the model details panel.');
