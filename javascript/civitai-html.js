@@ -140,30 +140,20 @@ function applyPendingCardUpdates() {
             return;
         }
 
-        containers.forEach((container, idx) => {
-            const visible = !!container.offsetParent;
-            const cardCount = container.querySelectorAll('.civmodelcard').length;
-            console.log('[updateCard] poller check: container', idx, 'visible:', visible, 'cards:', cardCount);
-        });
-
-        // Only apply if a container is visible AND actually has cards rendered
-        const hasVisibleCards = containers.some((container) => {
-            if (!container.offsetParent) return false; // hidden/display:none
+        // If any container has cards, apply pending updates directly.
+        const hasCards = containers.some((container) => {
             return container.querySelectorAll('.civmodelcard').length > 0;
         });
 
-        if (hasVisibleCards) {
-            console.log('[updateCard] poller detected visible cards — applying', pendingCardUpdates.size, 'pending update(s)');
+        if (hasCards) {
+            console.log('[updateCard] poller: cards detected — applying', pendingCardUpdates.size, 'pending update(s)');
             applyPendingCardUpdates();
         } else {
-            // Container is visible but has no cards (Gradio cleared them on tab switch).
+            // Containers exist but have no cards (Gradio cleared them on tab switch).
             // Force a refresh to reload cards with updated status.
-            const visibleEmptyContainer = containers.find((c) => c.offsetParent);
-            if (visibleEmptyContainer && pendingCardUpdates.size > 0) {
-                console.log('[updateCard] poller: visible container empty — forcing refresh');
-                pendingCardUpdates.clear();
-                pressRefresh();
-            }
+            console.log('[updateCard] poller: containers empty — forcing refresh');
+            pendingCardUpdates.clear();
+            pressRefresh();
         }
     }, 600);
 })();
