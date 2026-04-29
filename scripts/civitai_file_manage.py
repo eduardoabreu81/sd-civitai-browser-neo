@@ -1981,11 +1981,13 @@ def version_match(file_paths, api_response, log=False):
 
         # For each baseModel, the newest available index is the minimum index
         # among all versions sharing that baseModel.
-        base_to_newest_idx = {}  # baseModel → int (smallest index = newest)
+        base_to_newest_idx = {}   # baseModel → int (smallest index = newest)
+        base_to_newest_name = {}  # baseModel → version name (for semantic comparison)
         for vm in ver_meta.values():
             bm = vm['base']
             if bm not in base_to_newest_idx or vm['idx'] < base_to_newest_idx[bm]:
                 base_to_newest_idx[bm] = vm['idx']
+                base_to_newest_name[bm] = vm['name']
 
         # Find which version IDs of THIS model are installed
         installed_ver_ids = []  # list of (ver_id, baseModel, ver_name)
@@ -2023,16 +2025,43 @@ def version_match(file_paths, api_response, log=False):
 
         if precise_check:
             # Per-baseModel check: is the installed version the newest for its base?
+            # Hybrid strategy: prefer semantic version comparison (V3 > V1) when both
+            # version names contain clear numbers; fall back to array index otherwise.
             for vid, bm, vname in installed_ver_ids:
                 inst_idx = ver_meta.get(vid, {}).get('idx', 0) if vid is not None else 0
                 newest_idx = base_to_newest_idx.get(bm, 0)
-                if inst_idx > newest_idx:
-                    has_outdated = True
+                newest_name = base_to_newest_name.get(bm, '')
+
+                # Try semantic comparison first
+                _inst_family, inst_parts = extract_version_from_ver_name(vname)
+                _newest_family, newest_parts = extract_version_from_ver_name(newest_name)
+                semantic_outdated = None
+                if inst_parts and newest_parts:
+                    cmp = compare_version_parts(inst_parts, newest_parts)
+                    semantic_outdated = cmp < 0  # installed < newest semantically
                     if log:
+                        print(f"[LOG] '{model_name}' base='{bm}' ver='{vname}' vs '{newest_name}': "
+                              f"semantic cmp={cmp}")
+
+                if semantic_outdated is not None:
+                    # Semantic comparison succeeded — trust it
+                    if semantic_outdated:
+                        has_outdated = True
+                        if log:
+                            print(f"[LOG] '{model_name}' base='{bm}' ver='{vname}': "
+                                  f"outdated (semantic: {inst_parts} < {newest_parts})")
+                    elif log:
                         print(f"[LOG] '{model_name}' base='{bm}' ver='{vname}': "
-                              f"outdated (idx {inst_idx} > newest {newest_idx})")
-                elif log:
-                    print(f"[LOG] '{model_name}' base='{bm}' ver='{vname}': up-to-date")
+                              f"up-to-date (semantic: {inst_parts} >= {newest_parts})")
+                else:
+                    # Fallback to array index (original behavior)
+                    if inst_idx > newest_idx:
+                        has_outdated = True
+                        if log:
+                            print(f"[LOG] '{model_name}' base='{bm}' ver='{vname}': "
+                                  f"outdated (idx {inst_idx} > newest {newest_idx})")
+                    elif log:
+                        print(f"[LOG] '{model_name}' base='{bm}' ver='{vname}': up-to-date")
         else:
             # Global check: is the installed version the globally newest (index 0)?
             for vid, bm, vname in installed_ver_ids:
