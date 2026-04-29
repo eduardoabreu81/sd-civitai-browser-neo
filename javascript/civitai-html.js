@@ -109,7 +109,9 @@ function updateCard(modelNameWithSuffix, allowRefresh = true) {
             return;
     }
 
-    const modelIdMatch = modelName.match(/\((-?\d+)\)\s*$/);
+    // Extract modelId from anywhere in the string (e.g. "Name (12345).New")
+    // instead of requiring it at the end — the suffix (.New/.Old/.None) comes after.
+    const modelIdMatch = modelNameWithSuffix.match(/\((-?\d+)\)/);
     const modelId = modelIdMatch ? modelIdMatch[1] : null;
     const statusClasses = ['civmodelcardinstalled', 'civmodelcardoutdated', 'civmodelcardcrossfamily'];
 
