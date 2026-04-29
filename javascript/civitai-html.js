@@ -123,6 +123,31 @@ function applyPendingCardUpdates() {
     observer.observe(document.documentElement, { childList: true, subtree: true });
 })();
 
+// Polling fallback: Gradio 4.x often injects cards via innerHTML which doesn't reliably
+// trigger childList mutations for individual cards. We poll every 600ms to check if
+// any visible container now has cards, and apply pending updates if so.
+(function initCardUpdatePoller() {
+    setInterval(() => {
+        if (pendingCardUpdates.size === 0) return;
+
+        const containers = [
+            document.querySelector('.civmodellist'),
+            document.querySelector('.civmodelcards')
+        ].filter(Boolean);
+
+        // Only apply if a container is visible AND actually has cards rendered
+        const hasVisibleCards = containers.some((container) => {
+            if (!container.offsetParent) return false; // hidden/display:none
+            return container.querySelectorAll('.civmodelcard').length > 0;
+        });
+
+        if (hasVisibleCards) {
+            console.log('[updateCard] poller detected visible cards — applying', pendingCardUpdates.size, 'pending update(s)');
+            applyPendingCardUpdates();
+        }
+    }, 600);
+})();
+
 function updateCard(modelNameWithSuffix, allowRefresh = true) {
     if (!modelNameWithSuffix || typeof modelNameWithSuffix !== 'string') {
         return;
