@@ -697,7 +697,7 @@ def on_ui_tabs():
         # is missing from the DOM after download/delete/queue events.
         card_updates = [queue_trigger, download_finish, delete_finish]
         for func in card_updates:
-            func.change(fn=None, inputs=current_model, _js='(modelName) => updateCard(modelName, false)')
+            func.change(fn=None, inputs=func, _js='(modelName) => updateCard(modelName, false)')
 
         # Ensure realtime card status updates also fire when current_model itself changes.
         # Skip pressRefresh() fallback — current_model changes after download/delete/ambiguity
