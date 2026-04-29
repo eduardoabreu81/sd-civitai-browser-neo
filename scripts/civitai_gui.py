@@ -692,9 +692,12 @@ def on_ui_tabs():
 
         page_slider.release(fn=None, _js='() => pressRefresh()')
 
+        # Post-download card updates: skip pressRefresh() fallback to avoid
+        # expensive full-page API re-fetch (e.g. 100 items) when a single card
+        # is missing from the DOM after download/delete/queue events.
         card_updates = [queue_trigger, download_finish, delete_finish]
         for func in card_updates:
-            func.change(fn=None, inputs=current_model, _js='(modelName) => updateCard(modelName)')
+            func.change(fn=None, inputs=current_model, _js='(modelName) => updateCard(modelName, false)')
 
         # Ensure realtime card status updates also fire when current_model itself changes.
         current_model.change(fn=None, inputs=current_model, _js='(modelName) => updateCard(modelName)')

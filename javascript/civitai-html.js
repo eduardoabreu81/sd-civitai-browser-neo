@@ -81,7 +81,7 @@ function addOrUpdateRule(styleSheet, selector, newRules) {
 // === ANXETY EDITs ===
 // Updates card border
 const cardSyncRetryState = {};
-function updateCard(modelNameWithSuffix) {
+function updateCard(modelNameWithSuffix, allowRefresh = true) {
     if (!modelNameWithSuffix || typeof modelNameWithSuffix !== 'string') {
         return;
     }
@@ -145,14 +145,18 @@ function updateCard(modelNameWithSuffix) {
 
         // Fallback: if the card is not yet in the DOM snapshot, retry briefly.
         // If retries exhaust, force a lightweight refresh so filters (Hide installed) re-apply.
+        // NOTE: allowRefresh=false skips pressRefresh() — used for post-download triggers
+        // to avoid expensive API re-fetch (100 items) when a single card is missing.
         if (matchedCount === 0) {
             const retryCount = cardSyncRetryState[modelNameWithSuffix] || 0;
             if (retryCount < 4) {
                 cardSyncRetryState[modelNameWithSuffix] = retryCount + 1;
-                setTimeout(() => updateCard(modelNameWithSuffix), 120);
+                setTimeout(() => updateCard(modelNameWithSuffix, allowRefresh), 120);
             } else {
                 delete cardSyncRetryState[modelNameWithSuffix];
-                pressRefresh();
+                if (allowRefresh) {
+                    pressRefresh();
+                }
             }
         } else {
             delete cardSyncRetryState[modelNameWithSuffix];

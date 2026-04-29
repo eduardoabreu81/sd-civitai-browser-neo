@@ -105,9 +105,9 @@
     box-shadow: 0 0 4px 1px rgba(91, 155, 213, 0.5);
 }
 .card-legend .legend-dot.early-access {
-    border-color: gold;
+    border-color: #e0e0e0;
     background: transparent;
-    box-shadow: 0 0 4px 1px rgba(255, 215, 0, 0.5);
+    box-shadow: 0 0 4px 1px rgba(224, 224, 224, 0.5);
 }
 .card-legend .legend-separator {
     width: 1px;
@@ -261,7 +261,7 @@
 }
 /* Early Access Badge */
 .civmodelcard.early-access .early-access-icon { /* Icon */
-    fill: gold;
+    fill: #e0e0e0;
     margin-left: -4px;
     margin-right: 2px;
     width: 14px;
@@ -269,12 +269,12 @@
 }
 
 .civmodelcard.early-access { /* Model Card */
-    box-shadow: 0 6px 15px -2px color-mix(in srgb, gold 20%, rgba(0, 0, 0, 0.1));
-    border-color: color-mix(in srgb, gold 40%, rgba(255, 255, 255, 0.3));
+    box-shadow: 0 6px 15px -2px color-mix(in srgb, #e0e0e0 20%, rgba(0, 0, 0, 0.1));
+    border-color: color-mix(in srgb, #e0e0e0 40%, rgba(255, 255, 255, 0.3));
 }
 .civmodelcard.early-access .early-access-badge { /* Model Type Badge */
-    color: gold;
-    border-color: color-mix(in srgb, gold 40%, rgba(255, 255, 255, 0.3));
+    color: #e0e0e0;
+    border-color: color-mix(in srgb, #e0e0e0 40%, rgba(255, 255, 255, 0.3));
 }
 
 /* NSFW Badge */
