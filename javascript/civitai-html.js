@@ -155,6 +155,15 @@ function applyPendingCardUpdates() {
         if (hasVisibleCards) {
             console.log('[updateCard] poller detected visible cards — applying', pendingCardUpdates.size, 'pending update(s)');
             applyPendingCardUpdates();
+        } else {
+            // Container is visible but has no cards (Gradio cleared them on tab switch).
+            // Force a refresh to reload cards with updated status.
+            const visibleEmptyContainer = containers.find((c) => c.offsetParent);
+            if (visibleEmptyContainer && pendingCardUpdates.size > 0) {
+                console.log('[updateCard] poller: visible container empty — forcing refresh');
+                pendingCardUpdates.clear();
+                pressRefresh();
+            }
         }
     }, 600);
 })();
@@ -1029,16 +1038,25 @@ function setDownloadProgressBar() {
 
     const worker = _createWorkerInterval(() => {
         browserContainer = document.querySelector('#DownloadProgress');
+        if (!browserContainer) {
+            return; // User switched tab, container not in DOM
+        }
         browserProgress = browserContainer.querySelector('.progress-bar');
         dlText = browserContainer.querySelector('.progress-level-inner');
-        if (!dlText) {
+        if (!dlText || !browserProgress) {
             return;
         }
         dlText = dlText.innerText;
         percentage = parseFloat(browserProgress.style.width);
 
         dlItem = dlList.querySelector(selector);
+        if (!dlItem) {
+            return;
+        }
         dlProgressBar = dlItem.querySelector('.dl_progress_bar');
+        if (!dlProgressBar) {
+            return;
+        }
 
         dlProgressBar.textContent = percentage.toFixed(1) + '%';
         dlProgressBar.style.width = percentage + '%';
