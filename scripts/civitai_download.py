@@ -1384,8 +1384,32 @@ def get_interrupted_downloads_json():
     interrupted = _dl_log.get_interrupted()
     if not interrupted:
         return ''
+
+    # Filter out false positives: if the file already exists on disk
+    # and there is no Aria2 sidecar (.aria2), the download actually
+    # completed and only the log wasn't updated (e.g. WebUI restarted
+    # during post-processing).
+    genuinely_interrupted = []
+    for entry in interrupted:
+        install_path = entry.get('install_path', '')
+        filename = entry.get('model_filename', '')
+        file_path = os.path.join(install_path, filename) if install_path and filename else ''
+        aria2_path = file_path + '.aria2' if file_path else ''
+
+        if file_path and os.path.exists(file_path) and not os.path.exists(aria2_path):
+            # File is complete — auto-mark as completed in the log
+            try:
+                _dl_log.log_completed(entry.get('dl_id'))
+            except Exception:
+                pass
+            continue  # skip from interrupted list
+
+        genuinely_interrupted.append(entry)
+
+    if not genuinely_interrupted:
+        return ''
     import json as _json
-    return _json.dumps(interrupted)
+    return _json.dumps(genuinely_interrupted)
 
 
 def dismiss_interrupted_downloads():
