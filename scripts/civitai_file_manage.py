@@ -361,9 +361,17 @@ def handle_existing_model_file(file_path):
         shutil.move(file_path, dest)
         print(f'[Retention] Moved old model file to _Trash: {dest}')
         append_update_audit_log('retention_trash', {'old_file': file_path, 'dest': dest})
+        # Also move adjacent files to trash so they don't orphan alongside the new version
+        parent_dir = os.path.dirname(file_path)
+        base_name = os.path.splitext(os.path.basename(file_path))[0]
+        _trash_associated_files(parent_dir, base_name, trash_dir)
     else:  # 'replace' (default)
         os.remove(file_path)
         append_update_audit_log('retention_replace', {'old_file': file_path})
+        # Also clean up adjacent files (preview, json, html, api_info, numbered images)
+        parent_dir = os.path.dirname(file_path)
+        base_name = os.path.splitext(os.path.basename(file_path))[0]
+        delete_associated_files(parent_dir, base_name)
 
 
 def delete_model(delete_finish=None, model_filename=None, model_string=None, list_versions=None, sha256=None, selected_list=None, model_ver=None, model_json=None):
@@ -598,6 +606,39 @@ def delete_associated_files(directory, base_name):
                 except Exception:
                     os.remove(file_path)
                     print(f"Image deleted: {file_path}")
+
+
+def _trash_associated_files(directory, base_name, trash_dir):
+    """Moves related model files to the _Trash folder alongside the main file."""
+    associated_suffixes = ['', '.preview', '.api_info', '.html']
+    image_exts = {'.png', '.jpg', '.jpeg'}
+
+    for file in os.listdir(directory):
+        file_path = os.path.join(directory, file)
+        name, ext = os.path.splitext(file)
+
+        # Move associated files by suffix
+        if name in [f'{base_name}{sfx}' for sfx in associated_suffixes]:
+            dest = os.path.join(trash_dir, file)
+            if os.path.exists(dest):
+                stamp = __import__('datetime').datetime.now().strftime('%Y%m%d_%H%M%S')
+                base, ext = os.path.splitext(file)
+                dest = os.path.join(trash_dir, f'{base}_{stamp}{ext}')
+            shutil.move(file_path, dest)
+            print(f'[Retention] Moved adjacent file to _Trash: {dest}')
+            continue
+
+        # Move images matching pattern: <base_name>_<number>.<ext>
+        if name.startswith(f'{base_name}_') and ext.lower() in image_exts:
+            suffix = name[len(f'{base_name}_'):]
+            if suffix.isdigit():
+                dest = os.path.join(trash_dir, file)
+                if os.path.exists(dest):
+                    stamp = __import__('datetime').datetime.now().strftime('%Y%m%d_%H%M%S')
+                    base, ext = os.path.splitext(file)
+                    dest = os.path.join(trash_dir, f'{base}_{stamp}{ext}')
+                shutil.move(file_path, dest)
+                print(f'[Retention] Moved adjacent image to _Trash: {dest}')
 
 
 def _resize_image_bytes(image_bytes, target_size=512):
