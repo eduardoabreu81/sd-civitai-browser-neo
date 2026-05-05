@@ -686,6 +686,40 @@ def get_download_link(url, model_id):
     else:
         return None
 
+def _get_download_link_with_retry(url, model_id, file_name, progress=None):
+    """Fetch download link with 1 retry on timeout.
+    Returns the link, 'NO_API', or None on failure.
+    Sets gl.download_fail and updates progress on failure so the caller
+    can simply return and let the queue advance to the next item."""
+    for attempt in range(2):
+        try:
+            link = get_download_link(url, model_id)
+            return link
+        except (requests.exceptions.Timeout, requests.exceptions.ReadTimeout) as e:
+            if attempt == 0:
+                msg = f"Timeout getting download link for '{file_name}', retrying in 3s..."
+                print(msg)
+                debug_print(f"[Download] {msg}")
+                if progress is not None:
+                    progress(0, desc=msg)
+                time.sleep(3)
+            else:
+                msg = f"Timeout getting download link for '{file_name}' after retry — skipping item."
+                print(msg)
+                debug_print(f"[Download] {msg}")
+                if progress is not None:
+                    progress(0, desc=msg)
+                gl.download_fail = True
+                return None
+        except Exception as e:
+            msg = f"Error getting download link for '{file_name}': {e}"
+            print(msg)
+            debug_print(f"[Download] {msg}")
+            if progress is not None:
+                progress(0, desc=f"Error downloading '{file_name}' — skipped.")
+            gl.download_fail = True
+            return None
+
 def download_file(url, file_path, install_path, model_id, progress=gr.Progress() if queue else None):
     try:
         disable_dns = getattr(opts, 'disable_dns', False)
@@ -719,16 +753,15 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
                 time.sleep(5)
             return
 
-        download_link = get_download_link(url, model_id)
+        download_link = _get_download_link_with_retry(url, model_id, file_name, progress)
+        if download_link is None:
+            return
         if not download_link:
             msg = f"File: '{file_name}' not found on CivitAI servers, it looks like the file is not available for download."
             debug_print(f"[Download] Failed to get download link for {file_name}")
             print(msg)
             gl.download_fail = True
             return
-        else:
-            debug_print(f"[Download] Got download link for {file_name}")
-
         elif download_link == 'NO_API':
             msg = f"File: '{file_name}' requires a personal CivitAI API to be downloaded, you can set your own API key in the CivitAI Browser+ settings in the SD-WebUI settings tab"
             print(msg)
@@ -737,6 +770,8 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
                 progress(0, desc=msg)
                 time.sleep(5)
             return
+        else:
+            debug_print(f"[Download] Got download link for {file_name}")
 
         signed_download = _is_signed_civitai_download(download_link)
 
@@ -897,7 +932,9 @@ def download_file_old(url, file_path, model_id, progress=gr.Progress() if queue 
         last_update_time = 0
         update_interval = 0.25
 
-        download_link = get_download_link(url, model_id)
+        download_link = _get_download_link_with_retry(url, model_id, file_name_display, progress)
+        if download_link is None:
+            return
         if not download_link:
             msg = f"File: '{file_name_display}' not found on CivitAI servers, it looks like the file is not available for download."
             print(msg)
@@ -1341,14 +1378,6 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
     else:
         finish_nr = download_finish
         queue_nr = random_number(queue_trigger)
-    
-    # If queue still has items, process next directly without going through
-    # the Gradio event queue. This eliminates multi-minute gaps caused by
-    # txt2img/img2img generation jobs blocking event processing.
-    if len(gl.download_queue) > 0:
-        debug_print(f"[Download] Queue has {len(gl.download_queue)} item(s) left; processing next directly (bypassing Gradio event queue)")
-        return download_create_thread(download_finish, queue_trigger, progress)
-    
     return (
         gr.update(),  # Download Progress HTML
         gr.update(value=card_name),  # Current Model
