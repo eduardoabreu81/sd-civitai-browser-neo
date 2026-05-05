@@ -675,7 +675,7 @@ def get_download_link(url, model_id):
     headers = _api.get_headers(model_id)
     proxies, ssl = _api.get_proxies()
 
-    response = requests.get(url, headers=headers, allow_redirects=False, proxies=proxies, verify=ssl)
+    response = requests.get(url, headers=headers, allow_redirects=False, proxies=proxies, verify=ssl, timeout=30)
 
     if 300 <= response.status_code <= 308:
         if 'login?returnUrl' in response.text and 'reason=download-auth' in response.text:
@@ -772,7 +772,7 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
         })
 
         try:
-            response = requests.post(aria2_rpc_url, data=payload)
+            response = requests.post(aria2_rpc_url, data=payload, timeout=10)
             data = json.loads(response.text)
             if 'result' not in data:
                 raise ValueError(f"Failed to start download: {data}")
@@ -790,7 +790,7 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
                     'method': 'aria2.remove',
                     'params': ['token:' + rpc_secret, gid]
                 })
-                requests.post(aria2_rpc_url, data=payload)
+                requests.post(aria2_rpc_url, data=payload, timeout=10)
                 if progress != None:
                     progress(0, desc="Download cancelled.")
                 return
@@ -803,7 +803,7 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
                     'params': ['token:' + rpc_secret, gid]
                 })
 
-                response = requests.post(aria2_rpc_url, data=payload)
+                response = requests.post(aria2_rpc_url, data=payload, timeout=10)
                 status_info = json.loads(response.text)['result']
 
                 total_length = int(status_info['totalLength'])
