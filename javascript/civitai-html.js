@@ -1129,7 +1129,7 @@ function initRestoreBanner(json) {
                     padding:12px 16px;margin:8px 0;display:flex;align-items:center;
                     gap:12px;flex-wrap:wrap;">
             <span style="flex:1;min-width:200px;">
-                🔄 <b>${count} download${count > 1 ? 's' : ''} were interrupted.</b> ${names}${more}
+                🔄 <b>${count} download${count > 1 ? 's' : ''} need attention.</b> ${names}${more}
             </span>
             <button onclick="triggerRestoreQueue()"
                 style="background:#2d6a9f;color:white;border:none;border-radius:6px;

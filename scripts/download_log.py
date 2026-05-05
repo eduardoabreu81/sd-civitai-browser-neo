@@ -134,17 +134,18 @@ def log_all_cancelled():
 # ─── Read helpers ─────────────────────────────────────────────────────────────
 
 def get_interrupted():
-    """Return entries whose status is still queued or downloading
-    (i.e. interrupted by an unexpected disconnect)."""
-    return [e for e in _read_all() if e.get('status') in ('queued', 'downloading')]
+    """Return entries whose status is still queued, downloading, or failed.
+    'failed' is included so that items which exhausted their automatic retries
+    can be re-attempted manually via the restore banner."""
+    return [e for e in _read_all() if e.get('status') in ('queued', 'downloading', 'failed')]
 
 
 def dismiss_interrupted():
-    """Mark all interrupted entries as dismissed so they are ignored on next reload."""
+    """Mark all interrupted (and failed) entries as dismissed so they are ignored on next reload."""
     entries = _read_all()
     changed = False
     for e in entries:
-        if e.get('status') in ('queued', 'downloading'):
+        if e.get('status') in ('queued', 'downloading', 'failed'):
             e['status'] = 'dismissed'
             e['updated_at'] = _now()
             changed = True

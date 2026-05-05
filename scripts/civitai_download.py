@@ -1359,15 +1359,35 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
     if gl.cancel_status:
         _dl_log.log_cancelled(item['dl_id'])
         debug_print(f"[Download] Cancelled: '{item['model_name']}'")
+        if len(gl.download_queue) != 0:
+            gl.download_queue.pop(0)
     elif gl.download_fail:
-        _dl_log.log_failed(item['dl_id'])
-        debug_print(f"[Download] Failed: '{item['model_name']}'")
+        # Permanent errors (Early Access, missing API key) should not be retried
+        permanent_error = gl.download_fail in ('EARLY_ACCESS', 'NO_API')
+        if not permanent_error:
+            retry_count = item.get('retry_count', 0) + 1
+            item['retry_count'] = retry_count
+            if retry_count < 3:
+                # Move to end of queue for automatic retry
+                debug_print(f"[Download] Retry {retry_count}/3 for '{item['model_name']}' — moving to end of queue")
+                gl.download_queue.pop(0)
+                gl.download_queue.append(item)
+            else:
+                debug_print(f"[Download] Failed permanently after 3 retries: '{item['model_name']}'")
+                _dl_log.log_failed(item['dl_id'])
+                if len(gl.download_queue) != 0:
+                    gl.download_queue.pop(0)
+        else:
+            debug_print(f"[Download] Failed permanently (non-retryable): '{item['model_name']}'")
+            _dl_log.log_failed(item['dl_id'])
+            if len(gl.download_queue) != 0:
+                gl.download_queue.pop(0)
     else:
         _dl_log.log_completed(item['dl_id'])
         debug_print(f"[Download] Completed: '{item['model_name']}' → {path_to_new_file}")
+        if len(gl.download_queue) != 0:
+            gl.download_queue.pop(0)
 
-    if len(gl.download_queue) != 0:
-        gl.download_queue.pop(0)
     gl.isDownloading = False
     _not_downloading.set()  # signal: download finished, safe to cancel/cleanup
     time.sleep(2)
