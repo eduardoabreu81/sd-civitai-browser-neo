@@ -1231,7 +1231,7 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
                 progress(0.99, desc=f"Verifying integrity: {item['model_filename']}...")
             sha256_hash = hashlib.sha256()
             with open(path_to_new_file, 'rb') as _f:
-                for _chunk in iter(lambda: _f.read(1024 * 1024), b''):
+                for _chunk in iter(lambda: _f.read(8 * 1024 * 1024), b''):
                     sha256_hash.update(_chunk)
             actual_sha256 = sha256_hash.hexdigest().upper()
             if actual_sha256 != item['model_sha256'].upper():
