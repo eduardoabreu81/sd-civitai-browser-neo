@@ -290,10 +290,12 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
         current_count = 0
 
     model_list = json.loads(model_list)
+    total_queued = len(model_list)
+    debug_print(f"[Queue] Batch enqueue started: {total_queued} model(s) selected")
     skipped_names = []
 
     ## === ANXETY EDITs ===
-    for model_string in model_list:
+    for idx, model_string in enumerate(model_list, 1):
         model_name, model_id = _api.extract_model_info(model_string)
         item_found = None
         for item in gl.json_data['items']:
@@ -303,7 +305,7 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
 
         if not item_found:
             skipped_names.append(model_name)
-            debug_print(f"Skipped model {model_name} ({model_id}) — not found in json_data")
+            debug_print(f"[Queue] ({idx}/{total_queued}) Skipped model {model_name} ({model_id}) — not found in json_data")
             continue
 
         desc = item_found['description']
@@ -325,6 +327,7 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
         for version in versions_to_download:
             version_name = version.get('name')
             version_id = version.get('id')
+            debug_print(f"[Queue] ({idx}/{total_queued}) Enqueuing: {model_name} — version '{version_name}' (id={version_id})")
             output_basemodel = version.get('baseModel')
             files = version.get('files', [])
             primary_file = next((f for f in files if f.get('primary', False)), None)
@@ -339,6 +342,7 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
                 dl_url = files[0].get('downloadUrl')
             else:
                 skipped_names.append(f"{model_name} ({version_name})")
+                debug_print(f"[Queue] ({idx}/{total_queued}) Skipped {model_name} ({version_name}) — no files in version")
                 continue
 
             # Check if auto-organization is enabled
@@ -691,6 +695,7 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
         aria2_rpc_url = "http://localhost:24000/jsonrpc"
 
         file_name = os.path.basename(file_path)
+        debug_print(f"[Download] aria2 start: {file_name}")
 
         ## === ANXETY EDITs ===
         # Find the model item in the download queue (by model_id and file_name)
@@ -717,9 +722,12 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
         download_link = get_download_link(url, model_id)
         if not download_link:
             msg = f"File: '{file_name}' not found on CivitAI servers, it looks like the file is not available for download."
+            debug_print(f"[Download] Failed to get download link for {file_name}")
             print(msg)
             gl.download_fail = True
             return
+        else:
+            debug_print(f"[Download] Got download link for {file_name}")
 
         elif download_link == 'NO_API':
             msg = f"File: '{file_name}' requires a personal CivitAI API to be downloaded, you can set your own API key in the CivitAI Browser+ settings in the SD-WebUI settings tab"
@@ -816,6 +824,7 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
                 if status_info['status'] == 'complete':
                     msg = f"Model saved to: {file_path}"
                     print(msg)
+                    debug_print(f"[Download] aria2 complete: {file_name}")
                     if progress != None:
                         progress(1, desc=msg)
                     gl.download_fail = False
@@ -877,12 +886,13 @@ def download_file_old(url, file_path, model_id, progress=gr.Progress() if queue 
     try:
         gl.download_fail = False
         max_retries = 5
+        tokens = re.split(re.escape(os.sep), file_path)
+        file_name_display = tokens[-1]
+        debug_print(f"[Download] fallback start: {file_name_display}")
         if os.path.exists(file_path):
             os.remove(file_path)
 
         downloaded_size = 0
-        tokens = re.split(re.escape(os.sep), file_path)
-        file_name_display = tokens[-1]
         start_time = time.time()
         last_update_time = 0
         update_interval = 0.25
@@ -990,6 +1000,7 @@ def download_file_old(url, file_path, model_id, progress=gr.Progress() if queue 
                 if not gl.cancel_status:
                     msg = f"Model saved to: {file_path}"
                     print(msg)
+                    debug_print(f"[Download] fallback complete: {file_name_display}")
                     if progress != None:
                         progress(1, desc=msg)
                     gl.download_fail = False
@@ -1029,16 +1040,20 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
     save_all_images = getattr(opts, 'auto_save_all_img', False)
     gl.recent_model = item['model_name']
     gl.last_version = item['version_name']
+    debug_print(f"[Download] Starting item {current_count}/{total_count}: '{item['model_name']}' v'{item['version_name']}' → {item['install_path']}")
 
     # #2 Lazy API fetch: deferred from enqueue time for batch performance
     if not item.get('_api_ready'):
+        debug_print(f"[Download] Lazy API fetch for '{item['model_name']}' (id={item['model_id']})")
         _lazy_versions = _api.update_model_versions(item['model_id'])
         if _lazy_versions:
             item['model_versions'] = _lazy_versions
+            debug_print(f"[Download] Loaded model versions for '{item['model_name']}'")
         try:
             _lazy_result = _api.update_model_info(None, (item['model_versions'] or {}).get('value'), False, item['model_id'])
             item['preview_html'] = _lazy_result[0].get('value', '') if isinstance(_lazy_result[0], dict) else ''
             item['existing_path'] = (_lazy_result[11].get('value') if isinstance(_lazy_result[11], dict) else None) or item['install_path']
+            debug_print(f"[Download] Loaded preview + existing_path for '{item['model_name']}'")
         except Exception as _e:
             debug_print(f"[Lazy fetch] Could not load API data for {item['model_name']}: {_e}")
         item['_api_ready'] = True
@@ -1149,10 +1164,13 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
     _file.make_dir(effective_install_path)
 
     path_to_new_file = os.path.join(effective_install_path, item['model_filename'])
+    debug_print(f"[Download] File target: {path_to_new_file}")
 
     if use_aria2 and os_type != 'Darwin':
+        debug_print(f"[Download] Using aria2 for '{item['model_filename']}'")
         thread = threading.Thread(target=download_file, args=(item['dl_url'], path_to_new_file, effective_install_path, item['model_id'], progress))
     else:
+        debug_print(f"[Download] Using fallback downloader for '{item['model_filename']}'")
         thread = threading.Thread(target=download_file_old, args=(item['dl_url'], path_to_new_file, item['model_id'], progress))
     thread.start()
     try:
@@ -1205,11 +1223,9 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
                 if progress is not None:
                     progress(0, desc=f"Integrity check failed for '{item['model_filename']}' — file may be corrupted.")
 
-    # Only save metadata / run post-processing when the download actually succeeded.
-    # The previous condition `or gl.download_fail` was a logic error: truthy fail values
-    # (e.g. 'EARLY_ACCESS') caused saves to run even though nothing was downloaded.
     if not gl.cancel_status and not gl.download_fail:
         if os.path.exists(path_to_new_file):
+            debug_print(f"[Download] Download succeeded for '{item['model_name']}'; starting post-processing")
             # Determine content type once — used for both zip extraction and post-download saves
             _item_content_type = ((item.get('model_json') or {}).get('items') or [{}])[0].get('type', '')
             _is_wildcard_dl = _item_content_type == 'Wildcards'
@@ -1305,10 +1321,13 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
     # Log final download status before removing from queue
     if gl.cancel_status:
         _dl_log.log_cancelled(item['dl_id'])
+        debug_print(f"[Download] Cancelled: '{item['model_name']}'")
     elif gl.download_fail:
         _dl_log.log_failed(item['dl_id'])
+        debug_print(f"[Download] Failed: '{item['model_name']}'")
     else:
         _dl_log.log_completed(item['dl_id'])
+        debug_print(f"[Download] Completed: '{item['model_name']}' → {path_to_new_file}")
 
     if len(gl.download_queue) != 0:
         gl.download_queue.pop(0)
