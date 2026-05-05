@@ -1341,6 +1341,14 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
     else:
         finish_nr = download_finish
         queue_nr = random_number(queue_trigger)
+    
+    # If queue still has items, process next directly without going through
+    # the Gradio event queue. This eliminates multi-minute gaps caused by
+    # txt2img/img2img generation jobs blocking event processing.
+    if len(gl.download_queue) > 0:
+        debug_print(f"[Download] Queue has {len(gl.download_queue)} item(s) left; processing next directly (bypassing Gradio event queue)")
+        return download_create_thread(download_finish, queue_trigger, progress)
+    
     return (
         gr.update(),  # Download Progress HTML
         gr.update(value=card_name),  # Current Model
