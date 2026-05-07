@@ -54,7 +54,7 @@ def resolve_ambiguity(choice_index):
     try:
         idx = int(str(choice_index).strip())
     except Exception:
-        return gr.update(value=''), gr.update(value=None), gr.update(value=None), gr.update(value=None)
+        return gr.update(value=''), gr.update(), gr.update(), gr.update()
 
     for item in gl.download_queue:
         if item.get('ambiguous_candidates') and not item.get('ambiguous_selected'):
@@ -82,9 +82,9 @@ def resolve_ambiguity(choice_index):
             item['ambiguous_selected'] = True
 
             # Clear ambiguity HTML and resume download by nudging download_finish
-            return gr.update(value=''), gr.update(value=item.get('model_name')), gr.update(value=random_number()), gr.update(value=None)
+            return gr.update(value=''), gr.update(value=item.get('model_name')), gr.update(value=random_number()), gr.update()
 
-    return gr.update(value=''), gr.update(value=None), gr.update(value=None), gr.update(value=None)
+    return gr.update(value=''), gr.update(), gr.update(), gr.update()
 
 
 gl.init()
@@ -1066,7 +1066,7 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
             gr.update(),  # Download Progress HTML
             gr.update(value=None),  # Current Model
             gr.update(value=random_number(download_finish)),  # Download Finish Trigger
-            gr.update(value=queue_trigger)  # Queue Trigger
+            gr.update()  # Queue Trigger — no update to prevent re-trigger loop
         )
 
     card_name = None
@@ -1190,8 +1190,8 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
                         return (
                             gr.update(value=html),  # Download Progress HTML -> shows chooser
                             gr.update(value=item.get('model_name')),  # Current Model
-                            gr.update(value=None),  # Download Finish Trigger (no-op)
-                            gr.update(value=None)  # Queue Trigger (no-op)
+                            gr.update(),  # Download Finish Trigger — no update
+                            gr.update()  # Queue Trigger — no update to prevent loop
                         )
         except Exception:
             pass
@@ -1403,7 +1403,7 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
         gr.update(),  # Download Progress HTML
         gr.update(value=card_name),  # Current Model
         gr.update(value=finish_nr),  # Download Finish Trigger
-        gr.update(value=queue_trigger),  # Queue Trigger
+        gr.update(),  # Queue Trigger — no update to prevent re-trigger loop
     )
 
 def remove_from_queue(dl_id):
