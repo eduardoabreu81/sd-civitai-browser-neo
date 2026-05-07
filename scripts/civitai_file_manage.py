@@ -2234,6 +2234,15 @@ def collect_update_items(outdated_set, api_response, file_paths):
                         'old_file': old_file,
                     })
 
+    # Sort by local file modification time, most recent first
+    def _mtime_key(entry):
+        path = entry.get('old_file', '')
+        try:
+            return -os.path.getmtime(path)
+        except (OSError, TypeError):
+            return 0
+
+    items.sort(key=_mtime_key)
     return items
 
 def get_content_choices(scan_choices=False):
