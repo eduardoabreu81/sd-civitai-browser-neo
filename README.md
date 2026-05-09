@@ -34,7 +34,7 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ## 🆕 What's New
 
-### v0.9.2 — Update Mode & SHA256 Mismatch Fixes
+### v0.9.3 — Exact Search Fix
 
 - **Fixed Update Mode state crossover** — when loading outdated models to the browser, `pressRefresh()` and page-slider triggers no longer pull the Browser tab's filters (e.g. Lora) into the Update Mode view. `gl.update_mode` is now respected regardless of which trigger fires.
 - **SHA256 silent-update detection** — if a downloaded file fails hash verification, the extension re-queries the CivitAI API for the version's current SHA256. If the author updated the file silently, the new hash is accepted and metadata is updated instead of failing.
@@ -53,6 +53,9 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 ## 📖 Changelog
 
 ### v0.9.2 — Update Mode & SHA256 Mismatch Fixes
+
+### v0.9.3 — Exact Search Fix
+- Exact search restricted to Model name only — CivitAI API does not support quoted search for Tag or User name
 - `initial_model_page`: verify `gl.update_mode` before resetting state; ignore Browser-tab filters when Update Mode is active.
 - `download_create_thread`: on SHA256 mismatch, re-query `/api/v1/model-versions/{version_id}` to detect silent file updates by the author.
 - `create_model_item` / `selected_to_queue`: propagate `version_id` through the download queue for post-download API recheck.
