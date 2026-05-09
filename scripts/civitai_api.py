@@ -941,7 +941,9 @@ def create_api_url(content_type=None, sort_type=None, period_type=None, use_sear
         search_term = search_term.replace('\\', '\\\\').lower()
 
         # Apply exact search logic - wrap search term in quotes if exact_search is True
-        if exact_search and use_search_term in ['Model name', 'User name', 'Tag']:
+        # NOTE: CivitAI API only supports exact search (quoted term) for Model name.
+        # Tag and User name searches do not support quoting and will return no results.
+        if exact_search and use_search_term == 'Model name':
             # Only wrap in quotes if not already wrapped and contains spaces
             if not (search_term.startswith('"') and search_term.endswith('"')) and ' ' in search_term:
                 search_term = f'"{search_term}"'
