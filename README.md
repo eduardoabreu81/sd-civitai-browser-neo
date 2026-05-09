@@ -34,39 +34,37 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ## 🆕 What's New
 
-### v0.9.3 — Exact Search Fix
+### v0.9.0 — Major Update: CivitAI Domain Support, Update Mode Isolation & Download Resilience
 
-- **Fixed Update Mode state crossover** — when loading outdated models to the browser, `pressRefresh()` and page-slider triggers no longer pull the Browser tab's filters (e.g. Lora) into the Update Mode view. `gl.update_mode` is now respected regardless of which trigger fires.
+- **Full support for the new CivitAI domain split** — CivitAI now separates SFW content (`civitai.com`) from the complete catalog (`civitai.red`). The extension adapts automatically so nothing breaks. Paste any CivitAI link from either domain and it opens instantly.
+- **New "SFW only" setting** — a simple checkbox in Settings lets you restrict all links and API calls to `civitai.com` if you prefer. Off by default, so the full catalog stays accessible without extra steps.
+- **Update Mode filter isolation** — Browser-tab filters are ignored when Update Mode is active, preventing "No updates match the current filters" false negatives. `pressRefresh()` and page-slider triggers no longer pull Browser filters into the Update Mode view.
 - **SHA256 silent-update detection** — if a downloaded file fails hash verification, the extension re-queries the CivitAI API for the version's current SHA256. If the author updated the file silently, the new hash is accepted and metadata is updated instead of failing.
 - **Defensive ambiguity handling** — searching by SHA256 that returns multiple candidates no longer crashes with `KeyError`; the code safely falls back to an error message.
-- **Update Mode filter isolation** — Browser-tab filters are ignored when Update Mode is active, preventing "No updates match the current filters" false negatives.
-
-### v0.9.1 — CivitAI Domain Support & Fixes
-
-- **Full support for the new CivitAI domain split** — CivitAI now separates SFW content (`civitai.com`) from the complete catalog (`civitai.red`). The extension adapts automatically so nothing breaks.
-- **Paste any CivitAI link** — model links from both `civitai.com` and `civitai.red` now open the correct model instantly when pasted into the search box.
-- **New "SFW only" setting** — a simple checkbox in Settings lets you restrict all links and API calls to `civitai.com` if you prefer. Off by default, so the full catalog stays accessible without extra steps.
-- **Smart links in model previews** — "Model Page" and creator profile links in the preview panel now always point to the right domain, whether the model is SFW or NSFW.
+- **Exact search restricted to Model name** — CivitAI API does not support quoted search for Tag or User name. Exact search now only wraps terms in quotes when "Model name" is selected.
+- **Batch download resilience** — internal loop eliminates gaps between queued items, timeout increased to 30s with automatic retry (up to 3×), SHA256 buffer increased to 8MB.
+- **Update list sorted by mtime** — outdated models are now listed with most recently modified first, making it easier to prioritize updates.
 
 ---
 
 ## 📖 Changelog
 
-### v0.9.2 — Update Mode & SHA256 Mismatch Fixes
-
-### v0.9.3 — Exact Search Fix
-- Exact search restricted to Model name only — CivitAI API does not support quoted search for Tag or User name
+### v0.9.0 — CivitAI Domain Support, Update Mode Isolation & Download Resilience
+- Added centralized domain helper (`get_civitai_domain()`) to replace all hardcoded `civitai.com` URLs across the extension.
+- Added `civitai_sfw_only` checkbox setting (default: off → `civitai.red`) to toggle between domains.
+- Fixed search-box direct-link parser to recognize both `civitai.com` and `civitai.red` URLs.
+- Updated all API calls, model page links, uploader profile links, `Referer` headers, and JSON sidecar `modelPageURL` fields to use the configured domain.
 - `initial_model_page`: verify `gl.update_mode` before resetting state; ignore Browser-tab filters when Update Mode is active.
 - `download_create_thread`: on SHA256 mismatch, re-query `/api/v1/model-versions/{version_id}` to detect silent file updates by the author.
 - `create_model_item` / `selected_to_queue`: propagate `version_id` through the download queue for post-download API recheck.
 - `resolve_ambiguity`: defensively sync `model_sha256` and `model_filename` with the chosen candidate.
 - Hardened `initial_model_page` and `update_model_info` against malformed `gl.json_data` (e.g. SHA256 ambiguity dicts without `items`/`metadata`).
-
-### v0.9.1 — CivitAI Domain Support & Fixes
-- Added centralized domain helper to replace all hardcoded `civitai.com` URLs across the extension.
-- Added `civitai_sfw_only` checkbox setting (default: off → `civitai.red`) to toggle between domains.
-- Fixed search-box direct-link parser to recognize both `civitai.com` and `civitai.red` URLs.
-- Updated all API calls, model page links, uploader profile links, `Referer` headers, and JSON sidecar `modelPageURL` fields to use the configured domain.
+- Exact search restricted to Model name only — CivitAI API does not support quoted search for Tag or User name.
+- Batch download internal loop eliminates Gradio event-queue gaps between items.
+- Timeout increased to 30s with automatic retry (up to 3×) for network failures.
+- SHA256 verification buffer increased from 1MB to 8MB.
+- Update list sorted by file modification time (most recent first).
+- Fix re-trigger loop on `queue_trigger` preventing duplicate download executions.
 
 ### v0.8.3 — Safer Delete Flow for Installed/Outdated Models
 - Browser version dropdown now defaults to an installed version whenever one exists, even when updates are available.
@@ -199,7 +197,7 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ### v0.8.3 — Safer Delete Flow for Installed/Outdated Models *(complete)* ✅
 
-### v0.9.1 — CivitAI Domain Support & Fixes *(complete)* ✅
+### v0.9.0 — CivitAI Domain Support, Update Mode Isolation & Download Resilience *(complete)* ✅
 
 ### v0.10.0 — Advanced Curation *(planned)*
 - Saved search presets
