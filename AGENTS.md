@@ -1,8 +1,8 @@
 # AGENTS.md — CivitAI Browser Neo
 
 > Reference for AI coding agents working on this project.  
-> Last updated: 2026-04-17  
-> Version: v0.8.3
+> Last updated: 2026-05-08  
+> Version: v0.9.2
 
 ---
 
@@ -22,6 +22,18 @@ Key capabilities:
 This is the **Neo** branch (upstream).  
 There is a downstream twin project **sd-civitai-browser-ex** for Automatic1111 / Forge Classic (Gradio 3.x).  
 Neo-specific changes must not be blindly ported to EX.
+
+### Twin Project Technical Differences
+
+| | **Browser Neo** | **Browser EX** |
+|---|---|---|
+| **Target WebUI** | Forge Neo | A1111, Forge Classic, any Gradio 3.x WebUI |
+| **Gradio Version** | 4.40.0+ | 3.15+ (typically 3.41–3.43) |
+| **Video Support** | ✅ Wan 2.2 video generation | ❌ No video / Wan models are image-only |
+| **Focus** | Modern architectures (FLUX, Wan, Qwen, etc.) | SD1 / SDXL / Pony / Illustrious / NoobAI |
+| **Versioning** | `vX.Y.Z` | `vX.Y.Z-ex` (independent numbering) |
+
+**Workflow Rule:** Develop on Neo first. Port to EX **only** what is compatible with Gradio 3.x and Forge Classic. Never mention Neo in the EX README.
 
 ---
 
@@ -277,3 +289,9 @@ When you finish a non-trivial change:
 - `.github/copilot-instructions.md` — AI workflow rules and commit conventions
 - `scripts/civitai_global.py` — global state and color constants
 - `scripts/download_log.py` — queue persistence schema and helpers
+
+---
+
+## Regras de Documentação
+
+> **What's New (apenas a família da minor atual):** A seção "What's New" do README.md mantém SOMENTE a entrada da versão da minor atual (ex: se estamos em v0.4.x, só fica v0.4.0 no What's New). Versões anteriores pertencem exclusivamente ao Changelog.
