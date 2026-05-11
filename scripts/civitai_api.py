@@ -634,7 +634,9 @@ def model_list_html(json_data):
                     has_outdated = is_outdated(installed_all, available_all)
                     has_latest = not has_outdated
 
-                if has_latest:
+                if has_outdated:
+                    installstatus = 'civmodelcardoutdated'
+                elif has_latest:
                     has_cross_family = False
                     if precise_check and available_map:
                         for fam in available_map:
@@ -642,8 +644,6 @@ def model_list_html(json_data):
                                 has_cross_family = True
                                 break
                     installstatus = 'civmodelcardcrossfamily' if has_cross_family else 'civmodelcardinstalled'
-                elif has_outdated:
-                    installstatus = 'civmodelcardoutdated'
                 else:
                     installstatus = 'civmodelcardinstalled'
 

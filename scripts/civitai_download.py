@@ -616,18 +616,22 @@ def download_finish(model_filename, version, model_id):
     gl.download_fail = False
     gl.cancel_status = False
 
+    # In Update Mode, do not touch the version dropdown — it can reset the user's selection.
+    version_update = gr.update(value=version, choices=version_choices) if not gl.update_mode else gr.update()
+
     return (
         gr.update(interactive=model_filename, visible=Down, value="Download model"),  # Download Button
         gr.update(interactive=False, visible=False),  # Cancel Button
         gr.update(interactive=False, visible=False),  # Cancel All Button
         gr.update(interactive=Del, visible=Del),  # Delete Button
         gr.update(value='<div style="min-height: 0px;"></div>'),  # Download Progress
-        gr.update(value=version, choices=version_choices)  # Version Dropdown
+        version_update  # Version Dropdown
     )
 
 def download_cancel():
     gl.cancel_status = True
-    gl.download_fail = True
+    # Do NOT set gl.download_fail — cancel is not a failure.
+    # Setting it would mark the item as failed and could bleed into the next queue item.
     if gl.download_queue:
         item = gl.download_queue[0]
     else:
@@ -641,7 +645,8 @@ def download_cancel():
 
 def download_cancel_all():
     gl.cancel_status = True
-    gl.download_fail = True
+    # Do NOT set gl.download_fail — cancel is not a failure.
+    # Setting it would mark the item as failed and could bleed into the next queue item.
 
     if gl.download_queue:
         item = gl.download_queue[0]
