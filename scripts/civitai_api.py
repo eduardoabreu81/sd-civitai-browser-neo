@@ -566,8 +566,9 @@ def model_list_html(json_data):
             imgtag = '<img src="./file=html/card-no-preview.png" onerror="this.onerror=null;this.src=\'./file=html/card-no-preview.jpg\';"></img>'
 
         # Install status - check if model is installed and determine if it's outdated
-        # Strategy: use API order (index 0 = newest) + baseModel as the source of truth.
-        # This replaces the fragile regex-based version-name parsing.
+        # Dual-strategy: API order (primary) + regex fallback (failsafe).
+        # API order is the source of truth (index 0 = newest, per baseModel).
+        # Regex is used as a secondary check to catch edge cases the API might miss.
         installstatus = ''
         installed_file_sha256 = None  # Track SHA256 of installed file for delete functionality
         model_versions = item.get('modelVersions', [])
@@ -575,6 +576,7 @@ def model_list_html(json_data):
             precise_check = getattr(opts, 'precise_version_check', True)
             installed_versions_found = set()
 
+            # === PRIMARY: API order + baseModel ===
             # Build: baseModel -> newest index among all versions (API guarantees index 0 = newest)
             base_to_newest_idx = {}
             for idx, ver in enumerate(model_versions):
@@ -582,9 +584,8 @@ def model_list_html(json_data):
                 if bm and bm not in base_to_newest_idx:
                     base_to_newest_idx[bm] = idx
 
-            # Find installed versions and check if any is outdated
             has_installed = False
-            has_outdated = False
+            has_outdated_api = False
             installed_bases = set()
 
             for idx, version in enumerate(model_versions):
@@ -603,12 +604,60 @@ def model_list_html(json_data):
                         bm = (version.get('baseModel') or '').strip()
                         newest_idx = base_to_newest_idx.get(bm, idx)
                         if idx > newest_idx:
-                            has_outdated = True
+                            has_outdated_api = True
 
                         installed_bases.add(bm)
                         break  # this version is installed, move to next version
 
             installed_versions_count = len(installed_versions_found)
+
+            # === FALLBACK: regex-based semantic comparison (catches edge cases) ===
+            has_outdated_regex = False
+            has_latest_regex = False
+            installed_map = {}
+            available_map = {}
+            installed_all = []
+            available_all = []
+
+            for version in model_versions:
+                version_name = version.get('name', '')
+                family, version_parts = _file.extract_version_from_ver_name(version_name)
+
+                if precise_check and family:
+                    available_map.setdefault(family, []).append(version_parts)
+                else:
+                    available_all.append(version_parts)
+
+                # Only add to installed maps for versions we detected as installed above
+                if version_name in installed_versions_found:
+                    if precise_check and family:
+                        installed_map.setdefault(family, []).append(version_parts)
+                    else:
+                        installed_all.append(version_parts)
+
+            if installed_map or installed_all:
+                def _is_outdated(inst, avail):
+                    """Compare max installed and available versions"""
+                    max_inst = max(inst, key=lambda x: x or [0])
+                    max_avail = max(avail, key=lambda x: x or [0])
+                    cmp = _file.compare_version_parts(max_inst, max_avail)
+                    return cmp < 0
+
+                if precise_check and available_map:
+                    for fam, avail in available_map.items():
+                        inst = installed_map.get(fam)
+                        if not inst:
+                            continue
+                        if _is_outdated(inst, avail):
+                            has_outdated_regex = True
+                        else:
+                            has_latest_regex = True
+                elif installed_all and available_all:
+                    has_outdated_regex = _is_outdated(installed_all, available_all)
+                    has_latest_regex = not has_outdated_regex
+
+            # === Combine: API order OR regex says outdated → mark as outdated ===
+            has_outdated = has_outdated_api or has_outdated_regex
 
             if has_installed:
                 if has_outdated:
