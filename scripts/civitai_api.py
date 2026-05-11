@@ -566,27 +566,28 @@ def model_list_html(json_data):
             imgtag = '<img src="./file=html/card-no-preview.png" onerror="this.onerror=null;this.src=\'./file=html/card-no-preview.jpg\';"></img>'
 
         # Install status - check if model is installed and determine if it's outdated
-        ## Note: Sensitive check for updates by `name_match`... (It is possible that an outdated version of the model will not be marked as outdated)
+        # Strategy: use API order (index 0 = newest) + baseModel as the source of truth.
+        # This replaces the fragile regex-based version-name parsing.
         installstatus = ''
         installed_file_sha256 = None  # Track SHA256 of installed file for delete functionality
         model_versions = item.get('modelVersions', [])
         if model_versions:
             precise_check = getattr(opts, 'precise_version_check', True)
-            installed_map, available_map = {}, {}  # family -> list of version parts
-            installed_all, available_all = [], []  # all versions (no family grouping)
             installed_versions_found = set()
 
-            # --- Collect version and installation info ---
-            for version in model_versions:
-                version_name = version.get('name', '')
-                family, version_parts = _file.extract_version_from_ver_name(version_name)
+            # Build: baseModel -> newest index among all versions (API guarantees index 0 = newest)
+            base_to_newest_idx = {}
+            for idx, ver in enumerate(model_versions):
+                bm = (ver.get('baseModel') or '').strip()
+                if bm and bm not in base_to_newest_idx:
+                    base_to_newest_idx[bm] = idx
 
-                if precise_check and family:
-                    available_map.setdefault(family, []).append(version_parts)
-                else:
-                    available_all.append(version_parts)
+            # Find installed versions and check if any is outdated
+            has_installed = False
+            has_outdated = False
+            installed_bases = set()
 
-                # Check if any file of this version is installed
+            for idx, version in enumerate(model_versions):
                 for file in version.get('files', []):
                     file_name = file['name'].lower()
                     file_sha256 = normalize_sha256(file.get('hashes', {}).get('SHA256', ''))
@@ -594,69 +595,44 @@ def model_list_html(json_data):
                     sha_match = file_sha256 and file_sha256 in existing_files_sha256
 
                     if sha_match or name_match:
-                        # Store SHA256 of first installed file found (for delete button)
+                        has_installed = True
                         if not installed_file_sha256:
                             installed_file_sha256 = file_sha256
-                        installed_versions_found.add(version_name)
-                        if precise_check and family:
-                            installed_map.setdefault(family, []).append(version_parts)
-                        else:
-                            installed_all.append(version_parts)
-                        break
+                        installed_versions_found.add(version.get('name', ''))
+
+                        bm = (version.get('baseModel') or '').strip()
+                        newest_idx = base_to_newest_idx.get(bm, idx)
+                        if idx > newest_idx:
+                            has_outdated = True
+
+                        installed_bases.add(bm)
+                        break  # this version is installed, move to next version
 
             installed_versions_count = len(installed_versions_found)
 
-            # Check installed
-            has_installed = bool(installed_map or installed_all)
             if has_installed:
-                has_outdated = False
-                has_latest = False
-
-                def is_outdated(inst, avail):
-                    """Compare max installed and available versions"""
-                    max_inst = max(inst, key=lambda x: x or [0])
-                    max_avail = max(avail, key=lambda x: x or [0])
-                    cmp = _file.compare_version_parts(max_inst, max_avail)
-                    return cmp < 0
-
-                # Comparison by families
-                if precise_check and available_map:
-                    for fam, avail in available_map.items():
-                        inst = installed_map.get(fam)
-                        if not inst:
-                            continue
-                        if is_outdated(inst, avail):
-                            has_outdated = True
-                        else:
-                            has_latest = True
-                # Comparison without families
-                elif installed_all and available_all:
-                    has_outdated = is_outdated(installed_all, available_all)
-                    has_latest = not has_outdated
-
                 if has_outdated:
                     installstatus = 'civmodelcardoutdated'
-                elif has_latest:
+                elif precise_check and installed_bases:
+                    # Check cross-family: are there available baseModels not installed?
                     has_cross_family = False
-                    if precise_check and available_map:
-                        for fam in available_map:
-                            if fam not in installed_map:
-                                has_cross_family = True
-                                break
+                    all_bases = set((v.get('baseModel') or '').strip() for v in model_versions if v.get('baseModel'))
+                    for bm in all_bases:
+                        if bm not in installed_bases:
+                            has_cross_family = True
+                            break
                     installstatus = 'civmodelcardcrossfamily' if has_cross_family else 'civmodelcardinstalled'
                 else:
                     installstatus = 'civmodelcardinstalled'
 
-            # Multi-family badge: when multiple distinct families are installed on the same model
+            # Multi-family badge: when multiple distinct baseModels are installed on the same model
             # (e.g. Pony V1 AND Illustrious V1), show all abbreviations: "PONY · IL"
-            if show_status_badges and len(installed_map) > 1:
+            if show_status_badges and len(installed_bases) > 1:
                 shorts = []
                 seen_shorts = set()
                 for ver in model_versions:
-                    ver_name = ver.get('name', '')
-                    fam, _ = _file.extract_version_from_ver_name(ver_name)
-                    if fam and fam in installed_map:
-                        bm = ver.get('baseModel', '')
+                    bm = ver.get('baseModel', '')
+                    if bm and bm in installed_bases:
                         short = get_base_model_short(bm)
                         if short and short not in seen_shorts:
                             shorts.append(short)
