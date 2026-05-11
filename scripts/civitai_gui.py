@@ -439,7 +439,7 @@ def on_ui_tabs():
                 </div>
                 <div class="civitai_nonqueue_list">
                 </div>
-                <span style="padding: 10px 0px 5px 5px;font-size: larger;border-bottom: 1px solid var(--border-color-primary);">In queue: (drag items to rearrange queue order)</span>
+                <span style="padding: 10px 0px 5px 5px;font-size: larger;border-bottom: 1px solid var(--border-color-primary);">Queued downloads, drag items to reorder</span>
                 <div class="list" id="queue_list">
                 </div>
                 ''')

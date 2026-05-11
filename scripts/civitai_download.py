@@ -1471,8 +1471,8 @@ def download_manager_html(current_html):
                 f'<div class="dl_name" style="{get_style(1, False)}"><span title="{item["model_name"]}">{item["model_name"]}</span></div>'
                 f'<div class="dl_ver" style="{get_style(0.75, True)}"><span title="{item["version_name"]}">{item["version_name"]}</span></div>'
                 f'<div class="dl_path" style="{get_style(1.5, True)}"><span title="{item["install_path"]}">{item["install_path"]}</span></div>'
-                f'<div class="dl_stat" style="{get_style(1.5, True)}"><div class="dl_progress_bar" style="width:0%">In queue...</div></div>'
-                f'<div class="dl_action_btn" style="{get_style(0.3, True)}text-align: center;"><span onclick="removeDlItem({item["dl_id"]}, this)" class="civitai-btn-text" style="font-size: larger;">Remove</span></div>'
+                f'<div class="dl_stat" style="{get_style(1.5, True)}"><div class="dl_progress_bar" style="width:0%">Queued</div></div>'
+                f'<div class="dl_action_btn" style="{get_style(0.3, True)}text-align: center;"><span onclick="removeDlItem({item["dl_id"]}, this)" class="civitai-btn-text" style="font-size: larger;" title="Remove from queue">Remove</span></div>'
                 '</div>'
             )
             html += download_item
