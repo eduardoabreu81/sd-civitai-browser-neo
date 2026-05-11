@@ -1080,6 +1080,14 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
     while gl.download_queue:
         current_count += 1
         item = gl.download_queue[0]
+        # If the user clicked Cancel between items (during time.sleep), respect it.
+        if gl.cancel_status:
+            _dl_log.log_cancelled(item['dl_id'])
+            debug_print(f"[Download] Cancelled between items: '{item['model_name']}'")
+            if len(gl.download_queue) != 0:
+                gl.download_queue.pop(0)
+            gl.cancel_status = False  # Reset after handling this single-item cancellation
+            continue
         gl.cancel_status = False
         gl.download_fail = False
         use_aria2 = getattr(opts, 'use_aria2', True)
