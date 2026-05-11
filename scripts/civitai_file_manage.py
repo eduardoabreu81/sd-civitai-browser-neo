@@ -1927,10 +1927,12 @@ def extract_version_from_ver_name(filename):
     Returns: (family_name or None, version_parts: list[int])
     """
     version_patterns = [
-        r'[_\-]?v(\d+\.\d+)$',  # 1.0, _v2.1, -v3.2
-        r'[_\-]?v(\d+)$',       # v1, _v2, -v3
-        # r'[_\-]?(\d+\.\d+)$',   # 1.0, _2.1, -3.2
-        # r'[_\-]?(\d+)$',        # 1, _2, -3
+        r'[_\-]?v\.(\d+\.\d+)$',  # v.1.0, _v.2.1, -v.3.2
+        r'[_\-]?v\.(\d+)$',       # v.1, _v.2, -v.3
+        r'[_\-]?v(\d+\.\d+)$',   # v1.0, _v2.1, -v3.2
+        r'[_\-]?v(\d+)$',         # v1, _v2, -v3
+        # r'[_\-]?(\d+\.\d+)$',    # 1.0, _2.1, -3.2
+        # r'[_\-]?(\d+)$',         # 1, _2, -3
     ]
     for pattern in version_patterns:
         match = re.search(pattern, filename, re.IGNORECASE)
