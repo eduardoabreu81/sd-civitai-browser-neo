@@ -1066,12 +1066,20 @@ def download_file_old(url, file_path, model_id, progress=gr.Progress() if queue 
 def download_create_thread(download_finish, queue_trigger, progress=gr_progress_threadable() if queue else None):
     global current_count
 
+    # Auto-exit update mode when queue is empty on entry
+    auto_exit_update = False
+    if gl.update_mode and not gl.download_queue:
+        gl.update_mode = False
+        gl.update_items = []
+        auto_exit_update = True
+
     if not gl.download_queue:
         return (
             gr.update(),  # Download Progress HTML
             gr.update(value=None),  # Current Model
             gr.update(value=random_number(download_finish)),  # Download Finish Trigger
-            gr.update()  # Queue Trigger — no update to prevent re-trigger loop
+            gr.update(),  # Queue Trigger — no update to prevent re-trigger loop
+            gr.update(value='') if auto_exit_update else gr.update()  # Update Mode Banner
         )
 
     card_name = None
@@ -1204,7 +1212,8 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
                             gr.update(value=html),  # Download Progress HTML -> shows chooser
                             gr.update(value=item.get('model_name')),  # Current Model
                             gr.update(),  # Download Finish Trigger — no update
-                            gr.update()  # Queue Trigger — no update to prevent loop
+                            gr.update(),  # Queue Trigger — no update to prevent loop
+                            gr.update()  # Update Mode Banner — no change
                         )
         except Exception:
             pass
@@ -1411,12 +1420,20 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
         time.sleep(2)
 
     # Queue exhausted — return final result
+    # Auto-exit update mode when all downloads finish
+    auto_exit_update = False
+    if gl.update_mode and not gl.download_queue:
+        gl.update_mode = False
+        gl.update_items = []
+        auto_exit_update = True
+
     finish_nr = random_number(download_finish)
     return (
         gr.update(),  # Download Progress HTML
         gr.update(value=card_name),  # Current Model
         gr.update(value=finish_nr),  # Download Finish Trigger
         gr.update(),  # Queue Trigger — no update to prevent re-trigger loop
+        gr.update(value='') if auto_exit_update else gr.update()  # Update Mode Banner
     )
 
 def remove_from_queue(dl_id):
