@@ -236,5 +236,168 @@ class TestLocalReviewStatus(unittest.TestCase):
         self.assertIn('sha256 is required', str(ctx.exception))
 
 
+class TestResolveLocalModelMeta(unittest.TestCase):
+    """Unit tests for _resolve_local_model_meta()"""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+
+    def tearDown(self):
+        self.tmp_dir.cleanup()
+
+    def _make_model_file(self, name):
+        path = os.path.join(self.tmp_dir.name, name)
+        with open(path, 'wb') as f:
+            f.write(b'dummy')
+        return path
+
+    def _write_json(self, model_path, data):
+        json_path = os.path.splitext(model_path)[0] + '.json'
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f)
+
+    def _write_api_info(self, model_path, data):
+        api_path = os.path.splitext(model_path)[0] + '.api_info.json'
+        with open(api_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f)
+
+    # ------------------------------------------------------------------
+    # 0. Validation
+    # ------------------------------------------------------------------
+    def test_none_path_raises_valueerror(self):
+        with self.assertRaises(ValueError) as ctx:
+            lrv._resolve_local_model_meta(None)
+        self.assertIn('file_path is required', str(ctx.exception))
+
+    def test_empty_path_raises_valueerror(self):
+        with self.assertRaises(ValueError) as ctx:
+            lrv._resolve_local_model_meta('')
+        self.assertIn('file_path is required', str(ctx.exception))
+
+    def test_whitespace_path_raises_valueerror(self):
+        with self.assertRaises(ValueError) as ctx:
+            lrv._resolve_local_model_meta('   ')
+        self.assertIn('file_path is required', str(ctx.exception))
+
+    # ------------------------------------------------------------------
+    # 1. File without sidecars returns basic fields
+    # ------------------------------------------------------------------
+    def test_no_sidecars_returns_basic_fields(self):
+        path = self._make_model_file('model.safetensors')
+        result = lrv._resolve_local_model_meta(path)
+        self.assertEqual(result['fileName'], 'model.safetensors')
+        self.assertEqual(result['filePath'], path)
+        # contentType may or may not be present depending on Forge availability
+
+    # ------------------------------------------------------------------
+    # 2. .json sidecar populates sha256, modelId, modelVersionId and
+    #    provides fallback baseModel via "sd version"
+    # ------------------------------------------------------------------
+    def test_json_sidecar_populates_fields(self):
+        path = self._make_model_file('lora.safetensors')
+        self._write_json(path, {
+            'sha256': 'aabbccdd',
+            'modelId': 123,
+            'modelVersionId': 456,
+            'sd version': 'Pony',
+        })
+        result = lrv._resolve_local_model_meta(path)
+        self.assertEqual(result['sha256'], 'AABBCCDD')
+        self.assertEqual(result['modelId'], 123)
+        self.assertEqual(result['modelVersionId'], 456)
+        self.assertEqual(result['baseModel'], 'Pony')
+
+    # ------------------------------------------------------------------
+    # 3. .api_info.json populates baseModel, modelName and versionName
+    # ------------------------------------------------------------------
+    def test_api_info_populates_fields(self):
+        path = self._make_model_file('checkpoint.safetensors')
+        self._write_api_info(path, {
+            'baseModel': 'SDXL',
+            'name': 'v2.0',
+            'model': {'name': 'MyCheckpoint'},
+        })
+        result = lrv._resolve_local_model_meta(path)
+        self.assertEqual(result['baseModel'], 'SDXL')
+        self.assertEqual(result['versionName'], 'v2.0')
+        self.assertEqual(result['modelName'], 'MyCheckpoint')
+
+    # ------------------------------------------------------------------
+    # 4. .json has priority for modelId / modelVersionId over .api_info.json
+    # ------------------------------------------------------------------
+    def test_json_priority_for_ids(self):
+        path = self._make_model_file('model.safetensors')
+        self._write_json(path, {
+            'modelId': 100,
+            'modelVersionId': 200,
+        })
+        self._write_api_info(path, {
+            'modelId': 999,
+            'id': 888,
+        })
+        result = lrv._resolve_local_model_meta(path)
+        self.assertEqual(result['modelId'], 100)
+        self.assertEqual(result['modelVersionId'], 200)
+
+    # ------------------------------------------------------------------
+    # 5. .api_info.json has priority for baseModel over "sd version"
+    # ------------------------------------------------------------------
+    def test_api_info_priority_for_basemodel(self):
+        path = self._make_model_file('model.safetensors')
+        self._write_json(path, {
+            'sd version': 'Other',
+        })
+        self._write_api_info(path, {
+            'baseModel': 'Illustrious',
+        })
+        result = lrv._resolve_local_model_meta(path)
+        self.assertEqual(result['baseModel'], 'Illustrious')
+
+    def test_api_info_overrides_sd_version(self):
+        path = self._make_model_file('model.safetensors')
+        self._write_json(path, {
+            'sd version': 'Pony',
+        })
+        self._write_api_info(path, {
+            'baseModel': 'SDXL',
+        })
+        result = lrv._resolve_local_model_meta(path)
+        self.assertEqual(result['baseModel'], 'SDXL')
+
+    # ------------------------------------------------------------------
+    # 6. Invalid sidecar does not crash the function
+    # ------------------------------------------------------------------
+    def test_invalid_json_sidecar_does_not_crash(self):
+        path = self._make_model_file('model.safetensors')
+        json_path = os.path.splitext(path)[0] + '.json'
+        with open(json_path, 'w', encoding='utf-8') as f:
+            f.write('not valid json {{{')
+        result = lrv._resolve_local_model_meta(path)
+        self.assertEqual(result['fileName'], 'model.safetensors')
+        self.assertNotIn('sha256', result)
+
+    def test_invalid_api_info_does_not_crash(self):
+        path = self._make_model_file('model.safetensors')
+        api_path = os.path.splitext(path)[0] + '.api_info.json'
+        with open(api_path, 'w', encoding='utf-8') as f:
+            f.write('not valid json {{{')
+        result = lrv._resolve_local_model_meta(path)
+        self.assertEqual(result['fileName'], 'model.safetensors')
+        self.assertNotIn('baseModel', result)
+
+    # ------------------------------------------------------------------
+    # 7. Function does not call API or generate SHA256 from binary
+    # ------------------------------------------------------------------
+    def test_no_api_call_or_sha256_generation(self):
+        path = self._make_model_file('model.safetensors')
+        # No sidecars present; if the function tried to call the API or
+        # hash the file it would either fail or be very slow.  The fast
+        # return proves it does neither.
+        result = lrv._resolve_local_model_meta(path)
+        self.assertEqual(result['fileName'], 'model.safetensors')
+        self.assertNotIn('sha256', result)
+        self.assertNotIn('modelId', result)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

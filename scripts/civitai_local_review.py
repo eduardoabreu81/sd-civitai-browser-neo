@@ -9,6 +9,29 @@ from datetime import datetime, timezone
 # Key:     SHA256 (uppercase, normalized)
 # ---------------------------------------------------------------------------
 
+# Attempt to reuse the Forge Neo helper; fall back to a local implementation
+# for standalone test environments where modules.shared is unavailable.
+try:
+    from scripts.civitai_api import safe_json_load
+except ImportError:
+    def safe_json_load(file_path):
+        """Safely load JSON file with error handling (local fallback)."""
+        if not os.path.exists(file_path):
+            return None
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            return None
+
+# Attempt to import content-type detector from file_manage.
+# If Forge Neo modules are unavailable, leave as None and skip detection.
+try:
+    from scripts.civitai_file_manage import _detect_content_type_from_path
+except ImportError:
+    _detect_content_type_from_path = None
+
+
 REVIEW_FILE = os.path.join(os.getcwd(), 'config_states', 'local_review_status.json')
 _CURRENT_SCHEMA = 1
 
@@ -183,6 +206,97 @@ def mark_for_review(item):
     data['items'][key] = entry
     save_local_review_status(data)
     return entry
+
+
+def _resolve_local_model_meta(file_path):
+    """
+    Read local metadata for a single model file without network calls,
+    bulk scans, sidecar writes, or global state mutation.
+
+    Sources (in priority order):
+      1. {file}.json sidecar       -> sha256, modelId, modelVersionId
+      2. {file}.api_info.json      -> baseModel, versionName, modelName
+      3. Path inference            -> contentType, fileName, filePath
+
+    Returns a dict with all available fields; missing fields are omitted
+    to keep the output minimal and clean.
+    """
+    if not file_path or not str(file_path).strip():
+        raise ValueError("file_path is required")
+
+    result = {}
+
+    # Basic path info
+    result['fileName'] = os.path.basename(file_path)
+    result['filePath'] = file_path
+
+    # Content type from path (only when Forge Neo environment is available)
+    if _detect_content_type_from_path is not None:
+        ct = _detect_content_type_from_path(file_path)
+        if ct and ct != 'Other':
+            result['contentType'] = ct
+
+    # --- 1. Read .json sidecar ------------------------------------------------
+    json_path = os.path.splitext(file_path)[0] + '.json'
+    json_data = safe_json_load(json_path)
+
+    if json_data and isinstance(json_data, dict):
+        sha256 = json_data.get('sha256')
+        if sha256:
+            result['sha256'] = sha256.upper().strip()
+
+        model_id = json_data.get('modelId')
+        if model_id is not None:
+            result['modelId'] = model_id
+
+        model_version_id = json_data.get('modelVersionId')
+        if model_version_id is not None:
+            result['modelVersionId'] = model_version_id
+
+        # Fallback baseModel from "sd version" (may be stale; lower priority)
+        sd_version = json_data.get('sd version', '').strip()
+        if sd_version and sd_version.upper() != 'OTHER':
+            result['baseModel'] = sd_version
+
+    # --- 2. Read .api_info.json -----------------------------------------------
+    api_info_path = os.path.splitext(file_path)[0] + '.api_info.json'
+    api_data = safe_json_load(api_info_path)
+
+    if api_data and isinstance(api_data, dict):
+        # baseModel: .api_info.json wins over "sd version"
+        base_model = api_data.get('baseModel', '').strip()
+        if not base_model:
+            base_model = api_data.get('model', {}).get('baseModel', '').strip()
+        if not base_model and api_data.get('modelVersions'):
+            versions = api_data.get('modelVersions', [])
+            if versions:
+                base_model = versions[0].get('baseModel', '').strip()
+        if not base_model:
+            base_model = api_data.get('version', {}).get('baseModel', '').strip()
+        if base_model:
+            result['baseModel'] = base_model
+
+        # versionName
+        version_name = api_data.get('name', '').strip()
+        if version_name:
+            result['versionName'] = version_name
+
+        # modelName
+        model_name = api_data.get('model', {}).get('name', '').strip()
+        if model_name:
+            result['modelName'] = model_name
+
+        # Fallback modelId / modelVersionId from api_info if missing from .json
+        if 'modelId' not in result:
+            api_model_id = api_data.get('modelId')
+            if api_model_id is not None:
+                result['modelId'] = api_model_id
+        if 'modelVersionId' not in result:
+            api_version_id = api_data.get('id')
+            if api_version_id is not None:
+                result['modelVersionId'] = api_version_id
+
+    return result
 
 
 def clear_review_status(sha256):
