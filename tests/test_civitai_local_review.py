@@ -558,6 +558,18 @@ class TestReviewButtonHtml(unittest.TestCase):
         html = _build_review_button_html('/nonexistent/file.safetensors')
         self.assertEqual(html, '')
 
+    def test_inject_review_block_inside_description_anchor(self):
+        from scripts.civitai_local_review import _inject_review_block_into_model_html
+        base = '<div class="main-container"><div class="description-block">Desc<!-- REVIEW_BLOCK_ANCHOR --></div><div class="image-block"><img></div></div>'
+        review = '<div class="review-block">Review</div>'
+        result = _inject_review_block_into_model_html(base, review)
+        self.assertIn(review, result)
+        # Review must be INSIDE description-block, before the anchor
+        self.assertLess(result.index(review), result.index('<!-- REVIEW_BLOCK_ANCHOR -->'))
+        # And still inside description-block (before its closing </div>)
+        desc_close = result.index('</div>', result.index('<!-- REVIEW_BLOCK_ANCHOR -->'))
+        self.assertLess(result.index(review), desc_close)
+
     def test_inject_review_block_before_image_block(self):
         from scripts.civitai_local_review import _inject_review_block_into_model_html
         base = '<div class="main-container"><h1>Title</h1><p>Desc</p><div class="image-block"><img></div></div>'
@@ -581,7 +593,7 @@ class TestReviewButtonHtml(unittest.TestCase):
         base = '<h1>No container here</h1>'
         review = '<div class="review-block">Review</div>'
         result = _inject_review_block_into_model_html(base, review)
-        # No image-block, no main-container -> append at end
+        # No anchor, no image-block, no main-container -> append at end
         self.assertTrue(result.endswith(review))
 
     def test_inject_review_block_empty_review(self):

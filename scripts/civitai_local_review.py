@@ -175,28 +175,35 @@ def _inject_review_block_into_model_html(output_html, review_html):
     """Inject review_html into the overlay HTML at the preferred position.
 
     Priority:
-      1. Before <div class="image-block"> (after Model Description)
-      2. Before the closing </div> of main-container
-      3. Append at the very end of the HTML
+      1. Before <!-- REVIEW_BLOCK_ANCHOR --> inside the description block
+      2. Before <div class="image-block">
+      3. Before the closing </div> of main-container
+      4. Append at the very end of the HTML
 
     Falls back to returning the original HTML if none of the above apply.
     """
     if not review_html or not output_html:
         return output_html
 
-    # Priority 1: before <div class="image-block">
+    # Priority 1: inside description-block via the anchor comment
+    anchor = '<!-- REVIEW_BLOCK_ANCHOR -->'
+    idx = output_html.find(anchor)
+    if idx != -1:
+        return output_html[:idx] + review_html + output_html[idx:]
+
+    # Priority 2: before <div class="image-block">
     image_block_marker = '<div class="image-block">'
     idx = output_html.find(image_block_marker)
     if idx != -1:
         return output_html[:idx] + review_html + output_html[idx:]
 
-    # Priority 2: before the final </div> that closes main-container
+    # Priority 3: before the final </div> that closes main-container
     if 'class="main-container"' in output_html:
         last_close = output_html.rfind('</div>')
         if last_close != -1:
             return output_html[:last_close] + review_html + output_html[last_close:]
 
-    # Priority 3: append at the end
+    # Priority 4: append at the end
     return output_html + review_html
 
 

@@ -1768,6 +1768,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                             f'<div class="description-overlay" id="{prefix}description-overlay"></div>'
                             f'<button class="description-toggle-btn" id="{prefix}description-toggle-btn" onclick="toggleDescription(\'{prefix}\')">Show More</button>'
                         '</div>'
+                        '<!-- REVIEW_BLOCK_ANCHOR -->'
                     '</div>'
                 )
 
