@@ -768,27 +768,52 @@ def on_ui_tabs():
         list_html_input.change(fn=all_visible, inputs=list_html_input, outputs=select_all)
 
         def update_review_button_state(install_path, model_filename):
-            """Toggle Mark-for-review button based on whether a local file exists."""
+            """Toggle Mark-for-review button based on whether a local file exists and its review status."""
             if install_path and install_path != 'None' and model_filename:
                 file_path = os.path.join(install_path, model_filename)
                 exists = os.path.isfile(file_path)
             else:
                 exists = False
-            return gr.update(visible=exists, interactive=exists), gr.update(value='', visible=False)
+
+            if not exists:
+                return gr.update(visible=False, interactive=False), gr.update(value='', visible=False)
+
+            # File exists — check if already marked for review
+            try:
+                from scripts.civitai_local_review import _resolve_local_model_meta, get_review_status
+                meta = _resolve_local_model_meta(file_path)
+                sha256 = meta.get('sha256')
+                if sha256:
+                    status = get_review_status(sha256)
+                    if status:
+                        return (
+                            gr.update(visible=True, interactive=False),
+                            gr.update(value='Already marked for review.', visible=True)
+                        )
+            except Exception:
+                pass  # Fall through to default: available for review
+
+            return (
+                gr.update(visible=True, interactive=True),
+                gr.update(value='Local model available for review.', visible=True)
+            )
 
         def mark_model_for_review(install_path, model_filename, current_sha256):
             """Mark the currently displayed model file for local review."""
             if not install_path or install_path == 'None' or not model_filename:
-                return gr.update(value='Model not installed locally.', visible=True)
+                return gr.update(value='Model not installed locally.', visible=True), gr.update()
             file_path = os.path.join(install_path, model_filename)
             if not os.path.isfile(file_path):
-                return gr.update(value='File not found.', visible=True)
+                return gr.update(value='File not found.', visible=True), gr.update()
             try:
                 from scripts.civitai_local_review import mark_file_for_review
                 mark_file_for_review(file_path, reasons=['manual_check'], manual_note='')
-                return gr.update(value='Marked for review.', visible=True)
+                return (
+                    gr.update(value='Marked for review.', visible=True),
+                    gr.update(visible=True, interactive=False)
+                )
             except Exception as e:
-                return gr.update(value=f'Error: {e}', visible=True)
+                return gr.update(value=f'Error: {e}', visible=True), gr.update()
 
         def update_models_dropdown(input, base_filter=None):
             # If there is no loaded model data, reset all UI elements and show a message
@@ -1124,7 +1149,7 @@ def on_ui_tabs():
         mark_for_review_btn.click(
             fn=mark_model_for_review,
             inputs=[install_path, model_filename, current_sha256],
-            outputs=[review_status_text]
+            outputs=[review_status_text, mark_for_review_btn]
         )
 
         def save_images_wrapper(preview_html, model_filename, install_path, sub_folder, model_id):
