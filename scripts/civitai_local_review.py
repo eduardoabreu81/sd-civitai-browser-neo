@@ -140,6 +140,54 @@ def save_local_review_status(data):
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
+def _build_review_button_html(model_file):
+    """Build a review button snippet for the overlay HTML.
+
+    Reads local sidecars to determine if the model is already marked for review.
+    No API calls, no SHA256 generation, no sidecar writes, no global state mutation.
+    """
+    if not model_file or not os.path.isfile(model_file):
+        return ''
+    try:
+        meta = _resolve_local_model_meta(model_file)
+        sha256 = meta.get('sha256')
+        already_marked = bool(sha256 and get_review_status(sha256))
+    except Exception:
+        already_marked = False
+
+    escaped_path = model_file.replace('\\', '\\\\').replace("'", "\\'")
+    if already_marked:
+        return (
+            '<div class="review-block" style="margin-top:16px;padding:12px;border-top:1px solid #444;">'
+            '<button disabled style="opacity:0.6;cursor:not-allowed;">'
+            'Marked for review ✅'
+            '</button></div>'
+        )
+    return (
+        '<div class="review-block" style="margin-top:16px;padding:12px;border-top:1px solid #444;">'
+        f'<button class="mark-review-btn" onclick="markForReviewOverlay(&quot;{escaped_path}&quot;)">'
+        'Mark for review'
+        '</button></div>'
+    )
+
+
+def _inject_review_block_into_model_html(output_html, review_html):
+    """Inject review_html before the closing of the main-container div.
+
+    Falls back to returning the original HTML if the injection point cannot be
+    determined safely.  The overlay HTML is known to end with a single top-level
+    <div class="main-container">…</div>, so we look for the last </div>.
+    """
+    if not review_html:
+        return output_html
+    if not output_html or 'class="main-container"' not in output_html:
+        return output_html
+    last_close = output_html.rfind('</div>')
+    if last_close == -1:
+        return output_html
+    return output_html[:last_close] + review_html + output_html[last_close:]
+
+
 def get_review_status(sha256):
     """
     Retrieve the review entry for a given SHA256.

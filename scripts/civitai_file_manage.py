@@ -1349,6 +1349,11 @@ def model_from_sent(model_name, content_type):
     head_section = f'<head>{style_tag}</head>'
     output_html = str(head_section + output_html)
 
+    # Inject Mark-for-review block into the overlay HTML
+    from scripts.civitai_local_review import _build_review_button_html, _inject_review_block_into_model_html
+    review_html = _build_review_button_html(model_file)
+    output_html = _inject_review_block_into_model_html(output_html, review_html)
+
     # debug_print(output_html)
     return gr.update(value=output_html, placeholder=_download.random_number()),  # Preview HTML
 

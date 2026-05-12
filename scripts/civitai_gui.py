@@ -363,16 +363,15 @@ def on_ui_tabs():
                 save_images = gr.Button(value='Save images', interactive=False)
                 delete_model = gr.Button(value='Delete model', interactive=False, visible=False)
                 download_model = gr.Button(value='Download model', interactive=False)
-                mark_for_review_btn = gr.Button(value='Mark for review', interactive=False, visible=False)
                 subfolder_selected = gr.Dropdown(label='Sub folder for selected files:', choices=[], interactive=False, visible=False, value=None, allow_custom_value=True)
                 download_selected = gr.Button(value='Download all selected', interactive=False, visible=False, elem_id='download_all_button')
             with gr.Row():
                 cancel_all_model = gr.Button(value='Cancel all downloads', interactive=False, visible=False)
                 cancel_model = gr.Button(value='Cancel current download', interactive=False, visible=False)
             with gr.Row():
-                review_status_text = gr.Textbox(label='Review status', interactive=False, visible=False)
-            with gr.Row():
                 preview_html = gr.HTML(elem_id='civitai_preview_html')
+            with gr.Row():
+                review_overlay_status = gr.Textbox(label='Review status', interactive=False, visible=False)
 
         ## Update Tab
         with gr.Tab(label='Update Models', elem_id='updateTab'):
@@ -635,6 +634,9 @@ def on_ui_tabs():
         update_single_trigger     = gr.Textbox(elem_id='update_single_trigger',     visible=False)
         update_selected_trigger   = gr.Textbox(elem_id='update_selected_trigger',   visible=False)
         exit_update_mode_trigger  = gr.Textbox(elem_id='exit_update_mode_trigger',  visible=False)
+        # Hidden: overlay review trigger
+        mark_review_overlay_trigger = gr.Textbox(elem_id='mark_review_overlay_trigger', visible=False)
+        mark_review_overlay_btn     = gr.Button(elem_id='mark_review_overlay_btn',     visible=False)
         
         # Hidden elements for quick delete by SHA256 (from model cards)
         delete_trigger_sha256 = gr.Textbox(elem_id='sha256', visible=False)
@@ -767,54 +769,6 @@ def on_ui_tabs():
 
         list_html_input.change(fn=all_visible, inputs=list_html_input, outputs=select_all)
 
-        def update_review_button_state(install_path, model_filename):
-            """Toggle Mark-for-review button based on whether a local file exists and its review status."""
-            if install_path and install_path != 'None' and model_filename:
-                file_path = os.path.join(install_path, model_filename)
-                exists = os.path.isfile(file_path)
-            else:
-                exists = False
-
-            if not exists:
-                return gr.update(visible=False, interactive=False), gr.update(value='', visible=False)
-
-            # File exists — check if already marked for review
-            try:
-                from scripts.civitai_local_review import _resolve_local_model_meta, get_review_status
-                meta = _resolve_local_model_meta(file_path)
-                sha256 = meta.get('sha256')
-                if sha256:
-                    status = get_review_status(sha256)
-                    if status:
-                        return (
-                            gr.update(visible=True, interactive=False),
-                            gr.update(value='Already marked for review.', visible=True)
-                        )
-            except Exception:
-                pass  # Fall through to default: available for review
-
-            return (
-                gr.update(visible=True, interactive=True),
-                gr.update(value='Local model available for review.', visible=True)
-            )
-
-        def mark_model_for_review(install_path, model_filename, current_sha256):
-            """Mark the currently displayed model file for local review."""
-            if not install_path or install_path == 'None' or not model_filename:
-                return gr.update(value='Model not installed locally.', visible=True), gr.update()
-            file_path = os.path.join(install_path, model_filename)
-            if not os.path.isfile(file_path):
-                return gr.update(value='File not found.', visible=True), gr.update()
-            try:
-                from scripts.civitai_local_review import mark_file_for_review
-                mark_file_for_review(file_path, reasons=['manual_check'], manual_note='')
-                return (
-                    gr.update(value='Marked for review.', visible=True),
-                    gr.update(visible=True, interactive=False)
-                )
-            except Exception as e:
-                return gr.update(value=f'Error: {e}', visible=True), gr.update()
-
         def update_models_dropdown(input, base_filter=None):
             # If there is no loaded model data, reset all UI elements and show a message
             if not gl.json_data:
@@ -904,10 +858,23 @@ def on_ui_tabs():
                 save_info,
                 list_html_input
             ]
-        ).then(
-            fn=update_review_button_state,
-            inputs=[install_path, model_filename],
-            outputs=[mark_for_review_btn, review_status_text]
+        )
+
+        def mark_model_for_review_overlay(file_path):
+            """Mark a local model file for review from the overlay button."""
+            if not file_path or not os.path.isfile(file_path):
+                return gr.update(value='File not found.', visible=True)
+            try:
+                from scripts.civitai_local_review import mark_file_for_review
+                mark_file_for_review(file_path, reasons=['manual_review'], manual_note='')
+                return gr.update(value='Marked for review.', visible=True)
+            except Exception as e:
+                return gr.update(value=f'Error: {e}', visible=True)
+
+        mark_review_overlay_trigger.change(
+            fn=mark_model_for_review_overlay,
+            inputs=[mark_review_overlay_trigger],
+            outputs=[review_overlay_status]
         )
 
         model_sent.change(
@@ -955,10 +922,6 @@ def on_ui_tabs():
                 install_path,
                 sub_folder
             ]
-        ).then(
-            fn=update_review_button_state,
-            inputs=[install_path, model_filename],
-            outputs=[mark_for_review_btn, review_status_text]
         )
 
         trained_tags.change(
@@ -1144,12 +1107,6 @@ def on_ui_tabs():
                 preview_html_input
             ],
             outputs=[]
-        )
-
-        mark_for_review_btn.click(
-            fn=mark_model_for_review,
-            inputs=[install_path, model_filename, current_sha256],
-            outputs=[review_status_text, mark_for_review_btn]
         )
 
         def save_images_wrapper(preview_html, model_filename, install_path, sub_folder, model_id):

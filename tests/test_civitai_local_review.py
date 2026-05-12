@@ -511,5 +511,76 @@ class TestMarkFileForReview(unittest.TestCase):
         self.assertIn('no sha256 found', str(ctx.exception))
 
 
+# ------------------------------------------------------------------------------
+# Test helpers from scripts/civitai_file_manage.py
+# ------------------------------------------------------------------------------
+
+class TestReviewButtonHtml(unittest.TestCase):
+    """Unit tests for _build_review_button_html and _inject_review_block_into_model_html."""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.original_file = lrv.REVIEW_FILE
+        lrv.REVIEW_FILE = os.path.join(self.tmp_dir.name, 'local_review_status.json')
+
+    def tearDown(self):
+        lrv.REVIEW_FILE = self.original_file
+        self.tmp_dir.cleanup()
+
+    def _make_model_with_sidecar(self, name, sha256):
+        path = os.path.join(self.tmp_dir.name, name)
+        with open(path, 'w') as f:
+            f.write('dummy')
+        sidecar = os.path.splitext(path)[0] + '.json'
+        with open(sidecar, 'w') as f:
+            json.dump({'sha256': sha256}, f)
+        return path
+
+    def test_build_review_button_not_marked(self):
+        from scripts.civitai_local_review import _build_review_button_html
+        path = self._make_model_with_sidecar('model1.safetensors', 'AABBCC')
+        html = _build_review_button_html(path)
+        self.assertIn('Mark for review', html)
+        self.assertIn('markForReviewOverlay', html)
+        self.assertNotIn('disabled', html)
+
+    def test_build_review_button_already_marked(self):
+        from scripts.civitai_local_review import _build_review_button_html
+        path = self._make_model_with_sidecar('model2.safetensors', 'DDEEFF')
+        lrv.mark_for_review({'sha256': 'DDEEFF', 'status': 'needs_review'})
+        html = _build_review_button_html(path)
+        self.assertIn('Marked for review', html)
+        self.assertIn('disabled', html)
+        self.assertNotIn('markForReviewOverlay', html)
+
+    def test_build_review_button_missing_file(self):
+        from scripts.civitai_local_review import _build_review_button_html
+        html = _build_review_button_html('/nonexistent/file.safetensors')
+        self.assertEqual(html, '')
+
+    def test_inject_review_block_success(self):
+        from scripts.civitai_local_review import _inject_review_block_into_model_html
+        base = '<div class="main-container"><h1>Title</h1><p>Content</p></div>'
+        review = '<div class="review-block">Review</div>'
+        result = _inject_review_block_into_model_html(base, review)
+        self.assertIn(review, result)
+        self.assertEqual(result.count('</div>'), base.count('</div>') + 1)
+        # Verify order: review block before the final closing </div>
+        self.assertTrue(result.index(review) < result.rindex('</div>'))
+
+    def test_inject_review_block_no_main_container(self):
+        from scripts.civitai_local_review import _inject_review_block_into_model_html
+        base = '<div><h1>Title</h1></div>'
+        review = '<div class="review-block">Review</div>'
+        result = _inject_review_block_into_model_html(base, review)
+        self.assertEqual(result, base)
+
+    def test_inject_review_block_empty_review(self):
+        from scripts.civitai_local_review import _inject_review_block_into_model_html
+        base = '<div class="main-container"><h1>Title</h1></div>'
+        result = _inject_review_block_into_model_html(base, '')
+        self.assertEqual(result, base)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

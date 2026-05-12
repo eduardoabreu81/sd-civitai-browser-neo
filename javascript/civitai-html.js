@@ -2004,3 +2004,14 @@ function exitUpdateMode() {
     const banner = gradioApp().querySelector('#update_mode_banner');
     if (banner) banner.innerHTML = '';
 }
+/**
+ * Trigger the Python backend to mark a local model file for review.
+ * Called by the "Mark for review" button injected into the overlay HTML.
+ * @param {string} filePath - absolute path to the local model file
+ */
+function markForReviewOverlay(filePath) {
+    const trigger = gradioApp().querySelector('#mark_review_overlay_trigger textarea');
+    if (!trigger) return;
+    trigger.value = filePath;
+    updateInput(trigger);
+}
