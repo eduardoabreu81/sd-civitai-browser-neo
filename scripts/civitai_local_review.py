@@ -172,20 +172,32 @@ def _build_review_button_html(model_file):
 
 
 def _inject_review_block_into_model_html(output_html, review_html):
-    """Inject review_html before the closing of the main-container div.
+    """Inject review_html into the overlay HTML at the preferred position.
 
-    Falls back to returning the original HTML if the injection point cannot be
-    determined safely.  The overlay HTML is known to end with a single top-level
-    <div class="main-container">…</div>, so we look for the last </div>.
+    Priority:
+      1. Before <div class="image-block"> (after Model Description)
+      2. Before the closing </div> of main-container
+      3. Append at the very end of the HTML
+
+    Falls back to returning the original HTML if none of the above apply.
     """
-    if not review_html:
+    if not review_html or not output_html:
         return output_html
-    if not output_html or 'class="main-container"' not in output_html:
-        return output_html
-    last_close = output_html.rfind('</div>')
-    if last_close == -1:
-        return output_html
-    return output_html[:last_close] + review_html + output_html[last_close:]
+
+    # Priority 1: before <div class="image-block">
+    image_block_marker = '<div class="image-block">'
+    idx = output_html.find(image_block_marker)
+    if idx != -1:
+        return output_html[:idx] + review_html + output_html[idx:]
+
+    # Priority 2: before the final </div> that closes main-container
+    if 'class="main-container"' in output_html:
+        last_close = output_html.rfind('</div>')
+        if last_close != -1:
+            return output_html[:last_close] + review_html + output_html[last_close:]
+
+    # Priority 3: append at the end
+    return output_html + review_html
 
 
 def get_review_status(sha256):

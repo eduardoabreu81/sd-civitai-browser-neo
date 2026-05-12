@@ -558,28 +558,43 @@ class TestReviewButtonHtml(unittest.TestCase):
         html = _build_review_button_html('/nonexistent/file.safetensors')
         self.assertEqual(html, '')
 
-    def test_inject_review_block_success(self):
+    def test_inject_review_block_before_image_block(self):
+        from scripts.civitai_local_review import _inject_review_block_into_model_html
+        base = '<div class="main-container"><h1>Title</h1><p>Desc</p><div class="image-block"><img></div></div>'
+        review = '<div class="review-block">Review</div>'
+        result = _inject_review_block_into_model_html(base, review)
+        self.assertIn(review, result)
+        # Review must come BEFORE image-block
+        self.assertLess(result.index(review), result.index('<div class="image-block">'))
+
+    def test_inject_review_block_fallback_main_container(self):
         from scripts.civitai_local_review import _inject_review_block_into_model_html
         base = '<div class="main-container"><h1>Title</h1><p>Content</p></div>'
         review = '<div class="review-block">Review</div>'
         result = _inject_review_block_into_model_html(base, review)
         self.assertIn(review, result)
-        self.assertEqual(result.count('</div>'), base.count('</div>') + 1)
-        # Verify order: review block before the final closing </div>
-        self.assertTrue(result.index(review) < result.rindex('</div>'))
+        # Review before final closing </div>
+        self.assertLess(result.index(review), result.rindex('</div>'))
 
-    def test_inject_review_block_no_main_container(self):
+    def test_inject_review_block_fallback_append(self):
         from scripts.civitai_local_review import _inject_review_block_into_model_html
-        base = '<div><h1>Title</h1></div>'
+        base = '<h1>No container here</h1>'
         review = '<div class="review-block">Review</div>'
         result = _inject_review_block_into_model_html(base, review)
-        self.assertEqual(result, base)
+        # No image-block, no main-container -> append at end
+        self.assertTrue(result.endswith(review))
 
     def test_inject_review_block_empty_review(self):
         from scripts.civitai_local_review import _inject_review_block_into_model_html
         base = '<div class="main-container"><h1>Title</h1></div>'
         result = _inject_review_block_into_model_html(base, '')
         self.assertEqual(result, base)
+
+    def test_inject_review_block_empty_html(self):
+        from scripts.civitai_local_review import _inject_review_block_into_model_html
+        review = '<div class="review-block">Review</div>'
+        result = _inject_review_block_into_model_html('', review)
+        self.assertEqual(result, '')
 
 
 if __name__ == '__main__':
