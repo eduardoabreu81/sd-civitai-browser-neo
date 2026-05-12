@@ -363,11 +363,14 @@ def on_ui_tabs():
                 save_images = gr.Button(value='Save images', interactive=False)
                 delete_model = gr.Button(value='Delete model', interactive=False, visible=False)
                 download_model = gr.Button(value='Download model', interactive=False)
+                mark_for_review_btn = gr.Button(value='Mark for review', interactive=False, visible=False)
                 subfolder_selected = gr.Dropdown(label='Sub folder for selected files:', choices=[], interactive=False, visible=False, value=None, allow_custom_value=True)
                 download_selected = gr.Button(value='Download all selected', interactive=False, visible=False, elem_id='download_all_button')
             with gr.Row():
                 cancel_all_model = gr.Button(value='Cancel all downloads', interactive=False, visible=False)
                 cancel_model = gr.Button(value='Cancel current download', interactive=False, visible=False)
+            with gr.Row():
+                review_status_text = gr.Textbox(label='Review status', interactive=False, visible=False)
             with gr.Row():
                 preview_html = gr.HTML(elem_id='civitai_preview_html')
 
@@ -764,6 +767,29 @@ def on_ui_tabs():
 
         list_html_input.change(fn=all_visible, inputs=list_html_input, outputs=select_all)
 
+        def update_review_button_state(install_path, model_filename):
+            """Toggle Mark-for-review button based on whether a local file exists."""
+            if install_path and install_path != 'None' and model_filename:
+                file_path = os.path.join(install_path, model_filename)
+                exists = os.path.isfile(file_path)
+            else:
+                exists = False
+            return gr.update(visible=exists, interactive=exists), gr.update(value='', visible=False)
+
+        def mark_model_for_review(install_path, model_filename, current_sha256):
+            """Mark the currently displayed model file for local review."""
+            if not install_path or install_path == 'None' or not model_filename:
+                return gr.update(value='Model not installed locally.', visible=True)
+            file_path = os.path.join(install_path, model_filename)
+            if not os.path.isfile(file_path):
+                return gr.update(value='File not found.', visible=True)
+            try:
+                from scripts.civitai_local_review import mark_file_for_review
+                mark_file_for_review(file_path, reasons=['manual_check'], manual_note='')
+                return gr.update(value='Marked for review.', visible=True)
+            except Exception as e:
+                return gr.update(value=f'Error: {e}', visible=True)
+
         def update_models_dropdown(input, base_filter=None):
             # If there is no loaded model data, reset all UI elements and show a message
             if not gl.json_data:
@@ -853,6 +879,10 @@ def on_ui_tabs():
                 save_info,
                 list_html_input
             ]
+        ).then(
+            fn=update_review_button_state,
+            inputs=[install_path, model_filename],
+            outputs=[mark_for_review_btn, review_status_text]
         )
 
         model_sent.change(
@@ -900,6 +930,10 @@ def on_ui_tabs():
                 install_path,
                 sub_folder
             ]
+        ).then(
+            fn=update_review_button_state,
+            inputs=[install_path, model_filename],
+            outputs=[mark_for_review_btn, review_status_text]
         )
 
         trained_tags.change(
@@ -1085,6 +1119,12 @@ def on_ui_tabs():
                 preview_html_input
             ],
             outputs=[]
+        )
+
+        mark_for_review_btn.click(
+            fn=mark_model_for_review,
+            inputs=[install_path, model_filename, current_sha256],
+            outputs=[review_status_text]
         )
 
         def save_images_wrapper(preview_html, model_filename, install_path, sub_folder, model_id):
