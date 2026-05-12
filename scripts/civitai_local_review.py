@@ -299,6 +299,47 @@ def _resolve_local_model_meta(file_path):
     return result
 
 
+def mark_file_for_review(file_path, reasons=None, manual_note=''):
+    """
+    Mark a local model file for review by resolving its metadata from sidecars
+    and saving a review entry keyed by its SHA256.
+
+    Args:
+        file_path: Absolute or relative path to the model file.
+        reasons:   Optional list of reason strings (will be normalized).
+        manual_note: Optional free-text note.
+
+    Returns:
+        The saved review entry dict (same shape as mark_for_review output).
+
+    Raises:
+        ValueError: If file_path is invalid or if no sha256 could be resolved.
+    """
+    meta = _resolve_local_model_meta(file_path)
+
+    sha256 = meta.get('sha256')
+    if not sha256:
+        raise ValueError(
+            f"Cannot mark for review: no sha256 found for '{file_path}'. "
+            "Ensure the model has a .json sidecar with a sha256 field."
+        )
+
+    item = {
+        'sha256': sha256,
+        'status': 'needs_review',
+        'reasons': reasons,
+        'manualNote': manual_note,
+    }
+
+    # Merge resolved metadata fields when present
+    for key in ('modelId', 'modelVersionId', 'fileName', 'filePath',
+                'contentType', 'baseModel', 'modelName', 'versionName'):
+        if key in meta:
+            item[key] = meta[key]
+
+    return mark_for_review(item)
+
+
 def clear_review_status(sha256):
     """
     Remove the review entry for the given SHA256.

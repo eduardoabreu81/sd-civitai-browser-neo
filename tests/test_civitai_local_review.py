@@ -399,5 +399,117 @@ class TestResolveLocalModelMeta(unittest.TestCase):
         self.assertNotIn('modelId', result)
 
 
+class TestMarkFileForReview(unittest.TestCase):
+    """Unit tests for mark_file_for_review()"""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.original_file = lrv.REVIEW_FILE
+        lrv.REVIEW_FILE = os.path.join(self.tmp_dir.name, 'local_review_status.json')
+
+    def tearDown(self):
+        lrv.REVIEW_FILE = self.original_file
+        self.tmp_dir.cleanup()
+
+    def _make_model_file(self, name):
+        path = os.path.join(self.tmp_dir.name, name)
+        with open(path, 'wb') as f:
+            f.write(b'dummy')
+        return path
+
+    def _write_json(self, model_path, data):
+        json_path = os.path.splitext(model_path)[0] + '.json'
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f)
+
+    # ------------------------------------------------------------------
+    # 1. Creates entry using metadata resolved from sidecars
+    # ------------------------------------------------------------------
+    def test_creates_entry_from_sidecars(self):
+        path = self._make_model_file('lora.safetensors')
+        self._write_json(path, {
+            'sha256': 'deadbeef',
+            'modelId': 42,
+            'modelVersionId': 99,
+            'sd version': 'Pony',
+        })
+        entry = lrv.mark_file_for_review(path)
+        # sha256 is the dict key, not stored inside the entry
+        self.assertEqual(entry['status'], 'needs_review')
+        self.assertEqual(entry['modelId'], 42)
+        self.assertEqual(entry['modelVersionId'], 99)
+        self.assertEqual(entry['baseModel'], 'Pony')
+        self.assertEqual(entry['fileName'], 'lora.safetensors')
+        # Verify it was persisted under the correct SHA256 key
+        self.assertEqual(lrv.get_review_status('deadbeef')['status'], 'needs_review')
+
+    # ------------------------------------------------------------------
+    # 2. Forwards reasons and manual_note correctly
+    # ------------------------------------------------------------------
+    def test_forwards_reasons_and_manual_note(self):
+        path = self._make_model_file('model.safetensors')
+        self._write_json(path, {
+            'sha256': 'cafebabe',
+        })
+        entry = lrv.mark_file_for_review(
+            path,
+            reasons=['blurry preview', 'nsfw'],
+            manual_note='Check before using'
+        )
+        self.assertEqual(entry['reasons'], ['blurry preview', 'nsfw'])
+        self.assertEqual(entry['manualNote'], 'Check before using')
+
+    # ------------------------------------------------------------------
+    # 3. Normalizes reasons via mark_for_review
+    # ------------------------------------------------------------------
+    def test_normalizes_reasons(self):
+        path = self._make_model_file('model.safetensors')
+        self._write_json(path, {
+            'sha256': 'aabbccdd',
+        })
+        entry = lrv.mark_file_for_review(
+            path,
+            reasons=['  duplicate  ', 'duplicate', '', 'low-quality'],
+        )
+        self.assertEqual(entry['reasons'], ['duplicate', 'low-quality'])
+
+    # ------------------------------------------------------------------
+    # 4. Raises ValueError for invalid file_path
+    # ------------------------------------------------------------------
+    def test_invalid_path_raises_valueerror(self):
+        with self.assertRaises(ValueError) as ctx:
+            lrv.mark_file_for_review(None)
+        self.assertIn('file_path is required', str(ctx.exception))
+
+    def test_empty_path_raises_valueerror(self):
+        with self.assertRaises(ValueError) as ctx:
+            lrv.mark_file_for_review('')
+        self.assertIn('file_path is required', str(ctx.exception))
+
+    # ------------------------------------------------------------------
+    # 5. Raises ValueError when no sha256 in sidecar
+    # ------------------------------------------------------------------
+    def test_missing_sha256_raises_valueerror(self):
+        path = self._make_model_file('model.safetensors')
+        self._write_json(path, {
+            'modelId': 1,
+            # sha256 intentionally omitted
+        })
+        with self.assertRaises(ValueError) as ctx:
+            lrv.mark_file_for_review(path)
+        self.assertIn('no sha256 found', str(ctx.exception))
+
+    # ------------------------------------------------------------------
+    # 6. Does not call API or generate SHA256
+    # ------------------------------------------------------------------
+    def test_no_api_call_or_sha256_generation(self):
+        path = self._make_model_file('model.safetensors')
+        # No sidecars at all; should fail fast on sha256 check,
+        # never attempting to hash the file or call the API.
+        with self.assertRaises(ValueError) as ctx:
+            lrv.mark_file_for_review(path)
+        self.assertIn('no sha256 found', str(ctx.exception))
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
