@@ -1034,12 +1034,6 @@ def on_ui_tabs():
                 ]
             )
 
-        def _refresh_page_after_download(*args):
-            """Wrapper to re-render the current page after a download finishes.
-            In Update Mode this refreshes the update list; in Browser mode it
-            refreshes the browser grid."""
-            return _api.initial_model_page(*args, from_update_tab=True)
-
         download_finish.change(
             fn=_download.download_finish,
             inputs=[
@@ -1216,6 +1210,12 @@ def on_ui_tabs():
             base_model,
             model_filename
         ]
+
+        def _refresh_page_after_download(*args):
+            """Wrapper to re-render the current page after a download finishes.
+            In Update Mode this refreshes the update list; in Browser mode it
+            refreshes the browser grid."""
+            return _api.initial_model_page(*args, from_update_tab=True)
 
         file_scan_inputs = [
             selected_tags,
