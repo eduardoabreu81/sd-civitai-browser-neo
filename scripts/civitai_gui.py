@@ -1012,7 +1012,7 @@ def on_ui_tabs():
                 ]
             )
 
-        download_finish.change(
+        _download_finish_event = download_finish.change(
             fn=_download.download_finish,
             inputs=[
                 model_filename,
@@ -1027,10 +1027,6 @@ def on_ui_tabs():
                 download_progress,
                 list_versions
             ]
-        ).then(
-            fn=lambda *args: _api.initial_model_page(*args, from_update_tab=True),
-            inputs=refresh_inputs,
-            outputs=page_outputs
         )
 
         cancel_model.click(_download.download_cancel)
@@ -1188,6 +1184,12 @@ def on_ui_tabs():
             base_model,
             model_filename
         ]
+
+        _download_finish_event.then(
+            fn=lambda *args: _api.initial_model_page(*args, from_update_tab=True),
+            inputs=refresh_inputs,
+            outputs=page_outputs
+        )
 
         file_scan_inputs = [
             selected_tags,
