@@ -206,7 +206,7 @@ def assemble_model_info_html(
     description_section,
     img_html,
 ):
-    """Combine all blocks into final .main-container output_html."""
+    """Combine all blocks into final .main-container output_html (legacy layout)."""
     return (
         '<div class="main-container">'
             '<div class="info-section">'
@@ -225,6 +225,134 @@ def assemble_model_info_html(
             '</div>'
             '<div class="images-section">'
                 f'{img_html}'
+            '</div>'
+        '</div>'
+    )
+
+
+def build_model_badges_html(display_type, base_model, nsfw_level=None, download_count=None, thumbs_up_count=None):
+    """Build header badges row for revamp layout.
+
+    All badge values are optional. If None, the badge is omitted.
+    """
+    badges = []
+    if display_type:
+        badges.append(f'<span class="badge badge-type">{escape(str(display_type))}</span>')
+    if base_model:
+        badges.append(f'<span class="badge badge-base-model">{escape(str(base_model))}</span>')
+    if nsfw_level is not None and nsfw_level > 0:
+        badges.append(f'<span class="badge badge-nsfw" data-level="{nsfw_level}">NSFW</span>')
+    if thumbs_up_count is not None:
+        badges.append(f'<span class="badge badge-likes">★ {thumbs_up_count}</span>')
+    if download_count is not None:
+        badges.append(f'<span class="badge badge-downloads">↓ {download_count}</span>')
+
+    if not badges:
+        return ''
+    return '<div class="model-meta-badges">' + ''.join(badges) + '</div>'
+
+
+def build_download_info_card(model_filename, file_meta=None):
+    """Build download info card for revamp sidebar.
+
+    file_meta: human-readable string like 'SafeTensor · fp16 · 6.46 GB'.
+    """
+    if not model_filename:
+        return ''
+    meta_line = f'<span class="file-meta">{escape(str(file_meta))}</span>' if file_meta else ''
+    return (
+        '<div class="card card-download">'
+            '<h3 class="card-header">File</h3>'
+            f'<div class="file-name">{escape(str(model_filename))}</div>'
+            f'{meta_line}'
+        '</div>'
+    )
+
+
+def build_local_model_status_card():
+    """Build Local Model Status card for revamp sidebar.
+
+    The review block anchor is placed inside this card so that
+    _inject_review_block_into_model_html can inject the review UI here.
+    """
+    return (
+        '<div class="card card-local-status">'
+            '<h3 class="card-header">Local Model Status</h3>'
+            '<!-- REVIEW_BLOCK_ANCHOR -->'
+        '</div>'
+    )
+
+
+def assemble_model_info_html_revamp(
+    model_page,
+    uploader_page,
+    model_badges_html,
+    description_section,
+    img_html,
+    download_info_card,
+    trained_words_section,
+    local_status_card,
+    metadata_card,
+    permissions_card,
+    companion_banner,
+):
+    """Combine all blocks into final two-column revamp layout.
+
+    Sidebar order (top to bottom):
+      1. Download info card
+      2. Trigger Words (if non-empty and type is LoRA/LoCon/DoRA)
+      3. Local Model Status
+      4. Metadata
+      5. Permissions
+      6. Companion Banner (if non-empty)
+
+    The legacy assemble_model_info_html is left untouched.
+    """
+    # Header area
+    header_badges = model_badges_html if model_badges_html else ''
+    header = (
+        '<div class="revamp-header">'
+            f'{model_page}'
+            f'{header_badges}'
+            f'{uploader_page}'
+        '</div>'
+    )
+
+    # Primary column: Description + Gallery
+    primary = (
+        '<div class="primary-column">'
+            f'{description_section}'
+            f'{img_html}'
+        '</div>'
+    )
+
+    # Sidebar cards — order is fixed and validated by tests
+    sidebar_parts = [download_info_card] if download_info_card else []
+
+    # Trigger Words: only include if there is actual content.
+    # Callers must pass an empty string for Checkpoint or when no triggers exist.
+    if trained_words_section:
+        sidebar_parts.append(trained_words_section)
+
+    sidebar_parts.append(local_status_card)
+    sidebar_parts.append(metadata_card)
+    sidebar_parts.append(permissions_card)
+
+    if companion_banner:
+        sidebar_parts.append(companion_banner)
+
+    sidebar = (
+        '<div class="sidebar-column">'
+            + ''.join(sidebar_parts)
+        + '</div>'
+    )
+
+    return (
+        '<div class="main-container revamp-layout">'
+            f'{header}'
+            '<div class="revamp-body">'
+                f'{primary}'
+                f'{sidebar}'
             '</div>'
         '</div>'
     )
