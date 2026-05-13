@@ -616,6 +616,10 @@ def download_finish(model_filename, version, model_id):
     gl.download_fail = False
     gl.cancel_status = False
 
+    # In Update Mode, remove the updated model from gl.update_items so the card disappears.
+    if gl.update_mode and model_id:
+        gl.update_items = [i for i in gl.update_items if i.get('model_id') != model_id]
+
     # In Update Mode, do not touch the version dropdown — it can reset the user's selection.
     version_update = gr.update(value=version, choices=version_choices) if not gl.update_mode else gr.update()
 

@@ -1034,6 +1034,12 @@ def on_ui_tabs():
                 ]
             )
 
+        def _refresh_page_after_download(*args):
+            """Wrapper to re-render the current page after a download finishes.
+            In Update Mode this refreshes the update list; in Browser mode it
+            refreshes the browser grid."""
+            return _api.initial_model_page(*args, from_update_tab=True)
+
         download_finish.change(
             fn=_download.download_finish,
             inputs=[
@@ -1049,6 +1055,10 @@ def on_ui_tabs():
                 download_progress,
                 list_versions
             ]
+        ).then(
+            fn=_refresh_page_after_download,
+            inputs=refresh_inputs,
+            outputs=page_outputs
         )
 
         cancel_model.click(_download.download_cancel)
