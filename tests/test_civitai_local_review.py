@@ -570,6 +570,24 @@ class TestReviewButtonHtml(unittest.TestCase):
         desc_close = result.index('</div>', result.index('<!-- REVIEW_BLOCK_ANCHOR -->'))
         self.assertLess(result.index(review), desc_close)
 
+    def test_inject_review_block_inside_description_no_anchor(self):
+        from scripts.civitai_local_review import _inject_review_block_into_model_html
+        # Simulate OLD saved HTML without anchor comment
+        base = '<div class="main-container"><div class="description-block"><h2>Model Description</h2><div class="description-wrapper">Text</div></div><div class="image-block"><img></div></div>'
+        review = '<div class="review-block">Review</div>'
+        result = _inject_review_block_into_model_html(base, review)
+        self.assertIn(review, result)
+        # Review must be INSIDE description-block: after its start and before image-block
+        desc_start = result.index('class="description-block"')
+        image_start = result.index('<div class="image-block">')
+        review_idx = result.index(review)
+        self.assertGreater(review_idx, desc_start)
+        self.assertLess(review_idx, image_start)
+        # And there must be a closing </div> after the review but before image-block
+        # (this proves it's inside the description-block, not after it)
+        close_after_review = result.index('</div>', review_idx)
+        self.assertLess(close_after_review, image_start)
+
     def test_inject_review_block_before_image_block(self):
         from scripts.civitai_local_review import _inject_review_block_into_model_html
         base = '<div class="main-container"><h1>Title</h1><p>Desc</p><div class="image-block"><img></div></div>'

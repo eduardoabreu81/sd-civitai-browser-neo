@@ -176,9 +176,10 @@ def _inject_review_block_into_model_html(output_html, review_html):
 
     Priority:
       1. Before <!-- REVIEW_BLOCK_ANCHOR --> inside the description block
-      2. Before <div class="image-block">
-      3. Before the closing </div> of main-container
-      4. Append at the very end of the HTML
+      2. Before the closing </div> of the description-block (depth-counted)
+      3. Before <div class="image-block">
+      4. Before the closing </div> of main-container
+      5. Append at the very end of the HTML
 
     Falls back to returning the original HTML if none of the above apply.
     """
@@ -191,19 +192,47 @@ def _inject_review_block_into_model_html(output_html, review_html):
     if idx != -1:
         return output_html[:idx] + review_html + output_html[idx:]
 
-    # Priority 2: before <div class="image-block">
+    # Priority 2: before the closing </div> of description-block
+    # Find the opening <div that carries class="description-block"
+    desc_marker = 'class="description-block"'
+    desc_idx = output_html.find(desc_marker)
+    if desc_idx != -1:
+        # Start scanning from the '<div' just before the marker
+        scan_start = output_html.rfind('<div', 0, desc_idx)
+        if scan_start != -1:
+            # Find the '>' that closes the opening tag so we only count
+            # nested divs that are strictly inside description-block.
+            tag_end = output_html.find('>', scan_start)
+            if tag_end != -1:
+                depth = 1
+                pos = tag_end + 1
+                while pos < len(output_html):
+                    open_tag = output_html.find('<div', pos)
+                    close_tag = output_html.find('</div>', pos)
+                    if open_tag == -1 and close_tag == -1:
+                        break
+                    if open_tag != -1 and (close_tag == -1 or open_tag < close_tag):
+                        depth += 1
+                        pos = open_tag + 4
+                    else:
+                        depth -= 1
+                        pos = close_tag + 6
+                        if depth == 0:
+                            return output_html[:close_tag] + review_html + output_html[close_tag:]
+
+    # Priority 3: before <div class="image-block">
     image_block_marker = '<div class="image-block">'
     idx = output_html.find(image_block_marker)
     if idx != -1:
         return output_html[:idx] + review_html + output_html[idx:]
 
-    # Priority 3: before the final </div> that closes main-container
+    # Priority 4: before the final </div> that closes main-container
     if 'class="main-container"' in output_html:
         last_close = output_html.rfind('</div>')
         if last_close != -1:
             return output_html[:last_close] + review_html + output_html[last_close:]
 
-    # Priority 4: append at the end
+    # Priority 5: append at the end
     return output_html + review_html
 
 
