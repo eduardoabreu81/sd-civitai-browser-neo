@@ -543,6 +543,12 @@ class TestReviewButtonHtml(unittest.TestCase):
         self.assertIn('Mark for review', html)
         self.assertIn('markForReviewOverlay', html)
         self.assertNotIn('disabled', html)
+        # Revamp markup structure
+        self.assertIn('local-review-content', html)
+        self.assertIn('local-review-status', html)
+        self.assertIn('local-review-btn', html)
+        self.assertIn('data-review-state="unmarked"', html)
+        self.assertIn('Not marked for review', html)
 
     def test_build_review_button_already_marked(self):
         from scripts.civitai_local_review import _build_review_button_html
@@ -552,6 +558,17 @@ class TestReviewButtonHtml(unittest.TestCase):
         self.assertIn('Marked for review', html)
         self.assertIn('disabled', html)
         self.assertNotIn('markForReviewOverlay', html)
+        # Revamp markup structure
+        self.assertIn('local-review-content', html)
+        self.assertIn('local-review-status', html)
+        self.assertIn('local-review-btn', html)
+        self.assertIn('data-review-state="marked"', html)
+
+    def test_build_review_button_no_inline_styles(self):
+        from scripts.civitai_local_review import _build_review_button_html
+        path = self._make_model_with_sidecar('model3.safetensors', 'AABBCC')
+        html = _build_review_button_html(path)
+        self.assertNotIn('style="', html, 'Review button HTML must not contain inline styles')
 
     def test_build_review_button_missing_file(self):
         from scripts.civitai_local_review import _build_review_button_html

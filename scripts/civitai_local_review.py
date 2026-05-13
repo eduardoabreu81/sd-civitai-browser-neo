@@ -158,16 +158,16 @@ def _build_review_button_html(model_file):
     escaped_path = model_file.replace('\\', '\\\\').replace("'", "\\'")
     if already_marked:
         return (
-            '<div class="review-block" style="margin-top:16px;padding:12px;border-top:1px solid #444;">'
-            '<button disabled style="opacity:0.6;cursor:not-allowed;">'
-            'Marked for review ✅'
-            '</button></div>'
+            '<div class="local-review-content" data-review-state="marked">'
+                '<div class="local-review-status">Marked for review</div>'
+                '<button class="local-review-btn" disabled>Marked for review ✅</button>'
+            '</div>'
         )
     return (
-        '<div class="review-block" style="margin-top:16px;padding:12px;border-top:1px solid #444;">'
-        f'<button class="mark-review-btn" onclick="markForReviewOverlay(&quot;{escaped_path}&quot;)">'
-        'Mark for review'
-        '</button></div>'
+        '<div class="local-review-content" data-review-state="unmarked">'
+            '<div class="local-review-status">Not marked for review</div>'
+            f'<button class="local-review-btn" onclick="markForReviewOverlay(&quot;{escaped_path}&quot;)">Mark for review</button>'
+        '</div>'
     )
 
 
