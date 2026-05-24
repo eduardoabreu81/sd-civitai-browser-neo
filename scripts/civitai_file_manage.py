@@ -871,7 +871,7 @@ def _detect_content_type_from_path(file_path):
         _api.contenttype_folder('Upscaler', 'ESRGAN')
     ]
     for folder in upscaler_folders:
-        if folder and file_path.startswith(folder):
+        if folder and file_path.startswith(str(folder)):
             return 'Upscaler'
 
     content_types = [
@@ -880,7 +880,7 @@ def _detect_content_type_from_path(file_path):
     ]
     for content_type in content_types:
         folder = _api.contenttype_folder(content_type)
-        if folder and file_path.startswith(folder):
+        if folder and file_path.startswith(str(folder)):
             return content_type
 
     return 'Other'
