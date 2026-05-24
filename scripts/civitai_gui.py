@@ -21,7 +21,7 @@ from scripts.civitai_global import print, debug_print
 gl.init()
 
 
-def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, olf, sn, es, ss, ts):
+def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, sn, es, ss, ts):
     config = cmd_opts.ui_config_file
 
     # Create a dictionary to map the settings to their respective variables
@@ -36,7 +36,6 @@ def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, olf, sn, es, ss, ts):
         'civitai_interface_neo/Divide cards by date/value': False,  # This is a toggle, so its state does not matter here
         'civitai_interface_neo/Liked models only/value': ol,
         'civitai_interface_neo/Hide installed models/value': hi,
-        'civitai_interface_neo/Only local files/value': olf,
         'civitai_interface_neo/NSFW content/value': sn,
         'civitai_interface_neo/Exact search/value': es,
         'civitai_interface_neo/Tile size:/value': ss,
@@ -370,8 +369,6 @@ def on_ui_tabs():
                 cancel_model = gr.Button(value='Cancel current download', interactive=False, visible=False)
             with gr.Row():
                 preview_html = gr.HTML(elem_id='civitai_preview_html')
-            with gr.Row():
-                review_overlay_status = gr.Textbox(label='Review status', interactive=False, visible=False)
 
         ## Update Tab
         with gr.Tab(label='Update Models', elem_id='updateTab'):
@@ -441,7 +438,7 @@ def on_ui_tabs():
                 </div>
                 <div class="civitai_nonqueue_list">
                 </div>
-                <span style="padding: 10px 0px 5px 5px;font-size: larger;border-bottom: 1px solid var(--border-color-primary);">Queued downloads, drag items to reorder</span>
+                <span style="padding: 10px 0px 5px 5px;font-size: larger;border-bottom: 1px solid var(--border-color-primary);">In queue: (drag items to rearrange queue order)</span>
                 <div class="list" id="queue_list">
                 </div>
                 ''')
@@ -634,9 +631,6 @@ def on_ui_tabs():
         update_single_trigger     = gr.Textbox(elem_id='update_single_trigger',     visible=False)
         update_selected_trigger   = gr.Textbox(elem_id='update_selected_trigger',   visible=False)
         exit_update_mode_trigger  = gr.Textbox(elem_id='exit_update_mode_trigger',  visible=False)
-        # Hidden: overlay review trigger
-        mark_review_overlay_trigger = gr.Textbox(elem_id='mark_review_overlay_trigger', visible=False)
-        mark_review_overlay_btn     = gr.Button(elem_id='mark_review_overlay_btn',     visible=False)
         
         # Hidden elements for quick delete by SHA256 (from model cards)
         delete_trigger_sha256 = gr.Textbox(elem_id='sha256', visible=False)
@@ -702,7 +696,7 @@ def on_ui_tabs():
         # is missing from the DOM after download/delete/queue events.
         card_updates = [queue_trigger, download_finish, delete_finish]
         for func in card_updates:
-            func.change(fn=None, inputs=func, _js='(modelName) => updateCard(modelName, false)')
+            func.change(fn=None, inputs=current_model, _js='(modelName) => updateCard(modelName, false)')
 
         # Ensure realtime card status updates also fire when current_model itself changes.
         # Skip pressRefresh() fallback — current_model changes after download/delete/ambiguity
@@ -860,23 +854,6 @@ def on_ui_tabs():
             ]
         )
 
-        def mark_model_for_review_overlay(file_path):
-            """Mark a local model file for review from the overlay button."""
-            if not file_path or not os.path.isfile(file_path):
-                return gr.update(value='File not found.', visible=True)
-            try:
-                from scripts.civitai_local_review import mark_file_for_review
-                mark_file_for_review(file_path, reasons=['manual_review'], manual_note='')
-                return gr.update(value='Marked for review.', visible=True)
-            except Exception as e:
-                return gr.update(value=f'Error: {e}', visible=True)
-
-        mark_review_overlay_trigger.change(
-            fn=mark_model_for_review_overlay,
-            inputs=[mark_review_overlay_trigger],
-            outputs=[review_overlay_status]
-        )
-
         model_sent.change(
             fn=_file.model_from_sent,
             inputs=[model_sent, type_sent],
@@ -1029,12 +1006,11 @@ def on_ui_tabs():
                     download_progress,
                     current_model,
                     download_finish,
-                    queue_trigger,
-                    update_mode_banner
+                    queue_trigger
                 ]
             )
 
-        _download_finish_event = download_finish.change(
+        download_finish.change(
             fn=_download.download_finish,
             inputs=[
                 model_filename,
@@ -1206,12 +1182,6 @@ def on_ui_tabs():
             base_model,
             model_filename
         ]
-
-        _download_finish_event.then(
-            fn=lambda *args: _api.initial_model_page(*args, from_update_tab=True),
-            inputs=refresh_inputs,
-            outputs=page_outputs
-        )
 
         file_scan_inputs = [
             selected_tags,
