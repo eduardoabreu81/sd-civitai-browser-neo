@@ -86,6 +86,7 @@ def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, sn, es, ss, ts):
         print(f"Updated settings to: {config}")
 
     # Persist all browser filter defaults to extension-local file
+    print(f"[CivitAI Browser] Saving filter defaults: tile_size={ss}, tile_count={ts}, search_type={ust}, content_type={ct}, base_model={bf}, period={pt}, sort={st}, liked={ol}, hide={hi}, nsfw={sn}, exact={es}, save_json={cj}")
     _save_browser_defaults({
         'search_type': ust,
         'content_type': ct,
