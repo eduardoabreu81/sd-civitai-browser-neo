@@ -60,7 +60,6 @@ def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, sn, es, ss, ts):
         'civitai_interface_neo/Divide cards by date/value': False,  # This is a toggle, so its state does not matter here
         'civitai_interface_neo/Liked models only/value': ol,
         'civitai_interface_neo/Hide installed models/value': hi,
-        'civitai_interface_neo/Only local files/value': olf,
         'civitai_interface_neo/NSFW content/value': sn,
         'civitai_interface_neo/Exact search/value': es,
         'civitai_interface_neo/Tile size:/value': ss,
