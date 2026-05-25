@@ -21,7 +21,31 @@ from scripts.civitai_global import print, debug_print
 gl.init()
 
 
-def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, olf, sn, es, ss, ts):
+# Path to extension-local defaults (tile size/count and future browser settings)
+_BROWSER_DEFAULTS_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    'config_states',
+    'civitai_browser_defaults.json'
+)
+
+
+def _load_browser_defaults():
+    """Load browser defaults from extension-local JSON."""
+    try:
+        with open(_BROWSER_DEFAULTS_PATH, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_browser_defaults(data):
+    """Save browser defaults to extension-local JSON."""
+    os.makedirs(os.path.dirname(_BROWSER_DEFAULTS_PATH), exist_ok=True)
+    with open(_BROWSER_DEFAULTS_PATH, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=4)
+
+
+def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, sn, es, ss, ts):
     config = cmd_opts.ui_config_file
 
     # Create a dictionary to map the settings to their respective variables
@@ -61,6 +85,22 @@ def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, olf, sn, es, ss, ts):
     # Save the modified content back to the file
     if _api.safe_json_save(config, data):
         print(f"Updated settings to: {config}")
+
+    # Persist all browser filter defaults to extension-local file
+    _save_browser_defaults({
+        'search_type': ust,
+        'content_type': ct,
+        'time_period': pt,
+        'sort_by': st,
+        'base_model': bf,
+        'save_info_after_download': cj,
+        'liked_models_only': ol,
+        'hide_installed_models': hi,
+        'nsfw_content': sn,
+        'exact_search': es,
+        'tile_size': ss,
+        'tile_count': ts,
+    })
 
 # === ANXETY EDITs ===
 def all_visible(html_check):
@@ -281,28 +321,29 @@ def on_ui_tabs():
             restore_banner_html = gr.HTML(value='', elem_id='restore_banner')
             update_mode_banner = gr.HTML(value='', elem_id='update_mode_banner')
             
+            _browser_defaults = _load_browser_defaults()
             with gr.Row(elem_id='searchRow'):
                 with gr.Accordion(label='', open=False, elem_id=filterBox):
                     with gr.Row():
-                        use_search_term = gr.Radio(label='Search type:', choices=['Model name', 'User name', 'Tag', 'SHA256'], value='Model name', elem_id='searchType')
+                        use_search_term = gr.Radio(label='Search type:', choices=['Model name', 'User name', 'Tag', 'SHA256'], value=_browser_defaults.get('search_type', 'Model name'), elem_id='searchType')
                     with gr.Row():
-                        content_type = gr.Dropdown(label='Content type:', choices=content_choices, value=None, type='value', multiselect=True, elem_id='centerText')
+                        content_type = gr.Dropdown(label='Content type:', choices=content_choices, value=_browser_defaults.get('content_type', None), type='value', multiselect=True, elem_id='centerText')
                     with gr.Row():
-                        base_filter = gr.Dropdown(label='Base model:', multiselect=True, choices=get_base_models(), value=None, type='value', elem_id='centerText')
+                        base_filter = gr.Dropdown(label='Base model:', multiselect=True, choices=get_base_models(), value=_browser_defaults.get('base_model', None), type='value', elem_id='centerText')
                     with gr.Row():
-                        period_type = gr.Dropdown(label='Time period:', choices=['All Time', 'Year', 'Month', 'Week', 'Day'], value='Month', type='value', elem_id='centerText')
-                        sort_type = gr.Dropdown(label='Sort by:', choices=['Newest','Oldest','Most Downloaded','Highest Rated','Most Liked','Most Buzz','Most Discussed','Most Collected','Most Images'], value='Highest Rated', type='value', elem_id='centerText')
+                        period_type = gr.Dropdown(label='Time period:', choices=['All Time', 'Year', 'Month', 'Week', 'Day'], value=_browser_defaults.get('time_period', 'Month'), type='value', elem_id='centerText')
+                        sort_type = gr.Dropdown(label='Sort by:', choices=['Newest','Oldest','Most Downloaded','Highest Rated','Most Liked','Most Buzz','Most Discussed','Most Collected','Most Images'], value=_browser_defaults.get('sort_by', 'Highest Rated'), type='value', elem_id='centerText')
                     with gr.Row(elem_id=component_id):
-                        create_json = gr.Checkbox(label=f"Save info after download", value=True, elem_id=toggle1)
-                        show_nsfw = gr.Checkbox(label='NSFW content', value=False, elem_id=toggle2)
+                        create_json = gr.Checkbox(label=f"Save info after download", value=_browser_defaults.get('save_info_after_download', True), elem_id=toggle1)
+                        show_nsfw = gr.Checkbox(label='NSFW content', value=_browser_defaults.get('nsfw_content', False), elem_id=toggle2)
                         toggle_date = gr.Checkbox(label='Divide cards by date', value=False, elem_id=toggle3)
-                        exact_search = gr.Checkbox(label='Exact search', value=True, elem_id=toggle6)
-                        only_liked = gr.Checkbox(label='Liked models only', value=False, interactive=show_only_liked, elem_id=toggle4)
-                        hide_installed = gr.Checkbox(label='Hide installed models', value=False, elem_id=toggle5)
+                        exact_search = gr.Checkbox(label='Exact search', value=_browser_defaults.get('exact_search', True), elem_id=toggle6)
+                        only_liked = gr.Checkbox(label='Liked models only', value=_browser_defaults.get('liked_models_only', False), interactive=show_only_liked, elem_id=toggle4)
+                        hide_installed = gr.Checkbox(label='Hide installed models', value=_browser_defaults.get('hide_installed_models', False), elem_id=toggle5)
                         hide_banned_creators = gr.Checkbox(label='Hide banned creators', value=False, elem_id='hideBannedCreators')
                     with gr.Row():
-                        size_slider = gr.Slider(label='Tile size:', minimum=8, maximum=20, value=12, step=0.25)
-                        tile_count_slider = gr.Slider(label='Tile count:', minimum=1, maximum=100, value=27, step=1)
+                        size_slider = gr.Slider(label='Tile size:', minimum=8, maximum=20, value=_browser_defaults.get('tile_size', 12), step=0.25)
+                        tile_count_slider = gr.Slider(label='Tile count:', minimum=1, maximum=100, value=_browser_defaults.get('tile_count', 27), step=1)
                     with gr.Row(elem_id='save_set_box'):
                         save_settings = gr.Button(value='Save settings as default', elem_id='save_set_btn')
                 search_term = gr.Textbox(label='', placeholder='Enter model name, or paste a CivitAI link', elem_id='searchBox')
