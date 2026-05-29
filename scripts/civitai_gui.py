@@ -661,7 +661,7 @@ def on_ui_tabs():
         ambiguity_choice = gr.Textbox(visible=False, elem_id='ambiguity_choice')
         ambiguity_confirm = gr.Button('Confirm Ambiguity', visible=False, elem_id='ambiguity_confirm')
         # Bind confirm button to resolver
-        ambiguity_confirm.click(fn=_download.resolve_ambiguity, inputs=[ambiguity_choice], outputs=[download_progress, current_model, download_finish, queue_trigger])
+        ambiguity_confirm.click(fn=_download.resolve_ambiguity, inputs=[ambiguity_choice], outputs=[download_progress, current_model, download_finish, queue_trigger], show_progress='hidden')
         model_preview_html_input = gr.Textbox(visible=False)
         banned_creators_list_txt = gr.Textbox(elem_id='banned_creators_list', visible=False, value=_file.get_banned_creators_text())
         # Hidden: queue restore triggers (survive RunPod/browser disconnects)
@@ -1017,7 +1017,8 @@ def on_ui_tabs():
                 download_start,
                 download_progress,
                 download_manager_html
-            ]
+            ],
+            show_progress='hidden'
         )
 
         download_selected.click(
@@ -1036,7 +1037,8 @@ def on_ui_tabs():
                 download_start,
                 download_progress,
                 download_manager_html
-            ]
+            ],
+            show_progress='hidden'
         )
 
         for component in [download_start, queue_trigger]:
@@ -1050,7 +1052,8 @@ def on_ui_tabs():
                     download_finish,
                     queue_trigger,
                     update_mode_banner
-                ]
+                ],
+                show_progress='hidden'
             )
 
         _download_finish_event = download_finish.change(
@@ -1067,7 +1070,8 @@ def on_ui_tabs():
                 delete_model,
                 download_progress,
                 list_versions
-            ]
+            ],
+            show_progress='hidden'
         )
 
         cancel_model.click(_download.download_cancel)
@@ -1085,7 +1089,8 @@ def on_ui_tabs():
             fn=_download.restore_interrupted_to_queue,
             inputs=[download_manager_html],
             outputs=[download_model, cancel_model, cancel_all_model,
-                     download_start, download_progress, download_manager_html]
+                     download_start, download_progress, download_manager_html],
+            show_progress='hidden'
         )
         dismiss_restore_trigger.change(fn=_download.dismiss_interrupted_downloads)
 
@@ -1593,7 +1598,8 @@ def on_ui_tabs():
                 download_start,
                 download_progress,
                 download_manager_html
-            ]
+            ],
+            show_progress='hidden'
         )
 
         update_single_trigger.change(
@@ -1606,7 +1612,8 @@ def on_ui_tabs():
                 download_start,
                 download_progress,
                 download_manager_html
-            ]
+            ],
+            show_progress='hidden'
         )
 
         update_selected_trigger.change(
@@ -1619,7 +1626,8 @@ def on_ui_tabs():
                 download_start,
                 download_progress,
                 download_manager_html
-            ]
+            ],
+            show_progress='hidden'
         )
 
         exit_update_mode_trigger.change(
