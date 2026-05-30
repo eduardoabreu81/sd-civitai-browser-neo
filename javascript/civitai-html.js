@@ -114,10 +114,15 @@ function applyPendingCardUpdates() {
                 }
             }
         }
-        if (foundContainer && pendingCardUpdates.size > 0) {
-            console.log('[updateCard] container appeared — applying', pendingCardUpdates.size, 'pending update(s)');
-            // Small delay to let Gradio finish rendering cards inside the container
-            setTimeout(applyPendingCardUpdates, 200);
+        if (foundContainer) {
+            // Re-apply DOM filters after Gradio finishes injecting the new HTML
+            setTimeout(reapplyFilters, 250);
+
+            if (pendingCardUpdates.size > 0) {
+                console.log('[updateCard] container appeared — applying', pendingCardUpdates.size, 'pending update(s)');
+                // Small delay to let Gradio finish rendering cards inside the container
+                setTimeout(applyPendingCardUpdates, 200);
+            }
         }
     });
     observer.observe(document.documentElement, { childList: true, subtree: true });
@@ -148,6 +153,7 @@ function applyPendingCardUpdates() {
         if (hasCards) {
             console.log('[updateCard] poller: cards detected — applying', pendingCardUpdates.size, 'pending update(s)');
             applyPendingCardUpdates();
+            reapplyFilters();
         } else {
             // Containers exist but have no cards (Gradio cleared them on tab switch).
             // Force a refresh to reload cards with updated status.
@@ -1311,6 +1317,25 @@ function hideBannedCreators(checked) {
             card.style.display = checked ? 'none' : '';
         }
     });
+}
+
+// Re-apply hideInstalled and banned-creator filters by reading current toggle states.
+// Called from MutationObserver when new cards are injected into the DOM.
+function reapplyFilters() {
+    const hideInstalledToggle =
+        gradioApp().querySelector('#toggle5 input[type="checkbox"]') ||
+        gradioApp().querySelector('#toggle5L input[type="checkbox"]');
+    if (hideInstalledToggle) {
+        hideInstalled(hideInstalledToggle.checked);
+    }
+
+    const hideBannedToggle =
+        gradioApp().querySelector('#hideBannedCreators input[type="checkbox"]');
+    const bannedListInput =
+        gradioApp().querySelector('#banned_creators_list');
+    if (hideBannedToggle && bannedListInput) {
+        refreshBannedCreators(bannedListInput.value, hideBannedToggle.checked);
+    }
 }
 
 // Toggle description visibility
