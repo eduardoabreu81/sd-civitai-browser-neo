@@ -307,7 +307,13 @@ def _resolve_versions_to_download(versions_list, model_folder):
     return base_result if base_result else [versions_list[0]]
 
 
-def selected_to_queue(model_list, subfolder, download_start, create_json, current_html):
+def selected_to_queue(model_list, subfolder, download_start, create_json, current_html, forced_version_ids=None):
+    """Enqueue models for download.
+
+    Args:
+        forced_version_ids: Optional dict mapping model_id (str) -> list of version IDs.
+            When provided, those specific versions are used instead of auto-resolution.
+    """
     global total_count, current_count
     if gl.download_queue:
         number = download_start
@@ -346,8 +352,14 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
 
         model_folder = _api.contenttype_folder(content_type, desc)
 
-        # Resolve which versions to download (one per installed family for multi-family models)
-        versions_to_download = _resolve_versions_to_download(versions_list, model_folder)
+        # Resolve which versions to download
+        if forced_version_ids and str(model_id) in forced_version_ids:
+            # Revamp: user selected specific versions from the update-mode card
+            selected_ids = forced_version_ids[str(model_id)]
+            versions_to_download = [v for v in versions_list if v.get('id') in selected_ids]
+        else:
+            # Auto-resolve: one per installed family for multi-family models
+            versions_to_download = _resolve_versions_to_download(versions_list, model_folder)
 
         for version in versions_to_download:
             version_name = version.get('name')
@@ -494,7 +506,12 @@ def update_selected_models(trigger_value, download_start, create_json, current_h
 
 
 def download_single_update(trigger_value, download_start, create_json, current_html):
-    """Enqueue a single model update. trigger_value is 'model_id|family'."""
+    """Enqueue a single model update.
+
+    trigger_value formats:
+      - Legacy:  'model_id|family'
+      - Revamp:  'model_id|family|[456, 789]'  (JSON array of selected version IDs)
+    """
     if not trigger_value or '|' not in trigger_value:
         html = download_manager_html(current_html)
         number = download_start
@@ -506,12 +523,15 @@ def download_single_update(trigger_value, download_start, create_json, current_h
             gr.update(value='<div style="min-height: 100px;"></div>'),
             gr.update(value=html)
         )
-    # Find the matching item in gl.update_items
+
+    # Parse trigger value: model_id|family|json_version_ids
     try:
-        parts = trigger_value.split('|', 1)
+        parts = trigger_value.split('|', 2)
         model_id_str = parts[0].strip()
-        family_str   = parts[1].strip().upper()
+        family_str   = parts[1].strip().upper() if len(parts) > 1 else ''
+        version_ids_json = parts[2] if len(parts) > 2 else '[]'
         model_id_int = int(model_id_str)
+        selected_version_ids = json.loads(version_ids_json) if version_ids_json else []
     except Exception:
         return update_all_models(download_start, create_json, current_html)  # fallback
 
@@ -532,8 +552,15 @@ def download_single_update(trigger_value, download_start, create_json, current_h
             gr.update(value='<div style="min-height: 100px;"></div>'),
             gr.update(value=html)
         )
+
     model_list_json = _build_model_list_for_update(matched[:1])
-    return selected_to_queue(model_list_json, None, download_start, create_json, current_html)
+
+    # If user selected specific versions (revamp), pass them to selected_to_queue
+    forced_version_ids = None
+    if selected_version_ids:
+        forced_version_ids = {str(model_id_int): selected_version_ids}
+
+    return selected_to_queue(model_list_json, None, download_start, create_json, current_html, forced_version_ids=forced_version_ids)
 
 
 def gr_progress_threadable():

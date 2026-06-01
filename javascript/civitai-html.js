@@ -2002,18 +2002,31 @@ function syncUpdateBtn() {
 /**
  * Trigger the Python backend to enqueue a SINGLE model update.
  * Called by the ⬆ button on an individual update card.
+ * Collects checked version IDs from the card's version checkboxes.
  * @param {string|number} modelId  - the CivitAI model id
  * @param {string}        family   - the installed family (e.g. 'PONY', 'IL', '')
  */
 function updateSingleModel(modelId, family) {
-    const trigger = gradioApp().querySelector('#update_single_trigger textarea');
-    if (!trigger) return;
-    trigger.value = `${modelId}|${family || ''}`;
-    updateInput(trigger);
-    // Visual feedback: dim the card
     const card = gradioApp().querySelector(
         `.update-mode-card[data-model-id="${modelId}"][data-family="${(family || '').toUpperCase()}"]`
     );
+
+    let checkedVersions = [];
+    if (card) {
+        checkedVersions = Array.from(
+            card.querySelectorAll('.ver-checkbox:checked')
+        ).map(cb => parseInt(cb.dataset.verId, 10));
+    }
+
+    const trigger = gradioApp().querySelector('#update_single_trigger textarea');
+    if (!trigger) return;
+
+    // Format: model_id|family|json_array_of_ver_ids
+    // If no versions checked, sends empty array → Python falls back to auto-resolution
+    trigger.value = `${modelId}|${family || ''}|${JSON.stringify(checkedVersions)}`;
+    updateInput(trigger);
+
+    // Visual feedback: dim the card
     if (card) card.style.opacity = '0.4';
 }
 

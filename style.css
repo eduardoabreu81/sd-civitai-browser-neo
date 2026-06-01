@@ -1933,3 +1933,68 @@
     width: 100%;
 }
 .update-card-btn:hover { background: #ff9520; }
+
+/* ── Update Mode: version selector list (revamp) ─────────────────────────── */
+
+.update-card-ver-list {
+    max-height: 100px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 2px;
+    padding-right: 2px;
+}
+
+/* Custom scrollbar for the version list */
+.update-card-ver-list::-webkit-scrollbar {
+    width: 4px;
+}
+.update-card-ver-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+.update-card-ver-list::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 2px;
+}
+
+.ver-option {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    color: #bbb;
+    cursor: pointer;
+    padding: 1px 2px;
+    border-radius: 3px;
+    transition: background 0.1s;
+}
+.ver-option:hover {
+    background: rgba(255,255,255,0.05);
+}
+
+.ver-option input[type="checkbox"] {
+    width: 12px;
+    height: 12px;
+    margin: 0;
+    flex-shrink: 0;
+    cursor: pointer;
+    accent-color: #e07b00;
+}
+
+.ver-badge {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 0 4px;
+    border-radius: 3px;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+.ver-badge.latest {
+    background: rgba(126, 193, 138, 0.2);
+    color: #7ec18a;
+}
+.ver-badge.installed {
+    background: rgba(200, 180, 100, 0.2);
+    color: #c8b464;
+}

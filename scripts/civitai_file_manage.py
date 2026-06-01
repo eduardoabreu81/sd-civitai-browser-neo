@@ -2138,7 +2138,8 @@ def collect_update_items(outdated_set, api_response, file_paths):
 
     Returns a list of dicts:
         {'model_id', 'model_name', 'model_type', 'family',
-         'installed_ver', 'latest_ver', 'preview_url'}
+         'installed_ver', 'installed_ver_id', 'latest_ver', 'latest_ver_id',
+         'available_versions', 'preview_url'}
     Multi-family models (e.g. DollFace PONY + IL) produce two entries.
     """
     precise_check = getattr(opts, 'precise_version_check', True)
@@ -2182,7 +2183,7 @@ def collect_update_items(outdated_set, api_response, file_paths):
         ver_id_to_idx = {ver.get('id'): idx for idx, ver in enumerate(model_versions)}
 
         # Find all installed versions for this model
-        # installed_versions: list of (idx, baseModel, ver_name)
+        # installed_versions: list of (idx, baseModel, ver_name, ver_id, old_file)
         installed_versions = []
         for ver in model_versions:
             vid = ver.get('id')
@@ -2192,15 +2193,26 @@ def collect_update_items(outdated_set, api_response, file_paths):
             for file_entry in ver.get('files', []):
                 sha = file_entry.get('hashes', {}).get('SHA256', '').upper()
                 if sha in installed_hashes:
-                    installed_versions.append((idx, bm, vname, sha_to_path.get(sha, '')))
+                    installed_versions.append((idx, bm, vname, vid, sha_to_path.get(sha, '')))
                     break
+
+        # Build available_versions list for the UI (all versions with metadata)
+        available_versions = [
+            {'id': v.get('id'),
+             'name': v.get('name', '?'),
+             'baseModel': v.get('baseModel', ''),
+             'publishedAt': v.get('publishedAt', '')}
+            for v in model_versions
+        ]
 
         if not precise_check:
             # No family grouping — one entry for the whole model
             # Pick the installed version with the highest index (oldest) to show
             oldest_inst = max(installed_versions, key=lambda x: x[0])
-            inst_idx, _, inst_ver_name, old_file = oldest_inst
-            avail_ver_name = model_versions[0].get('name', '?') if model_versions else '?'
+            inst_idx, _, inst_ver_name, inst_vid, old_file = oldest_inst
+            avail_ver = model_versions[0] if model_versions else None
+            avail_ver_name = avail_ver.get('name', '?') if avail_ver else '?'
+            avail_ver_id = avail_ver.get('id') if avail_ver else None
             if inst_idx > 0:
                 items.append({
                     'model_id': model_id,
@@ -2208,26 +2220,29 @@ def collect_update_items(outdated_set, api_response, file_paths):
                     'model_type': model_type,
                     'family': None,
                     'installed_ver': inst_ver_name,
+                    'installed_ver_id': inst_vid,
                     'latest_ver': avail_ver_name,
+                    'latest_ver_id': avail_ver_id,
+                    'available_versions': available_versions,
                     'preview_url': preview_url,
                     'old_file': old_file,
                 })
         else:
             # Per-baseModel: find the newest available version for each baseModel
-            # base → (newest_idx, newest_ver_name)
+            # base → (newest_idx, newest_ver_name, newest_ver_id)
             base_newest = {}
             for ver in model_versions:
                 bm = (ver.get('baseModel') or '').strip()
                 idx = ver_id_to_idx.get(ver.get('id'), 0)
                 if bm not in base_newest or idx < base_newest[bm][0]:
-                    base_newest[bm] = (idx, ver.get('name', '?'))
+                    base_newest[bm] = (idx, ver.get('name', '?'), ver.get('id'))
 
             # For each installed version, emit a card if it's not the newest for its base
             seen_bases = set()  # avoid duplicate cards for the same base
-            for inst_idx, bm, inst_ver_name, old_file in installed_versions:
+            for inst_idx, bm, inst_ver_name, inst_vid, old_file in installed_versions:
                 if bm in seen_bases:
                     continue
-                newest_idx, newest_ver_name = base_newest.get(bm, (0, '?'))
+                newest_idx, newest_ver_name, newest_vid = base_newest.get(bm, (0, '?', None))
                 if inst_idx > newest_idx:
                     seen_bases.add(bm)
                     items.append({
@@ -2236,7 +2251,10 @@ def collect_update_items(outdated_set, api_response, file_paths):
                         'model_type': model_type,
                         'family': bm or None,
                         'installed_ver': inst_ver_name,
+                        'installed_ver_id': inst_vid,
                         'latest_ver': newest_ver_name,
+                        'latest_ver_id': newest_vid,
+                        'available_versions': available_versions,
                         'preview_url': preview_url,
                         'old_file': old_file,
                     })
