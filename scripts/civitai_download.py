@@ -245,39 +245,66 @@ def _resolve_versions_to_download(versions_list, model_folder):
     if not installed_hashes:
         return [versions_list[0]]
 
-    # Map: family -> latest available version (index 0 in API response = most recent)
+    # Build two parallel maps:
+    #  - family  (extracted from version name) — more precise when it works
+    #  - baseModel (CivitAI field)             — reliable fallback when author renames
     latest_by_family = {}
+    latest_by_base   = {}
     installed_families = set()
+    installed_bases    = set()
+    installed_ver_ids  = set()   # version IDs that are already on disk
 
     for ver in versions_list:
         ver_name = ver.get('name', '')
         family, _ = _file.extract_version_from_ver_name(ver_name)
+        bm = (ver.get('baseModel') or '').strip()
+        vid = ver.get('id')
+
         if family and family not in latest_by_family:
             latest_by_family[family] = ver
+        if bm and bm not in latest_by_base:
+            latest_by_base[bm] = ver
 
         for file_entry in ver.get('files', []):
             sha = file_entry.get('hashes', {}).get('SHA256', '').upper()
             if sha and sha in installed_hashes:
+                installed_ver_ids.add(vid)
                 if family:
                     installed_families.add(family)
+                if bm:
+                    installed_bases.add(bm)
                 break
 
-    if not installed_families:
-        # No recognised family found as installed — fresh download or non-family model
-        return [versions_list[0]]
-
-    # One latest version per installed family (de-duplicated by version id)
+    # --- Phase 1: family-based resolution (preferred, more precise) ---
     seen_ids = set()
-    result = []
+    family_result = []
     for fam in installed_families:
         ver = latest_by_family.get(fam)
         if ver:
             vid = ver.get('id')
             if vid not in seen_ids:
-                result.append(ver)
+                family_result.append(ver)
                 seen_ids.add(vid)
 
-    return result if result else [versions_list[0]]
+    # If family resolution finds something NEW (different from installed), use it.
+    family_updates_anything = any(
+        ver.get('id') not in installed_ver_ids for ver in family_result
+    )
+    if family_updates_anything:
+        return family_result
+
+    # --- Phase 2: baseModel fallback (author renamed version scheme) ---
+    seen_ids = set()
+    base_result = []
+    for bm in installed_bases:
+        ver = latest_by_base.get(bm)
+        if ver:
+            vid = ver.get('id')
+            if vid not in seen_ids:
+                base_result.append(ver)
+                seen_ids.add(vid)
+
+    return base_result if base_result else [versions_list[0]]
 
 
 def selected_to_queue(model_list, subfolder, download_start, create_json, current_html):
