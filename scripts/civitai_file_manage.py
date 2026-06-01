@@ -350,24 +350,17 @@ def handle_existing_model_file(file_path):
     if policy == 'keep':
         return
     elif policy == 'move to _Trash':
-        parent = os.path.dirname(file_path)
-        trash_dir = os.path.join(parent, '_Trash')
-        os.makedirs(trash_dir, exist_ok=True)
-        dest = os.path.join(trash_dir, os.path.basename(file_path))
-        if os.path.exists(dest):
-            stamp = __import__('datetime').datetime.now().strftime('%Y%m%d_%H%M%S')
-            base, ext = os.path.splitext(os.path.basename(file_path))
-            dest = os.path.join(trash_dir, f'{base}_{stamp}{ext}')
-        shutil.move(file_path, dest)
-        print(f'[Retention] Moved old model file to _Trash: {dest}')
-        append_update_audit_log('retention_trash', {'old_file': file_path, 'dest': dest})
-        # Also move adjacent files to trash so they don't orphan alongside the new version
+        # Send main file to system trash
+        send2trash(file_path)
+        print(f'[Retention] Moved old model file to system trash: {file_path}')
+        append_update_audit_log('retention_trash', {'old_file': file_path})
+        # Also send adjacent files to system trash so they don't orphan alongside the new version
         parent_dir = os.path.dirname(file_path)
         base_name = os.path.splitext(os.path.basename(file_path))[0]
-        _trash_associated_files(parent_dir, base_name, trash_dir)
-    else:  # 'replace' (default) — send to system trash instead of permanent delete
-        send2trash(file_path)
-        print(f'[Retention] Replaced model file moved to system trash: {file_path}')
+        delete_associated_files(parent_dir, base_name)
+    else:  # 'replace' (default) — delete main model file permanently, send associated files to trash
+        os.remove(file_path)
+        print(f'[Retention] Replaced model file deleted: {file_path}')
         append_update_audit_log('retention_replace', {'old_file': file_path})
         # Also clean up adjacent files (preview, json, html, api_info, numbered images)
         parent_dir = os.path.dirname(file_path)
