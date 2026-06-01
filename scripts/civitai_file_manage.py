@@ -365,8 +365,9 @@ def handle_existing_model_file(file_path):
         parent_dir = os.path.dirname(file_path)
         base_name = os.path.splitext(os.path.basename(file_path))[0]
         _trash_associated_files(parent_dir, base_name, trash_dir)
-    else:  # 'replace' (default)
-        os.remove(file_path)
+    else:  # 'replace' (default) — send to system trash instead of permanent delete
+        send2trash(file_path)
+        print(f'[Retention] Replaced model file moved to system trash: {file_path}')
         append_update_audit_log('retention_replace', {'old_file': file_path})
         # Also clean up adjacent files (preview, json, html, api_info, numbered images)
         parent_dir = os.path.dirname(file_path)
