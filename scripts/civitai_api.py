@@ -415,6 +415,9 @@ def update_mode_page_html(content_type_filter, base_filter, tile_count, current_
         inst_ver   = item.get('installed_ver', '?')
         new_ver    = item.get('latest_ver', '?')
         preview_url = item.get('preview_url') or ''
+        inst_ver_id = item.get('installed_ver_id')
+        latest_ver_id = item.get('latest_ver_id')
+        available_versions = item.get('available_versions', [])
 
         type_badge  = _type_short(model_type)
         fam_up      = family.upper()
@@ -434,6 +437,27 @@ def update_mode_page_html(content_type_filter, base_filter, tile_count, current_
         chk_id    = f"upchk-{model_id}-{fam_up}"
         model_str = f"{model_name} ({model_id})"
 
+        # Build version checkbox list (revamp: user-selectable versions)
+        ver_options = []
+        for ver in available_versions:
+            ver_id = ver.get('id')
+            ver_name = ver.get('name', '?')
+            is_checked = 'checked' if ver_id == latest_ver_id else ''
+            badge_html = ''
+            if ver_id == inst_ver_id:
+                badge_html = '<span class="ver-badge installed">installed</span>'
+            elif ver_id == latest_ver_id:
+                badge_html = '<span class="ver-badge latest">latest</span>'
+            ver_options.append(
+                f'<label class="ver-option">'
+                f'<input type="checkbox" class="ver-checkbox" data-ver-id="{ver_id}" {is_checked}> '
+                f'{ver_name}{badge_html}</label>'
+            )
+        ver_list_html = (
+            '<div class="update-card-ver-list">' + ''.join(ver_options) + '</div>'
+            if ver_options else ''
+        )
+
         cards_html.append(f'''<figure class="civmodelcard update-mode-card" data-model-id="{model_id}" data-family="{fam_up}">
   <input type="checkbox" class="model-checkbox" id="{chk_id}" onchange="multi_model_select('{model_str}', '{model_type}', this.checked); syncUpdateBtn()">
   <label for="{chk_id}" class="custom-checkbox"><span class="checkbox-checkmark"></span></label>
@@ -442,6 +466,7 @@ def update_mode_page_html(content_type_filter, base_filter, tile_count, current_
     <div class="update-card-name" title="{model_name}">{model_name}</div>
     <div class="update-card-badges">{type_badge_html}{family_badge_html}</div>
     <div class="update-card-versions"><span class="ver-old">{inst_ver}</span><span class="ver-arrow"> → </span><span class="ver-new">{new_ver}</span></div>
+    {ver_list_html}
     <button class="update-card-btn" onclick="{js_update}" title="Update this model">⬆</button>
   </figcaption>
 </figure>''')
