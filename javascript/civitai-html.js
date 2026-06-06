@@ -23,10 +23,12 @@ function select_model(model_name, event, bool = false, content_type = null, send
 
     if (content_type) {
         const outputType = gradioApp().querySelector('#type_sent textarea');
-        const randomNumber = Math.floor(Math.random() * 1000);
-        const paddedNumber = String(randomNumber).padStart(3, '0');
-        outputType.value = content_type + '.' + paddedNumber;
-        updateInput(outputType);
+        if (outputType) {
+            const randomNumber = Math.floor(Math.random() * 1000);
+            const paddedNumber = String(randomNumber).padStart(3, '0');
+            outputType.value = content_type + '.' + paddedNumber;
+            updateInput(outputType);
+        }
     }
 }
 
@@ -677,20 +679,32 @@ function modelInfoPopUp(modelName = null, content_type = null, no_message = fals
         sendToBrowser = sendToBrowserElement.checked;
     }
     if (modelName) {
-        select_model(modelName, null, true, content_type, sendToBrowser);
+        try {
+            select_model(modelName, null, true, content_type, sendToBrowser);
+        } catch (e) {
+            console.warn('[CivitAI Browser] select_model error:', e);
+        }
     }
     if (sendToBrowser) {
         const tabNav = document.querySelector('.tab-nav');
-        const buttons = tabNav.querySelectorAll('button');
+        const buttons = tabNav ? tabNav.querySelectorAll('button') : [];
+        let browserTabFound = false;
         for (const button of buttons) {
-            if (button.textContent.includes('Browser+')) {
+            if (button.textContent.includes('Browser+') || button.textContent.includes('CivitAI Browser')) {
                 button.click();
-
-                const firstButton = document.querySelector('#tab_civitai_interface > div > div > div > button');
+                browserTabFound = true;
+                const tabId = document.querySelector('#tab_civitai_interface_neo')
+                    ? '#tab_civitai_interface_neo'
+                    : '#tab_civitai_interface';
+                const firstButton = document.querySelector(`${tabId} > div > div > div > button`);
                 if (firstButton) {
                     firstButton.click();
                 }
+                break;
             }
+        }
+        if (!browserTabFound) {
+            createCivitaiOverlay(no_message);
         }
     } else {
         createCivitaiOverlay(no_message);
