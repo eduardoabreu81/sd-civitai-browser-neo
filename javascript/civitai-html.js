@@ -518,6 +518,7 @@ function createTooltip(element, hover_element, insertText) {
 // Function that closes filter dropdown if clicked outside the dropdown
 function setupClickOutsideListener() {
     var filterBox = document.getElementById('filterBoxL') || document.getElementById('filterBox');
+    if (!filterBox) return;
     var filterButton = filterBox.children[1];
     var dropDown = filterBox.getElementsByTagName('div')[2];
 
@@ -902,6 +903,7 @@ function metaToTxt2Img(event, type, element) {
     const prompt = gradioApp().querySelector('#txt2img_prompt textarea');
     const neg_prompt = gradioApp().querySelector('#txt2img_neg_prompt textarea');
     const cfg_scale = gradioApp().querySelector('#txt2img_cfg_scale > div:nth-child(2) > div > input');
+    if (!genButton || !prompt || !neg_prompt || !cfg_scale) return;
     let final = '';
     let cfg = 'CFG scale: ' + cfg_scale.value + ', ';
     let prompt_addon = cfg + cfg + cfg;
@@ -1008,6 +1010,9 @@ function cancelQueueDl() {
     cancelBtn;
 }
 
+// Tracks the active download-progress worker to prevent duplicates.
+let _dlProgressWorker = null;
+
 // Creates a setInterval-equivalent backed by a Web Worker so it runs
 // unthrottled even when the browser tab is in the background.
 function _createWorkerInterval(callback, ms) {
@@ -1046,6 +1051,10 @@ function setDownloadProgressBar() {
 
     nonQueue.appendChild(dlItem);
 
+    if (_dlProgressWorker) {
+        _dlProgressWorker.stop();
+        _dlProgressWorker = null;
+    }
     const worker = _createWorkerInterval(() => {
         browserContainer = document.querySelector('#DownloadProgress');
         if (!browserContainer) {
@@ -1130,6 +1139,7 @@ function setDownloadProgressBar() {
             return;
         }
     });
+    _dlProgressWorker = worker;
 }
 
 // === Queue Restore Banner ===
@@ -1274,6 +1284,7 @@ function sendTagsToPrompt(tags) {
     const prompt = gradioApp().querySelector('#txt2img_prompt textarea');
     const neg_prompt = gradioApp().querySelector('#txt2img_neg_prompt textarea');
     const cfg_scale = gradioApp().querySelector('#txt2img_cfg_scale > div:nth-child(2) > div > input');
+    if (!genButton || !prompt || !neg_prompt || !cfg_scale) return;
     const cfg = 'CFG scale: ' + cfg_scale.value + ', ';
     const prompt_addon = cfg + cfg + cfg;
     const cleanTags = tags.trimEnd().replace(/,\s*$/, '');

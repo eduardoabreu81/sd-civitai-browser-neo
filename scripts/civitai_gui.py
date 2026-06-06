@@ -146,7 +146,7 @@ def show_multi_buttons(model_list, type_list, version_value):
 
             list = set()
             sub_folders = [x for x in sub_folders if not (x in list or list.add(x))]
-        except:
+        except Exception:
             sub_folders = ['None']
 
     return (gr.update(visible=multi, interactive=multi), # Download Multi Button

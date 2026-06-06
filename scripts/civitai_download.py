@@ -907,7 +907,7 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
                 except Exception:
                     pass
                 time.sleep(2)
-    except:
+    except Exception:
         if progress != None:
             progress(0, desc=f"Encountered an error during download of: '{file_name}' Please try again.")
         gl.download_fail = True
@@ -991,7 +991,7 @@ def download_file_old(url, file_path, model_id, progress=gr.Progress() if queue 
                                 gl.download_fail = True
                                 return
                             total_size = int(response.headers.get('Content-Length', 0))
-                        except:
+                        except Exception:
                             raise TimeOutFunction('Timed Out')
 
                         if total_size == 0:
@@ -1056,7 +1056,7 @@ def download_file_old(url, file_path, model_id, progress=gr.Progress() if queue 
                 gl.download_fail = True
                 if os.path.exists(file_path):
                     os.remove(file_path)
-    except:
+    except Exception:
         if progress != None:
             progress(0, desc=f"Encountered an error during download of: {file_name_display}, please try again.")
         gl.download_fail = True
