@@ -474,6 +474,9 @@ def on_ui_tabs():
                 local_version = gr.Dropdown(label='Version:', choices=[], interactive=False, value=None)
                 local_filename = gr.Textbox(label='Model filename:', interactive=False)
             with gr.Row():
+                local_trained_tags = gr.Textbox(label='Trained tags (if any):', value=None, interactive=False, lines=1, scale=6)
+                local_send_tags_btn = gr.Button(value='➕ Add to prompt', scale=1, min_width=120, interactive=False, visible=False)
+            with gr.Row():
                 local_new_name = gr.Textbox(label='New name (rename):', interactive=False, max_lines=1, scale=4)
                 local_rename_btn = gr.Button(value='✏️ Rename', interactive=False, scale=1)
                 local_update_btn = gr.Button(value='⬆️ Update to latest', interactive=False, scale=1)
@@ -941,6 +944,8 @@ def on_ui_tabs():
                 gr.update(interactive=False),                           # local_rename_btn
                 gr.update(interactive=False),                           # local_delete_btn
                 gr.update(interactive=False),                           # local_update_btn
+                gr.update(value=None, interactive=False),               # local_trained_tags
+                gr.update(interactive=False, visible=False),            # local_send_tags_btn
             )
             if not input or not gl.json_data:
                 return empty
@@ -949,11 +954,14 @@ def on_ui_tabs():
             model_name, model_id = _api.extract_model_info(model_string)
             model_versions = _api.update_model_versions(model_id)
             info = _api.update_model_info(model_string, model_versions.get('value') if model_versions else None)
-            (html, _tags, base_model_u, _dl, _img, _del, _flist,
+            (html, tags_u, base_model_u, _dl, _img, _del, _flist,
              model_filename_u, _url, model_id_u, current_sha256_u, _ip, _sf) = info
 
             fname = model_filename_u.get('value') if isinstance(model_filename_u, dict) else None
             base_name = os.path.splitext(fname)[0] if fname else (model_name or '')
+
+            tags_val = tags_u.get('value') if isinstance(tags_u, dict) else None
+            has_tags = bool(tags_val and str(tags_val).strip())
 
             try:
                 is_local_only = int(model_id) < 0
@@ -971,6 +979,8 @@ def on_ui_tabs():
                 gr.update(interactive=True),                            # local_rename_btn
                 gr.update(interactive=True),                            # local_delete_btn
                 gr.update(interactive=not is_local_only),               # local_update_btn (CivitAI only)
+                tags_u,                                                 # local_trained_tags
+                gr.update(interactive=has_tags, visible=has_tags),      # local_send_tags_btn
             )
 
         def trigger_local_update(model_id_value):
@@ -982,7 +992,8 @@ def on_ui_tabs():
         local_detail_outputs = [
             local_preview_html, local_version, local_base_model, local_filename,
             local_sha256, local_model_id, local_new_name,
-            local_rename_btn, local_delete_btn, local_update_btn
+            local_rename_btn, local_delete_btn, local_update_btn,
+            local_trained_tags, local_send_tags_btn
         ]
         local_render_inputs = [
             local_content_type, local_base_filter, local_use_search,
@@ -1044,6 +1055,9 @@ def on_ui_tabs():
 
         # Batch update of checked (outdated) cards → reuses the update_selected pipeline
         local_update_selected_btn.click(fn=None, _js='() => updateSelectedLocalModels()')
+
+        # Trained tags → txt2img prompt (reuses the Browser's sendTagsToPrompt)
+        local_send_tags_btn.click(fn=None, inputs=[local_trained_tags], _js='(tags) => sendTagsToPrompt(tags)')
 
         model_sent.change(
             fn=_file.model_from_sent,
