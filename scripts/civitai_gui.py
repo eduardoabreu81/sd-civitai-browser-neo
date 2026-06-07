@@ -454,6 +454,7 @@ def on_ui_tabs():
             local_list_html_input = gr.Textbox(elem_id='local_list_html_input', visible=False)
             local_sha256 = gr.Textbox(visible=False)
             local_model_id = gr.Textbox(visible=False)
+            local_model_string = gr.Textbox(visible=False)
             local_rename_finish = gr.Textbox(visible=False)
             local_delete_finish = gr.Textbox(visible=False)
 
@@ -935,30 +936,33 @@ def on_ui_tabs():
         )
 
         # ── Local Models Browser bindings ──
-        def update_local_model_info(input):
-            """Populate the Local tab detail panel for the clicked card.
-            Reuses _api.update_model_info; routes its outputs to the local_* components."""
-            empty = (
-                gr.update(value=None),                                   # local_preview_html
-                gr.update(value=None, choices=[], interactive=False),  # local_version
-                gr.update(value=''),                                    # local_base_model
-                gr.update(value=''),                                    # local_filename
-                gr.update(value=''),                                    # local_sha256
-                gr.update(value=''),                                    # local_model_id
-                gr.update(value='', interactive=False),                 # local_new_name
-                gr.update(interactive=False),                           # local_rename_btn
-                gr.update(interactive=False),                           # local_delete_btn
-                gr.update(interactive=False),                           # local_update_btn
-                gr.update(value=None, interactive=False),               # local_trained_tags
-                gr.update(interactive=False, visible=False),            # local_send_tags_btn
-            )
-            if not input or not gl.json_data:
-                return empty
+        _local_empty = (
+            gr.update(value=None),                                   # local_preview_html
+            gr.update(value=None, choices=[], interactive=False),  # local_version
+            gr.update(value=''),                                    # local_base_model
+            gr.update(value=''),                                    # local_filename
+            gr.update(value=''),                                    # local_sha256
+            gr.update(value=''),                                    # local_model_id
+            gr.update(value='', interactive=False),                 # local_new_name
+            gr.update(interactive=False),                           # local_rename_btn
+            gr.update(interactive=False),                           # local_delete_btn
+            gr.update(interactive=False),                           # local_update_btn
+            gr.update(value=None, interactive=False),               # local_trained_tags
+            gr.update(interactive=False, visible=False),            # local_send_tags_btn
+            gr.update(value=''),                                    # local_model_string
+        )
 
-            model_string = re.sub(r'\.\d{3}$', '', input)
+        def _build_local_panel(model_string, model_version=None, set_version=True):
+            """Build the Local detail-panel updates for a model/version.
+            Reuses _api.update_model_info and routes its outputs to local_* components.
+            set_version=False keeps the version dropdown as-is (used on version switch)."""
+            if not model_string or not gl.json_data:
+                return _local_empty
+
             model_name, model_id = _api.extract_model_info(model_string)
             model_versions = _api.update_model_versions(model_id)
-            info = _api.update_model_info(model_string, model_versions.get('value') if model_versions else None)
+            chosen = model_version or (model_versions.get('value') if model_versions else None)
+            info = _api.update_model_info(model_string, chosen)
             (html, tags_u, base_model_u, _dl, _img, _del, _flist,
              model_filename_u, _url, model_id_u, current_sha256_u, _ip, _sf) = info
 
@@ -973,9 +977,11 @@ def on_ui_tabs():
             except (TypeError, ValueError):
                 is_local_only = False
 
+            version_out = (model_versions if model_versions else gr.update()) if set_version else gr.update()
+
             return (
                 html,                                                   # local_preview_html
-                model_versions if model_versions else gr.update(),      # local_version
+                version_out,                                            # local_version
                 base_model_u,                                           # local_base_model
                 model_filename_u,                                       # local_filename
                 current_sha256_u,                                       # local_sha256
@@ -986,7 +992,20 @@ def on_ui_tabs():
                 gr.update(interactive=not is_local_only),               # local_update_btn (CivitAI only)
                 tags_u,                                                 # local_trained_tags
                 gr.update(interactive=has_tags, visible=has_tags),      # local_send_tags_btn
+                gr.update(value=model_string),                          # local_model_string
             )
+
+        def update_local_model_info(input):
+            """Card click → populate the detail panel (and set the version dropdown)."""
+            if not input:
+                return _local_empty
+            model_string = re.sub(r'\.\d{3}$', '', input)
+            return _build_local_panel(model_string, None, set_version=True)
+
+        def update_local_version(model_string, model_version):
+            """Version dropdown change → refresh the panel for the chosen version
+            (keeps the dropdown selection intact)."""
+            return _build_local_panel(model_string, model_version, set_version=False)
 
         def trigger_local_update(model_id_value):
             """Funnel a local model into the existing single-update pipeline."""
@@ -998,25 +1017,30 @@ def on_ui_tabs():
             local_preview_html, local_version, local_base_model, local_filename,
             local_sha256, local_model_id, local_new_name,
             local_rename_btn, local_delete_btn, local_update_btn,
-            local_trained_tags, local_send_tags_btn
+            local_trained_tags, local_send_tags_btn, local_model_string
         ]
         local_render_inputs = [
             local_content_type, local_base_filter, local_use_search,
             local_search, local_tile_count, local_nsfw
         ]
 
+        # User-initiated loads render straight into the VISIBLE grid so Gradio shows
+        # its loading spinner over it; .then re-applies the tile size.
         local_load_btn.click(
             fn=_file.render_local_browser,
             inputs=local_render_inputs,
-            outputs=[local_list_html_input]
-        )
+            outputs=[local_list_html],
+            show_progress='full'
+        ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
         local_search.submit(
             fn=_file.render_local_browser,
             inputs=local_render_inputs,
-            outputs=[local_list_html_input]
-        )
+            outputs=[local_list_html],
+            show_progress='full'
+        ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
 
-        # Hidden input → visible grid, then size the tiles (mirrors Browser list_html_input)
+        # Action-triggered refreshes still flow through the hidden input → visible grid,
+        # then size the tiles (mirrors the Browser list_html_input pattern).
         local_list_html_input.change(fn=HTMLChange, inputs=[local_list_html_input], outputs=local_list_html)
         local_list_html_input.change(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
         local_size_slider.change(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
@@ -1028,7 +1052,14 @@ def on_ui_tabs():
             outputs=local_detail_outputs
         )
 
-        # Rename → refresh grid
+        # Version dropdown change → refresh panel for the chosen version
+        local_version.select(
+            fn=update_local_version,
+            inputs=[local_model_string, local_version],
+            outputs=local_detail_outputs
+        )
+
+        # Rename → refresh grid (spinner over the grid during the re-scan)
         local_rename_btn.click(
             fn=_file.rename_installed_model,
             inputs=[local_sha256, local_new_name, local_rename_finish],
@@ -1036,10 +1067,11 @@ def on_ui_tabs():
         ).then(
             fn=_file.render_local_browser,
             inputs=local_render_inputs,
-            outputs=[local_list_html_input]
-        )
+            outputs=[local_list_html],
+            show_progress='full'
+        ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
 
-        # Delete (with confirm) → refresh grid
+        # Delete (with confirm) → refresh grid (spinner over the grid during the re-scan)
         local_delete_btn.click(
             fn=_file.delete_installed_by_sha256,
             inputs=[local_sha256, local_delete_finish],
@@ -1048,8 +1080,9 @@ def on_ui_tabs():
         ).then(
             fn=_file.render_local_browser,
             inputs=local_render_inputs,
-            outputs=[local_list_html_input]
-        )
+            outputs=[local_list_html],
+            show_progress='full'
+        ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
 
         # Update → reuse the existing single-update pipeline via update_single_trigger
         local_update_btn.click(

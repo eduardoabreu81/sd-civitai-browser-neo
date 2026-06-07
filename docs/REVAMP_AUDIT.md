@@ -58,7 +58,7 @@ Render de cards é **um só** mecanismo (`model_list_html` → `civmodelcard`) r
    - ⏳ Falta (precisa de validação visual): alinhar layout/estilo dos botões de ação e a confirmação de delete entre Browser e Local. Browser **não é alterado** sem necessidade — alinhamos o Local ao padrão dele.
 
 ### Fase 2 — Coesão do Local Models
-4. **E2** Fechar lacunas: paginação no grid, troca de versão no painel, mover-pra-subpasta por card.
+4. **E2** Fechar lacunas: ✅ troca de versão no painel (dropdown Version recarrega) · ✅ indicador de loading (spinner sobre o grid em load/rename/delete) · ⏳ paginação no grid · ⏳ mover-pra-subpasta por card.
 5. **B2** Avaliar unificar os controles de "content types"/scan options duplicados (Update vs Organização) — **com cuidado pra não quebrar `file_scan_inputs`**.
 6. **D1** Padronizar o componente de progresso (loading/ok/erro).
 
