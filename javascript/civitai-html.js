@@ -1,5 +1,8 @@
 // Selects a model by pressing on card
-function select_model(model_name, event, bool = false, content_type = null, sendToBrowser = false) {
+// targetPrefix routes selection to a different hidden textbox set (e.g. 'local'
+// → #local_model_select), so the Local Models browser can reuse this function
+// without touching the Browser tab's wiring. Empty prefix = Browser (default).
+function select_model(model_name, event, bool = false, content_type = null, sendToBrowser = false, targetPrefix = '') {
     if (event) {
         var className = event.target.className;
         if (className.includes('custom-checkbox') || className.includes('model-checkbox')) {
@@ -10,6 +13,8 @@ function select_model(model_name, event, bool = false, content_type = null, send
     let output;
     if (sendToBrowser) {
         output = gradioApp().querySelector('#send_to_browser textarea');
+    } else if (targetPrefix) {
+        output = gradioApp().querySelector(`#${targetPrefix}_model_select textarea`);
     } else {
         output = bool ? gradioApp().querySelector('#model_sent textarea') : gradioApp().querySelector('#model_select textarea');
     }

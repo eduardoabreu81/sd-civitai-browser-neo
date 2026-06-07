@@ -476,7 +476,7 @@ def update_mode_page_html(content_type_filter, base_filter, tile_count, current_
             current_page > 1, current_page < total_pages)
 
 
-def model_list_html(json_data):
+def model_list_html(json_data, target=''):
     def filter_versions(item, hide_early_access, current_time):
         """Filter model versions based on file presence and early access status"""
         versions = []
@@ -737,11 +737,18 @@ def model_list_html(json_data):
         else:
             nsfw_badge = ''
 
+        # Card click handler. For the local-models browser (target='local') the card
+        # routes selection to the local hidden textbox via select_model's targetPrefix.
+        if target:
+            select_onclick = f"select_model('{model_string}', event, false, null, false, '{target}')"
+        else:
+            select_onclick = f"select_model('{model_string}', event)"
+
         # ModelCard HTML (Header)
         card_html = (
             f'<figure class="civmodelcard {nsfw_class} {early_access_class} {installstatus}{fav_class}" '
             f'base-model="{base_model}" date="{date}" data-model-id="{model_id}" data-creator="{escape(model_uploader_card)}" '
-            f'onclick="select_model(\'{model_string}\', event)">'
+            f'onclick="{select_onclick}">'
             f'<div class="card-header">'
             f'<div class="badges-container">{model_type_badge}{status_badge}{nsfw_badge}</div>'
         )
@@ -1021,7 +1028,7 @@ def create_api_url(content_type=None, sort_type=None, period_type=None, use_sear
 
 
 ## === ANXETY EDITs ===
-def initial_model_page(content_type=None, sort_type=None, period_type=None, use_search_term=None, search_term=None, current_page=None, base_filter=None, only_liked=None, nsfw=None, exact_search=None, tile_count=None, from_update_tab=False):
+def initial_model_page(content_type=None, sort_type=None, period_type=None, use_search_term=None, search_term=None, current_page=None, base_filter=None, only_liked=None, nsfw=None, exact_search=None, tile_count=None, from_update_tab=False, target=''):
     current_inputs = (content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, nsfw, exact_search)
     if current_inputs != gl.previous_inputs and gl.previous_inputs != None or not current_page:
         current_page = 1
@@ -1114,7 +1121,7 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
                     model_list.append(f"{item['name']} ({item['id']})")
 
             max_page = max(gl.url_list.keys())
-            HTML = model_list_html(gl.json_data)
+            HTML = model_list_html(gl.json_data, target=target)
 
     return (
         gr.update(choices=model_list, value='', interactive=True),     # Model List

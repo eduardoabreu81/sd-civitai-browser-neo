@@ -759,6 +759,25 @@ config_states/*.jsonl      Queue persistence
 6. **Frontend ↔ Backend**
    `select_model()` (JS) → hidden textarea → Python callback → `update_models_dropdown()` → `update_model_info()` → HTML → `inputHTMLPreviewContent()` (JS) → overlay
 
+7. **Local Models Browser (revamp)**
+   `local_load_btn` → `render_local_browser()` → `model_list_html(target='local')` → card → `select_model(..., 'local')` (JS, routes to `#local_model_select`) → `update_local_model_info()` → detail panel. Per-model actions: `rename_installed_model()` (rename file + sidecars), `delete_installed_by_sha256()` (delete), `trigger_local_update()` → existing `update_single_trigger` pipeline.
+
+---
+
+## Local Models Browser (revamp)
+
+| Function | File | Description |
+|----------|------|-------------|
+| `render_local_browser(content_type, base_filter, use_search_term, search_term, tile_count, nsfw)` | `civitai_file_manage.py` | Single-pass scan of local folders (cached SHA256/model-id, `gen_hash=False`). Builds `gl.url_list` + `gl.local_browser_fallback_items`, then renders the grid via `initial_model_page(..., target='local')`. Returns the HTML update for `local_list_html_input`. |
+| `rename_installed_model(sha256, new_name, finish_trigger)` | `civitai_file_manage.py` | Renames the model file located by SHA256 + all sidecars (reuses `_move_associated_files`). Sanitizes the name, preserves extension, aborts if the target already exists. |
+| `_find_model_by_sha256(sha256)` | `civitai_file_manage.py` | Shared helper (used by rename + delete): locates `(root, model_filename, json_path)` by matching the `.json` sidecar's SHA256. |
+| `_get_all_model_folders()` | `civitai_file_manage.py` | Returns all on-disk model folders across known content types. |
+| `update_local_model_info(input)` | `civitai_gui.py` | Local-tab card-click handler; reuses `_api.update_model_info` and routes outputs to the `local_*` detail components. Disables Update for `local_only` (negative id) items. |
+| `model_list_html(json_data, target='')` | `civitai_api.py` | `target='local'` emits card onclick `select_model(..., 'local')` so clicks route to the Local tab selector. Default keeps Browser behavior. |
+| `select_model(..., targetPrefix='')` | `civitai-html.js` | `targetPrefix='local'` writes to `#local_model_select` instead of `#model_select`. |
+
+> Note (v1): rename/delete locate files via the `.json` sidecar SHA256 (same as the existing card delete). Local-only files without a sidecar may not be found. Pagination and move-to-subfolder are planned for v2.
+
 ---
 
 ## Change Log
@@ -766,3 +785,4 @@ config_states/*.jsonl      Queue persistence
 | Date | Version | Notes |
 |------|---------|-------|
 | 2026-05-09 | v0.9.0 | Initial `FUNCTION_MAP.md` covering all major functions across 7 modules. |
+| 2026-06-06 | v0.10.0-revamp | Local Models tab turned into a self-contained browser (card grid + detail + rename/delete/update); bulk organize/validate tools moved into a Maintenance accordion. New: `render_local_browser`, `rename_installed_model`, `_find_model_by_sha256`, `update_local_model_info`; `target` param on `model_list_html`/`initial_model_page`; `targetPrefix` on JS `select_model`. |

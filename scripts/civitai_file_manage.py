@@ -481,21 +481,11 @@ def delete_model(delete_finish=None, model_filename=None, model_string=None, lis
         gr.update(value=ver_value, choices=ver_choices)  # Version List
     )
 
-def delete_installed_by_sha256(sha256, delete_finish=None):
-    """
-    Simplified delete function for installed models using only SHA256.
-    Searches all model folders for a match and deletes the model.
-    """
-    if not sha256:
-        print("No SHA256 provided for deletion")
-        return gr.update(value=_download.random_number(delete_finish))
-    
-    sha256_upper = sha256.upper()
-    
-    # Get all content types to search
-    content_types = ['Checkpoint', 'LORA', 'LoCon', 'DoRA', 'VAE', 'Controlnet', 'Poses', 
+def _get_all_model_folders():
+    """Return all on-disk model folders across known content types."""
+    content_types = ['Checkpoint', 'LORA', 'LoCon', 'DoRA', 'VAE', 'Controlnet', 'Poses',
                      'TextualInversion', 'Upscaler', 'MotionModule', 'Workflows', 'Detection', 'Other', 'Wildcards']
-    
+
     folders_to_check = []
     for content_type in content_types:
         if content_type == 'Upscaler':
@@ -507,67 +497,116 @@ def delete_installed_by_sha256(sha256, delete_finish=None):
             folder = _api.contenttype_folder(content_type)
             if folder and folder not in folders_to_check:
                 folders_to_check.append(folder)
-    
-    deleted = False
-    for model_folder in folders_to_check:
-        if deleted:
-            break
+    return folders_to_check
+
+
+def _find_model_by_sha256(sha256):
+    """Locate an installed model file by its SHA256 (matched via the .json sidecar).
+
+    The saved JSON has no 'file.name' key, so we find the model file that shares the
+    same base name as the matching sidecar (json_base must be joined with root for exists()).
+
+    Returns (root_dir, model_filename, json_path) or (None, None, None).
+    """
+    if not sha256:
+        return None, None, None
+
+    sha256_upper = sha256.upper()
+    model_extensions = ['.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.zip', '.vae', '.th']
+
+    for model_folder in _get_all_model_folders():
         for root, _, files in os.walk(model_folder, followlinks=True):
             for file in files:
-                if file.endswith('.json'):
-                    file_path = os.path.join(root, file)
-                    data = _api.safe_json_load(file_path)
-                    if not data:
-                        continue
-                    
-                    file_sha256 = data.get('sha256', '').upper()
-                    if file_sha256 == sha256_upper:
-                        # Found matching model!
-                        model_name = data.get('model', {}).get('name', 'Unknown Model')
-                        print(f"Found model to delete: {model_name} (SHA256: {sha256_upper})")
-                        
-                        # Find the model file that shares the same base name as this
-                        # JSON sidecar. The saved JSON has no 'file.name' key, so we
-                        # scan the directory directly using a full path (json_base is
-                        # just a filename — joining with root is required for exists()).
-                        json_base = os.path.splitext(file)[0]
-                        model_extensions = ['.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.zip', '.vae', '.th']
-                        model_filename = ''
-                        for ext in model_extensions:
-                            candidate = os.path.join(root, json_base + ext)
-                            if os.path.exists(candidate):
-                                model_filename = os.path.basename(candidate)
-                                break
-                        
-                        if model_filename:
-                            # Delete model file
-                            model_file_path = os.path.join(root, model_filename)
-                            if os.path.exists(model_file_path):
-                                try:
-                                    send2trash(model_file_path)
-                                    print(f"Model moved to trash: {model_file_path}")
-                                except:
-                                    os.remove(model_file_path)
-                                    print(f"Model deleted: {model_file_path}")
-                                
-                                # Delete associated files
-                                base_filename = os.path.splitext(model_filename)[0]
-                                delete_associated_files(root, base_filename)
-                                
-                                deleted = True
-                                break
-                        else:
-                            print(f"Could not find model file for JSON: {file_path}")
-            
-            if deleted:
-                break
-    
-    if deleted:
-        print(f"Successfully deleted model with SHA256: {sha256_upper}")
-    else:
-        print(f"Could not find model with SHA256: {sha256_upper}")
-    
+                if not file.endswith('.json'):
+                    continue
+                json_path = os.path.join(root, file)
+                data = _api.safe_json_load(json_path)
+                if not data:
+                    continue
+                if data.get('sha256', '').upper() != sha256_upper:
+                    continue
+
+                json_base = os.path.splitext(file)[0]
+                for ext in model_extensions:
+                    candidate = os.path.join(root, json_base + ext)
+                    if os.path.exists(candidate):
+                        return root, os.path.basename(candidate), json_path
+    return None, None, None
+
+
+def delete_installed_by_sha256(sha256, delete_finish=None):
+    """
+    Simplified delete function for installed models using only SHA256.
+    Searches all model folders for a match and deletes the model.
+    """
+    if not sha256:
+        print("No SHA256 provided for deletion")
+        return gr.update(value=_download.random_number(delete_finish))
+
+    root, model_filename, _ = _find_model_by_sha256(sha256)
+    if not model_filename:
+        print(f"Could not find model with SHA256: {sha256.upper()}")
+        return gr.update(value=_download.random_number(delete_finish))
+
+    model_file_path = os.path.join(root, model_filename)
+    try:
+        send2trash(model_file_path)
+        print(f"Model moved to trash: {model_file_path}")
+    except Exception:
+        os.remove(model_file_path)
+        print(f"Model deleted: {model_file_path}")
+
+    # Delete associated files (sidecars, previews, numbered images)
+    base_filename = os.path.splitext(model_filename)[0]
+    delete_associated_files(root, base_filename)
+
+    print(f"Successfully deleted model with SHA256: {sha256.upper()}")
     return gr.update(value=_download.random_number(delete_finish))
+
+
+def rename_installed_model(sha256, new_name, finish_trigger=None):
+    """Rename an installed model file (and all sidecars) on disk, located by SHA256.
+
+    `new_name` is the desired base name (extension is preserved). Renaming is a move
+    within the same directory, so we reuse _move_associated_files() for the sidecar
+    cascade (.json, .preview.png, .api_info.json, .html, numbered images, etc.).
+    """
+    if not sha256 or not new_name or not new_name.strip():
+        print("Rename aborted: missing SHA256 or new name")
+        return gr.update(value=_download.random_number(finish_trigger))
+
+    root, model_filename, _ = _find_model_by_sha256(sha256)
+    if not model_filename:
+        print(f"Rename aborted: could not find model with SHA256: {sha256.upper()}")
+        return gr.update(value=_download.random_number(finish_trigger))
+
+    # Sanitize: keep only the base name, strip path separators and invalid characters
+    clean_name = os.path.splitext(os.path.basename(new_name.strip()))[0]
+    clean_name = re.sub(r'[<>:"/\\|?*]', '_', clean_name).strip().rstrip('.')
+    if not clean_name:
+        print("Rename aborted: new name is empty after sanitization")
+        return gr.update(value=_download.random_number(finish_trigger))
+
+    ext = os.path.splitext(model_filename)[1]
+    old_path = os.path.join(root, model_filename)
+    new_path = os.path.join(root, clean_name + ext)
+
+    if os.path.normcase(old_path) == os.path.normcase(new_path):
+        print("Rename skipped: new name is identical to current name")
+        return gr.update(value=_download.random_number(finish_trigger))
+
+    if os.path.exists(new_path):
+        print(f"Rename aborted: a file named '{clean_name + ext}' already exists")
+        return gr.update(value=_download.random_number(finish_trigger))
+
+    try:
+        shutil.move(old_path, new_path)
+        _move_associated_files(old_path, new_path)
+        print(f"Renamed model: {model_filename} -> {clean_name + ext}")
+    except Exception as e:
+        print(f"Rename failed: {e}")
+
+    return gr.update(value=_download.random_number(finish_trigger))
 
 ## === ANXETY EDITs ===
 def delete_associated_files(directory, base_name):
@@ -4680,6 +4719,61 @@ def load_to_browser(content_type, sort_type, period_type, use_search_term, searc
         gr.update(interactive=False, visible=False),
         gr.update(value='<div style="min-height: 0px;"></div>')
     )
+
+def render_local_browser(content_type, base_filter, use_search_term, search_term, tile_count, nsfw):
+    """Scan local model folders (filtered) and render the local-models card grid.
+
+    Single-pass scan (gen_hash=False, so it relies on cached SHA256/model_id from
+    .json sidecars — fast). Files that resolve to a CivitAI model id are rendered
+    from the API; the rest show as local-only fallback cards. Cards use target='local'
+    so clicks route to the Local tab's hidden selector. Returns the HTML update for
+    local_list_html_input.
+    """
+    gl.update_mode = False
+    gl.from_update_tab = False
+
+    folders_to_check = _resolve_browser_local_folders(content_type)
+    files = list_files(folders_to_check) if folders_to_check else []
+
+    local_term = (search_term or '').strip().lower()
+    if use_search_term == 'Model name' and local_term:
+        files = [f for f in files if local_term in os.path.splitext(os.path.basename(f))[0].lower()]
+
+    all_model_ids = []
+    fallback_items = []
+    for file_path in files:
+        model_id = get_models(file_path, gen_hash=False)
+        if model_id in (None, 'offline', 'Model not found'):
+            fallback_items.append(_build_local_fallback_browser_item(file_path))
+        else:
+            all_model_ids.append(f'&ids={model_id}')
+
+    all_model_ids = sorted(set(all_model_ids))
+    gl.local_browser_fallback_items = fallback_items
+
+    if not all_model_ids and not fallback_items:
+        return gr.update(value='<div style="font-size: 24px; text-align: center; margin: 50px;">No local models found for the selected filters.<br>Use the Maintenance tools below to scan/enrich models first.</div>')
+
+    tile = max(1, int(tile_count) if tile_count else 27)
+    if all_model_ids:
+        def chunks(lst, n):
+            for i in range(0, len(lst), n):
+                yield lst[i:i + n]
+        base_url = f"https://{_api.get_civitai_domain()}/api/v1/models?limit=100&nsfw=true"
+        gl.url_list = {i + 1: f"{base_url}{''.join(chunk)}" for i, chunk in enumerate(chunks(all_model_ids, tile))}
+    else:
+        # Local-only set: sentinel handled by initial_model_page (sets empty json_data,
+        # then merges the fallback items below).
+        gl.url_list = {1: 'local_only://'}
+        gl.json_data = {'items': [], 'metadata': {}}
+
+    result = _api.initial_model_page(
+        content_type, None, None, use_search_term, search_term, 1,
+        base_filter, False, nsfw, False, tile, True, target='local'
+    )
+    # result[2] is the HTML tiles update (gr.update(value=HTML)); feed it to local_list_html_input.
+    return result[2]
+
 
 def cancel_scan():
     gl.cancel_status = True

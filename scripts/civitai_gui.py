@@ -487,62 +487,101 @@ def on_ui_tabs():
 
         ## Local Models Tab
         with gr.Tab(label='Local Models', elem_id='localTab'):
-            gr.Markdown('## 📂 Manage Local Models', elem_id='local_models_header')
-            gr.Markdown('Load, organize, and manage your installed models.')
-            
-            with gr.Row():
-                selected_tags_local = gr.CheckboxGroup(elem_id='selected_tags_local', label='Selected content types:', choices=local_scan_choices, value=['Checkpoint', 'LORA'])
-            
-            with gr.Accordion(label='🔧 Scan Options', open=False):
-                with gr.Row(elem_id='civitai_local_toggles'):
-                    overwrite_toggle_local = gr.Checkbox(elem_id='overwrite_toggle_local', label='Overwrite any existing files (previews, HTMLs, tags, descriptions)', value=True, min_width=300)
-                    skip_hash_toggle_local = gr.Checkbox(elem_id='skip_hash_toggle_local', label='One-Time Hash Generation for externally downloaded models', value=True, min_width=300)
-                    do_html_gen_local = gr.Checkbox(elem_id='do_html_gen_local', label='Save HTML file for each model when updating info & tags', value=False, min_width=300)
-            
-            gr.Markdown('---')
-            gr.Markdown('### 📋 Load Installed Models')
-            gr.Markdown('Scan and load information about all models currently installed on your system.')
-            
-            with gr.Row():
-                load_installed = gr.Button(value='📋 Load all installed models', interactive=True, visible=True, variant='primary')
-                cancel_installed = gr.Button(value='Cancel loading models', interactive=False, visible=False)
-                load_to_browser_installed = gr.Button(value='Load installed models to browser', interactive=False, visible=False)
-            with gr.Row():
-                installed_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-            
-            gr.Markdown('---')
-            gr.Markdown('### 📁 Model Organization')
-            gr.Markdown('Automatically organize your models into subfolders by base model type (SDXL, Pony, FLUX, etc.)')
-            
-            with gr.Row():
-                organize_models = gr.Button(value='📁 Organize models into subfolders by type', interactive=True, visible=True, variant='primary')
-                cancel_organize = gr.Button(value='Cancel organization', interactive=False, visible=False)
-            with gr.Row():
-                organize_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-            
-            with gr.Row():
-                undo_organization = gr.Button(value='↶ Undo Last Organization', interactive=True, visible=True, variant='secondary')
-            with gr.Row():
-                undo_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+            gr.Markdown('## 📂 Local Models Browser', elem_id='local_models_header')
+            gr.Markdown('Browse, rename, update and delete the models installed on your machine.')
 
-            gr.Markdown('---')
-            gr.Markdown('### 🔍 Validate Organization')
-            gr.Markdown('Check whether all models are in their correct subfolders — without moving anything. Optionally fix any misplaced files.')
+            # Hidden state/triggers for the local browser
+            local_use_search = gr.State(value='Model name')
+            local_base_filter = gr.State(value=None)
+            local_tile_count = gr.State(value=100)
+            local_nsfw = gr.State(value=True)
+            local_model_select = gr.Textbox(elem_id='local_model_select', visible=False)
+            local_list_html_input = gr.Textbox(elem_id='local_list_html_input', visible=False)
+            local_sha256 = gr.Textbox(visible=False)
+            local_model_id = gr.Textbox(visible=False)
+            local_rename_finish = gr.Textbox(visible=False)
+            local_delete_finish = gr.Textbox(visible=False)
 
+            # ── Filters + load (mirrors the Browser tab; filters what we touch) ──
+            with gr.Row(elem_id='localSearchRow'):
+                local_content_type = gr.Dropdown(label='Content type:', choices=content_choices, value=['Checkpoint', 'LORA'], type='value', multiselect=True, elem_id='localContentType')
+                local_search = gr.Textbox(label='', placeholder='Filter local models by name', elem_id='localSearchBox')
+                local_load_btn = gr.Button(value='📋 Load local models', elem_id='localLoadBtn', variant='primary')
             with gr.Row():
-                validate_org_btn = gr.Button(value='🔍 Validate organization', interactive=True, visible=True, variant='primary')
-            with gr.Row():
-                validate_org_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-            with gr.Row():
-                fix_misplaced_btn = gr.Button(value='✅ Fix misplaced files', interactive=True, visible=False, variant='secondary')
-            with gr.Row():
-                fix_misplaced_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-            with gr.Row():
-                undo_fix_btn = gr.Button(value='↶ Undo Fix', interactive=True, visible=False, variant='secondary')
-            with gr.Row():
-                undo_fix_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+                local_size_slider = gr.Slider(label='Tile size:', minimum=8, maximum=20, value=12, step=0.25, elem_id='localSizeSlider')
 
-            validate_plan_state = gr.State(value='{}')
+            # ── Card grid ──
+            with gr.Row():
+                local_list_html = gr.HTML(value='<div style="font-size: 24px; text-align: center; margin: 50px;">Click "Load local models" to list your installed models.</div>', elem_id='local_list_html')
+
+            # ── Detail panel for the selected card ──
+            with gr.Row():
+                local_base_model = gr.Textbox(label='Base model:', interactive=False, lines=1)
+                local_version = gr.Dropdown(label='Version:', choices=[], interactive=False, value=None)
+                local_filename = gr.Textbox(label='Model filename:', interactive=False)
+            with gr.Row():
+                local_new_name = gr.Textbox(label='New name (rename):', interactive=False, max_lines=1, scale=4)
+                local_rename_btn = gr.Button(value='✏️ Rename', interactive=False, scale=1)
+                local_update_btn = gr.Button(value='⬆️ Update to latest', interactive=False, scale=1)
+                local_delete_btn = gr.Button(value='🗑️ Delete', interactive=False, variant='stop', scale=1)
+            with gr.Row():
+                local_preview_html = gr.HTML(elem_id='local_preview_html')
+
+            # ── Maintenance: bulk tools (organize by base model, validate, load-to-browser) ──
+            with gr.Accordion(label='🔧 Maintenance (bulk tools)', open=False):
+                with gr.Row():
+                    selected_tags_local = gr.CheckboxGroup(elem_id='selected_tags_local', label='Selected content types:', choices=local_scan_choices, value=['Checkpoint', 'LORA'])
+
+                with gr.Accordion(label='🔧 Scan Options', open=False):
+                    with gr.Row(elem_id='civitai_local_toggles'):
+                        overwrite_toggle_local = gr.Checkbox(elem_id='overwrite_toggle_local', label='Overwrite any existing files (previews, HTMLs, tags, descriptions)', value=True, min_width=300)
+                        skip_hash_toggle_local = gr.Checkbox(elem_id='skip_hash_toggle_local', label='One-Time Hash Generation for externally downloaded models', value=True, min_width=300)
+                        do_html_gen_local = gr.Checkbox(elem_id='do_html_gen_local', label='Save HTML file for each model when updating info & tags', value=False, min_width=300)
+
+                gr.Markdown('---')
+                gr.Markdown('### 📋 Load Installed Models')
+                gr.Markdown('Scan and load information about all models currently installed on your system.')
+
+                with gr.Row():
+                    load_installed = gr.Button(value='📋 Load all installed models', interactive=True, visible=True, variant='primary')
+                    cancel_installed = gr.Button(value='Cancel loading models', interactive=False, visible=False)
+                    load_to_browser_installed = gr.Button(value='Load installed models to browser', interactive=False, visible=False)
+                with gr.Row():
+                    installed_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+
+                gr.Markdown('---')
+                gr.Markdown('### 📁 Model Organization')
+                gr.Markdown('Automatically organize your models into subfolders by base model type (SDXL, Pony, FLUX, etc.)')
+
+                with gr.Row():
+                    organize_models = gr.Button(value='📁 Organize models into subfolders by type', interactive=True, visible=True, variant='primary')
+                    cancel_organize = gr.Button(value='Cancel organization', interactive=False, visible=False)
+                with gr.Row():
+                    organize_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+
+                with gr.Row():
+                    undo_organization = gr.Button(value='↶ Undo Last Organization', interactive=True, visible=True, variant='secondary')
+                with gr.Row():
+                    undo_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+
+                gr.Markdown('---')
+                gr.Markdown('### 🔍 Validate Organization')
+                gr.Markdown('Check whether all models are in their correct subfolders — without moving anything. Optionally fix any misplaced files.')
+
+                with gr.Row():
+                    validate_org_btn = gr.Button(value='🔍 Validate organization', interactive=True, visible=True, variant='primary')
+                with gr.Row():
+                    validate_org_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+                with gr.Row():
+                    fix_misplaced_btn = gr.Button(value='✅ Fix misplaced files', interactive=True, visible=False, variant='secondary')
+                with gr.Row():
+                    fix_misplaced_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+                with gr.Row():
+                    undo_fix_btn = gr.Button(value='↶ Undo Fix', interactive=True, visible=False, variant='secondary')
+                with gr.Row():
+                    undo_fix_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+
+                validate_plan_state = gr.State(value='{}')
 
         ## Dashboard Tab
         with gr.Tab(label='Dashboard', elem_id='dashboardTab'):
@@ -894,6 +933,122 @@ def on_ui_tabs():
                 save_info,
                 list_html_input
             ]
+        )
+
+        # ── Local Models Browser bindings ──
+        def update_local_model_info(input):
+            """Populate the Local tab detail panel for the clicked card.
+            Reuses _api.update_model_info; routes its outputs to the local_* components."""
+            empty = (
+                gr.update(value=None),                                   # local_preview_html
+                gr.update(value=None, choices=[], interactive=False),  # local_version
+                gr.update(value=''),                                    # local_base_model
+                gr.update(value=''),                                    # local_filename
+                gr.update(value=''),                                    # local_sha256
+                gr.update(value=''),                                    # local_model_id
+                gr.update(value='', interactive=False),                 # local_new_name
+                gr.update(interactive=False),                           # local_rename_btn
+                gr.update(interactive=False),                           # local_delete_btn
+                gr.update(interactive=False),                           # local_update_btn
+            )
+            if not input or not gl.json_data:
+                return empty
+
+            model_string = re.sub(r'\.\d{3}$', '', input)
+            model_name, model_id = _api.extract_model_info(model_string)
+            model_versions = _api.update_model_versions(model_id)
+            info = _api.update_model_info(model_string, model_versions.get('value') if model_versions else None)
+            (html, _tags, base_model_u, _dl, _img, _del, _flist,
+             model_filename_u, _url, model_id_u, current_sha256_u, _ip, _sf) = info
+
+            fname = model_filename_u.get('value') if isinstance(model_filename_u, dict) else None
+            base_name = os.path.splitext(fname)[0] if fname else (model_name or '')
+
+            try:
+                is_local_only = int(model_id) < 0
+            except (TypeError, ValueError):
+                is_local_only = False
+
+            return (
+                html,                                                   # local_preview_html
+                model_versions if model_versions else gr.update(),      # local_version
+                base_model_u,                                           # local_base_model
+                model_filename_u,                                       # local_filename
+                current_sha256_u,                                       # local_sha256
+                model_id_u,                                             # local_model_id
+                gr.update(value=base_name, interactive=True),           # local_new_name
+                gr.update(interactive=True),                            # local_rename_btn
+                gr.update(interactive=True),                            # local_delete_btn
+                gr.update(interactive=not is_local_only),               # local_update_btn (CivitAI only)
+            )
+
+        def trigger_local_update(model_id_value):
+            """Funnel a local model into the existing single-update pipeline."""
+            if not model_id_value:
+                return gr.update()
+            return gr.update(value=f"{model_id_value}||[]")
+
+        local_detail_outputs = [
+            local_preview_html, local_version, local_base_model, local_filename,
+            local_sha256, local_model_id, local_new_name,
+            local_rename_btn, local_delete_btn, local_update_btn
+        ]
+        local_render_inputs = [
+            local_content_type, local_base_filter, local_use_search,
+            local_search, local_tile_count, local_nsfw
+        ]
+
+        local_load_btn.click(
+            fn=_file.render_local_browser,
+            inputs=local_render_inputs,
+            outputs=[local_list_html_input]
+        )
+        local_search.submit(
+            fn=_file.render_local_browser,
+            inputs=local_render_inputs,
+            outputs=[local_list_html_input]
+        )
+
+        # Hidden input → visible grid, then size the tiles (mirrors Browser list_html_input)
+        local_list_html_input.change(fn=HTMLChange, inputs=[local_list_html_input], outputs=local_list_html)
+        local_list_html_input.change(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
+        local_size_slider.change(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
+
+        # Card click → detail panel
+        local_model_select.change(
+            fn=update_local_model_info,
+            inputs=[local_model_select],
+            outputs=local_detail_outputs
+        )
+
+        # Rename → refresh grid
+        local_rename_btn.click(
+            fn=_file.rename_installed_model,
+            inputs=[local_sha256, local_new_name, local_rename_finish],
+            outputs=[local_rename_finish]
+        ).then(
+            fn=_file.render_local_browser,
+            inputs=local_render_inputs,
+            outputs=[local_list_html_input]
+        )
+
+        # Delete (with confirm) → refresh grid
+        local_delete_btn.click(
+            fn=_file.delete_installed_by_sha256,
+            inputs=[local_sha256, local_delete_finish],
+            outputs=[local_delete_finish],
+            _js="(s, f) => { if (!confirm('Delete this model and all its files?')) throw new Error('cancelled'); return [s, f]; }"
+        ).then(
+            fn=_file.render_local_browser,
+            inputs=local_render_inputs,
+            outputs=[local_list_html_input]
+        )
+
+        # Update → reuse the existing single-update pipeline via update_single_trigger
+        local_update_btn.click(
+            fn=trigger_local_update,
+            inputs=[local_model_id],
+            outputs=[update_single_trigger]
         )
 
         model_sent.change(
