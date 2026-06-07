@@ -450,7 +450,6 @@ def on_ui_tabs():
 
             # Hidden state/triggers for the local browser
             local_use_search = gr.State(value='Model name')
-            local_base_filter = gr.State(value=None)
             local_tile_count = gr.State(value=100)
             local_nsfw = gr.State(value=True)
             local_model_select = gr.Textbox(elem_id='local_model_select', visible=False)
@@ -464,6 +463,7 @@ def on_ui_tabs():
             # ── Filters + load (mirrors the Browser tab; filters what we touch) ──
             with gr.Row(elem_id='localSearchRow'):
                 local_content_type = gr.Dropdown(label='Content type:', choices=content_choices, value=['Checkpoint', 'LORA'], type='value', multiselect=True, elem_id='localContentType')
+                local_base_filter = gr.Dropdown(label='Base model:', choices=get_base_models(), value=None, type='value', multiselect=True, elem_id='localBaseFilter')
                 local_search = gr.Textbox(label='', placeholder='Filter local models by name', elem_id='localSearchBox')
                 local_load_btn = gr.Button(value='📋 Load local models', elem_id='localLoadBtn', variant='primary')
             with gr.Row():

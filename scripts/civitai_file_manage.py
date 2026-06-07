@@ -4767,11 +4767,16 @@ def load_to_browser(content_type, sort_type, period_type, use_search_term, searc
 def render_local_browser(content_type, base_filter, use_search_term, search_term, tile_count, nsfw):
     """Scan local model folders (filtered) and render the local-models card grid.
 
-    Single-pass scan (gen_hash=False, so it relies on cached SHA256/model_id from
-    .json sidecars — fast). Files that resolve to a CivitAI model id are rendered
-    from the API; the rest show as local-only fallback cards. Cards use target='local'
-    so clicks route to the Local tab's hidden selector. Returns the HTML update for
-    local_list_html_input.
+    Self-contained on purpose: it builds its OWN model data and does NOT go through
+    initial_model_page / the Browser's gl.url_list / gl.previous_inputs state machine,
+    so the Local grid is independent of the Browser tab (no cross-filtering, no stale
+    'list that no longer exists' after a download). It DOES set gl.json_data to the
+    local set so the detail panel (update_model_info) can resolve the clicked card.
+
+    Filters: content_type (folders), search_term (by name), base_filter (by baseModel).
+    All matching models are fetched (not just the first page). Files that resolve to a
+    CivitAI model id render from the API; the rest show as local-only fallback cards
+    with target='local' so clicks route to the Local tab's hidden selector.
     """
     gl.update_mode = False
     gl.from_update_tab = False
@@ -4783,40 +4788,61 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
     if use_search_term == 'Model name' and local_term:
         files = [f for f in files if local_term in os.path.splitext(os.path.basename(f))[0].lower()]
 
-    all_model_ids = []
+    all_ids = []
     fallback_items = []
     for file_path in files:
         model_id = get_models(file_path, gen_hash=False)
         if model_id in (None, 'offline', 'Model not found'):
             fallback_items.append(_build_local_fallback_browser_item(file_path))
         else:
-            all_model_ids.append(f'&ids={model_id}')
+            all_ids.append(int(model_id) if str(model_id).lstrip('-').isdigit() else model_id)
 
-    all_model_ids = sorted(set(all_model_ids))
+    all_ids = sorted(set(all_ids), key=lambda x: str(x))
     gl.local_browser_fallback_items = fallback_items
 
-    if not all_model_ids and not fallback_items:
-        return gr.update(value='<div style="font-size: 24px; text-align: center; margin: 50px;">No local models found for the selected filters.<br>Use the Maintenance tools below to scan/enrich models first.</div>')
-
-    tile = max(1, int(tile_count) if tile_count else 27)
-    if all_model_ids:
-        def chunks(lst, n):
-            for i in range(0, len(lst), n):
-                yield lst[i:i + n]
-        base_url = f"https://{_api.get_civitai_domain()}/api/v1/models?limit=100&nsfw=true"
-        gl.url_list = {i + 1: f"{base_url}{''.join(chunk)}" for i, chunk in enumerate(chunks(all_model_ids, tile))}
-    else:
-        # Local-only set: sentinel handled by initial_model_page (sets empty json_data,
-        # then merges the fallback items below).
-        gl.url_list = {1: 'local_only://'}
+    empty_msg = '<div style="font-size: 24px; text-align: center; margin: 50px;">No local models found for the selected filters.<br>Use the Maintenance tools below to scan/enrich models first.</div>'
+    if not all_ids and not fallback_items:
         gl.json_data = {'items': [], 'metadata': {}}
+        return gr.update(value=empty_msg)
 
-    result = _api.initial_model_page(
-        content_type, None, None, use_search_term, search_term, 1,
-        base_filter, False, nsfw, False, tile, True, target='local'
-    )
-    # result[2] is the HTML tiles update (gr.update(value=HTML)); feed it to local_list_html_input.
-    return result[2]
+    # Fetch all resolvable models from CivitAI (chunks of 100 ids per request).
+    def _chunks(lst, n):
+        for i in range(0, len(lst), n):
+            yield lst[i:i + n]
+
+    items = []
+    if all_ids:
+        base_url = f"https://{_api.get_civitai_domain()}/api/v1/models?limit=100&nsfw=true"
+        for chunk in _chunks(all_ids, 100):
+            api_url = base_url + ''.join(f'&ids={mid}' for mid in chunk)
+            resp = _api.request_civit_api(api_url)
+            if isinstance(resp, dict):
+                items.extend(resp.get('items', []))
+
+    # Merge local-only fallback cards (not found on CivitAI)
+    existing_ids = {it.get('id') for it in items}
+    for fb in fallback_items:
+        if fb.get('id') not in existing_ids:
+            items.append(fb)
+
+    # Local base-model filter (independent of the Browser): keep models that have at
+    # least one version whose baseModel matches one of the selected filters.
+    bf = base_filter if isinstance(base_filter, list) else ([base_filter] if base_filter else [])
+    bf = [b for b in bf if b]
+    if bf:
+        bf_lower = {b.lower() for b in bf}
+        items = [it for it in items
+                 if any((v.get('baseModel') or '').lower() in bf_lower for v in it.get('modelVersions', []))]
+
+    # Publish to gl.json_data so the detail panel can resolve clicked cards.
+    gl.json_data = {'items': items, 'metadata': {}}
+    gl.url_list = {1: 'local://'}
+
+    if not items:
+        return gr.update(value=empty_msg)
+
+    html = _api.model_list_html(gl.json_data, target='local')
+    return gr.update(value=html)
 
 
 def cancel_scan():

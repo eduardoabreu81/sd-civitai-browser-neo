@@ -72,9 +72,12 @@ Render de cards é **um só** mecanismo (`model_list_html` → `civmodelcard`) r
 - **Arquivo antigo permanecia após update:** a retention buscava o antigo só em `gl.update_items` (populado por scan). Update no Local roda sem scan → `old_file_path` None. Fix: fallback `find_installed_file_by_model_id` (localiza o instalado pelo `modelId` no disco).
 - **Card não marcava "installed" após download no Local:** `updateCard` usava `querySelector('.civmodellist')` (só o 1º container = Browser). Fix: `querySelectorAll` para varrer Browser + Local.
 
+- **Local cross-filtrava com o Browser + "Load" vazio após download:** o `render_local_browser` se apoiava no `initial_model_page` + estado global (`gl.url_list`/`gl.previous_inputs`/`gl.update_mode`), então herdava filtro do Browser e ficava com lista stale após download. Fix: `render_local_browser` agora é **self-contained** (busca própria por ids, em chunks, mostra todos), com **filtro de base model próprio** (`local_base_filter`). Seta `gl.json_data` só pro painel de detalhe.
+
 ## 📌 Pendentes levantados na validação
-- **Botão "Check for updates" no Local:** rodar o scan e mostrar **só** os modelos com update (hoje o grid mostra todos, outdated marcados). Também deixa o update mais confiável (popula `gl.update_items`).
-- **Barra de download no Local:** o progresso ao vivo está na aba **Download Queue** (e na barra inline do Browser). O Local não tem barra inline (mecanismo acoplado ao `elem_id` `#DownloadProgress` do Browser) — avaliar adicionar.
+- **Botão "Check for updates" no Local:** rodar o scan e mostrar **só** os modelos com update.
+- **Barra de download no Local + auto-refresh pós-update:** ambos dependem de **isolar o estado do Local** (json_data/progress próprios) pra não brigar com o Browser. Hoje: progresso ao vivo na aba **Download Queue**; após update, clicar **"Load local models"** atualiza o grid.
+- **Isolar seleção Local↔Browser:** o multi-select do Local reusa `selected_model_list` global (efeito colateral nos botões do Browser).
 
 ---
 
