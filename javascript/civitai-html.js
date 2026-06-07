@@ -1031,9 +1031,6 @@ function cancelQueueDl() {
     cancelBtn;
 }
 
-// Tracks the active download-progress worker to prevent duplicates.
-let _dlProgressWorker = null;
-
 // Creates a setInterval-equivalent backed by a Web Worker so it runs
 // unthrottled even when the browser tab is in the background.
 function _createWorkerInterval(callback, ms) {
@@ -1072,10 +1069,6 @@ function setDownloadProgressBar() {
 
     nonQueue.appendChild(dlItem);
 
-    if (_dlProgressWorker) {
-        _dlProgressWorker.stop();
-        _dlProgressWorker = null;
-    }
     const worker = _createWorkerInterval(() => {
         browserContainer = document.querySelector('#DownloadProgress');
         if (!browserContainer) {
@@ -1160,7 +1153,6 @@ function setDownloadProgressBar() {
             return;
         }
     });
-    _dlProgressWorker = worker;
 }
 
 // === Queue Restore Banner ===
