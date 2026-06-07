@@ -119,8 +119,11 @@ def show_multi_buttons(model_list, type_list, version_value):
     multi_file_subfolder = False
     default_subfolder = 'Only available if the selected files are of the same model type'
     sub_folders = ['None']
-    BtnDwn = version_value and not version_value.endswith('[Installed]') and not model_list
-    BtnDel = version_value.endswith('[Installed]')
+    # version_value (selected version) can be None — e.g. when selection is driven from
+    # the Local Models grid checkboxes while the Browser version dropdown is empty.
+    installed_suffix = bool(version_value) and version_value.endswith('[Installed]')
+    BtnDwn = bool(version_value) and not installed_suffix and not model_list
+    BtnDel = installed_suffix
 
     dot_subfolders = getattr(opts, 'dot_subfolders', True)
 
@@ -150,7 +153,7 @@ def show_multi_buttons(model_list, type_list, version_value):
             sub_folders = ['None']
 
     return (gr.update(visible=multi, interactive=multi), # Download Multi Button
-            gr.update(visible=BtnDwn if multi else True if not version_value.endswith('[Installed]') else False), # Download Button
+            gr.update(visible=BtnDwn if multi else (not installed_suffix)), # Download Button
             gr.update(visible=BtnDel if not model_list else False), # Delete Button
             gr.update(visible=otherButtons), # Save model info Button
             gr.update(visible=otherButtons), # Save images Button
