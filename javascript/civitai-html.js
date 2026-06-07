@@ -143,9 +143,9 @@ function applyPendingCardUpdates() {
         if (pendingCardUpdates.size === 0) return;
 
         const containers = [
-            document.querySelector('.civmodellist'),
-            document.querySelector('.civmodelcards')
-        ].filter(Boolean);
+            ...document.querySelectorAll('.civmodellist'),
+            ...document.querySelectorAll('.civmodelcards')
+        ];
 
         if (containers.length === 0) {
             console.log('[updateCard] poller: no containers in DOM');
@@ -205,11 +205,13 @@ function updateCard(modelNameWithSuffix, allowRefresh = true) {
     const modelId = modelIdMatch ? modelIdMatch[1] : null;
     const statusClasses = ['civmodelcardinstalled', 'civmodelcardoutdated', 'civmodelcardcrossfamily'];
 
-    // Search both Browser-mode (.civmodellist) and Update-mode (.civmodelcards) containers
+    // Search ALL Browser-mode (.civmodellist) and Update-mode (.civmodelcards) containers.
+    // querySelectorAll (not querySelector) so the Local Models grid — a second
+    // .civmodellist in the DOM — also gets its cards updated after download/delete.
     const containers = [
-        document.querySelector('.civmodellist'),
-        document.querySelector('.civmodelcards')
-    ].filter(Boolean);
+        ...document.querySelectorAll('.civmodellist'),
+        ...document.querySelectorAll('.civmodelcards')
+    ];
 
     console.log('[updateCard] called:', modelNameWithSuffix, 'modelId:', modelId, 'containers:', containers.length, 'allowRefresh:', allowRefresh);
 

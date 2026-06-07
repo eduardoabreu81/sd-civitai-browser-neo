@@ -534,6 +534,51 @@ def _find_model_by_sha256(sha256):
     return None, None, None
 
 
+def find_installed_file_by_model_id(model_id, exclude_filename=None):
+    """Locate an installed model file by its CivitAI modelId (via the .json sidecar).
+
+    Retention fallback for updates triggered without a prior update-scan (e.g. from the
+    Local Models browser): when gl.update_items has no entry, we still need the path of
+    the currently-installed version so it can be removed/trashed per the retention policy.
+
+    Returns the full path of an installed file for this model whose base name differs
+    from exclude_filename, or '' if none is found.
+    """
+    try:
+        target_id = int(model_id)
+    except (TypeError, ValueError):
+        return ''
+
+    exclude_base = os.path.splitext(exclude_filename)[0] if exclude_filename else None
+    model_extensions = ['.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.zip', '.vae', '.th']
+
+    for model_folder in _get_all_model_folders():
+        for root, _, files in os.walk(model_folder, followlinks=True):
+            for file in files:
+                if not file.endswith('.json'):
+                    continue
+                data = _api.safe_json_load(os.path.join(root, file))
+                if not data:
+                    continue
+                sidecar_id = data.get('modelId')
+                if sidecar_id is None and isinstance(data.get('model'), dict):
+                    sidecar_id = data['model'].get('id')
+                try:
+                    if int(sidecar_id) != target_id:
+                        continue
+                except (TypeError, ValueError):
+                    continue
+
+                json_base = os.path.splitext(file)[0]
+                if exclude_base and json_base == exclude_base:
+                    continue
+                for ext in model_extensions:
+                    candidate = os.path.join(root, json_base + ext)
+                    if os.path.exists(candidate):
+                        return candidate
+    return ''
+
+
 def delete_installed_by_sha256(sha256, delete_finish=None):
     """
     Simplified delete function for installed models using only SHA256.

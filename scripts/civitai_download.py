@@ -439,6 +439,12 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
                             old_file_path = _upd.get('old_file', '') or None
                             break
 
+            # Fallback: no update-scan ran (e.g. update triggered from Local Models), so
+            # locate the currently-installed file for this model on disk so retention can
+            # still remove/trash the old version when the new filename differs.
+            if not old_file_path:
+                old_file_path = _file.find_installed_file_by_model_id(model_id, model_filename) or None
+
             model_item = create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch, old_file_path=old_file_path, version_id=version_id)
             if model_item:
                 gl.download_queue.append(model_item)

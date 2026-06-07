@@ -68,6 +68,14 @@ Render de cards é **um só** mecanismo (`model_list_html` → `civmodelcard`) r
 
 > Settings (C1) e a ideia de "aba Models única" foram descartados a pedido do usuário — a divisão Browser/Local é a escolhida.
 
+## 🐞 Bugs corrigidos durante a validação
+- **Arquivo antigo permanecia após update:** a retention buscava o antigo só em `gl.update_items` (populado por scan). Update no Local roda sem scan → `old_file_path` None. Fix: fallback `find_installed_file_by_model_id` (localiza o instalado pelo `modelId` no disco).
+- **Card não marcava "installed" após download no Local:** `updateCard` usava `querySelector('.civmodellist')` (só o 1º container = Browser). Fix: `querySelectorAll` para varrer Browser + Local.
+
+## 📌 Pendentes levantados na validação
+- **Botão "Check for updates" no Local:** rodar o scan e mostrar **só** os modelos com update (hoje o grid mostra todos, outdated marcados). Também deixa o update mais confiável (popula `gl.update_items`).
+- **Barra de download no Local:** o progresso ao vivo está na aba **Download Queue** (e na barra inline do Browser). O Local não tem barra inline (mecanismo acoplado ao `elem_id` `#DownloadProgress` do Browser) — avaliar adicionar.
+
 ---
 
 ## Recomendação de início
