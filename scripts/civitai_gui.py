@@ -771,7 +771,7 @@ def on_ui_tabs():
         list_models.select(fn=None, inputs=list_models, _js='(list_models) => select_model(list_models)')
 
         preview_html_input.change(fn=None, _js='() => adjustFilterBoxAndButtons()')
-        preview_html_input.change(fn=None, _js='() => setDescriptionToggle()')
+        preview_html_input.change(fn=None, _js='() => initDescriptionToggle()')
 
         page_slider.release(fn=None, _js='() => pressRefresh()')
 
@@ -1259,7 +1259,7 @@ def on_ui_tabs():
                 show_progress='hidden'
             )
 
-        download_finish.change(
+        _download_finish_event = download_finish.change(
             fn=_download.download_finish,
             inputs=[
                 model_filename,
@@ -1433,6 +1433,23 @@ def on_ui_tabs():
             base_model,
             model_filename
         ]
+
+        # Post-download Browser refresh (restored from main): re-render the current
+        # Browser page so the just-downloaded model shows as installed. Deferred to
+        # here because it needs refresh_inputs/page_outputs. Guarded so it only runs
+        # in a Browser-search context — after a Local update gl.url_list is a local
+        # sentinel (not http), so we skip it to avoid clobbering the Browser grid.
+        def _post_download_page_refresh(*args):
+            url1 = gl.url_list.get(1) if isinstance(gl.url_list, dict) else None
+            if not (isinstance(url1, str) and url1.startswith('http')):
+                return tuple(gr.update() for _ in page_outputs)
+            return _api.initial_model_page(*args, from_update_tab=True)
+
+        _download_finish_event.then(
+            fn=_post_download_page_refresh,
+            inputs=refresh_inputs,
+            outputs=page_outputs
+        )
 
         file_scan_inputs = [
             selected_tags,

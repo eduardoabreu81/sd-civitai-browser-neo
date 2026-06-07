@@ -1011,7 +1011,7 @@ function cancelAllDl() {
 function setSortable() {
     new Sortable(document.getElementById('queue_list'), {
         onEnd: function (evt) {
-            const gradio_input = document.querySelector('#civitai_dl_list.prose').innerHTML;
+            const gradio_input = ((document.querySelector('#civitai_dl_list.prose') || document.querySelector('#civitai_dl_list') || {}).innerHTML || '');
             const gradio_html = gradioApp().querySelector('#queue_html_input textarea');
             let output = gradioApp().querySelector('#arrange_dl_id textarea');
             output.value = evt.item.getAttribute('dl_id') + '.' + evt.newIndex;
@@ -1102,7 +1102,7 @@ function setDownloadProgressBar() {
             dlItem.className = 'civitai_dl_item_completed';
             dlProgressBar.textContent = 'Completed';
             dlProgressBar.style.width = '100%';
-            const gradio_input = document.querySelector('#civitai_dl_list.prose').innerHTML;
+            const gradio_input = ((document.querySelector('#civitai_dl_list.prose') || document.querySelector('#civitai_dl_list') || {}).innerHTML || '');
             gradio_html.value = gradio_input;
             updateInput(gradio_html);
             return;
@@ -1117,7 +1117,7 @@ function setDownloadProgressBar() {
             dlItem.className = 'civitai_dl_item_failed';
             dlProgressBar.textContent = 'Cancelled';
             dlProgressBar.style.width = '0%';
-            const gradio_input = document.querySelector('#civitai_dl_list.prose').innerHTML;
+            const gradio_input = ((document.querySelector('#civitai_dl_list.prose') || document.querySelector('#civitai_dl_list') || {}).innerHTML || '');
             gradio_html.value = gradio_input;
             updateInput(gradio_html);
             return;
@@ -1135,7 +1135,7 @@ function setDownloadProgressBar() {
                 nonQueue.appendChild(item);
                 item.className = 'civitai_dl_item_failed';
             });
-            const gradio_input = document.querySelector('#civitai_dl_list.prose').innerHTML;
+            const gradio_input = ((document.querySelector('#civitai_dl_list.prose') || document.querySelector('#civitai_dl_list') || {}).innerHTML || '');
             gradio_html.value = gradio_input;
             updateInput(gradio_html);
             return;
@@ -1147,7 +1147,7 @@ function setDownloadProgressBar() {
             dlItem.className = 'civitai_dl_item_failed';
             dlProgressBar.textContent = 'Failed';
             dlProgressBar.style.width = '0%';
-            const gradio_input = document.querySelector('#civitai_dl_list.prose').innerHTML;
+            const gradio_input = ((document.querySelector('#civitai_dl_list.prose') || document.querySelector('#civitai_dl_list') || {}).innerHTML || '');
             gradio_html.value = gradio_input;
             updateInput(gradio_html);
             return;
@@ -1209,7 +1209,7 @@ function removeDlItem(dl_id, element) {
     output.value = dl_id;
     updateInput(output);
 
-    const gradio_input = document.querySelector('#civitai_dl_list.prose').innerHTML;
+    const gradio_input = ((document.querySelector('#civitai_dl_list.prose') || document.querySelector('#civitai_dl_list') || {}).innerHTML || '');
     gradio_html.value = gradio_input;
     updateInput(gradio_html);
 }
