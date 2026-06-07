@@ -412,56 +412,6 @@ def on_ui_tabs():
             with gr.Row():
                 preview_html = gr.HTML(elem_id='civitai_preview_html')
 
-        ## Update Tab
-        with gr.Tab(label='Update Models', elem_id='updateTab'):
-            gr.Markdown('## 🔄 Update & Maintain Models', elem_id='update_header')
-            gr.Markdown('Keep your models up-to-date and manage metadata, previews, and tags.')
-            
-            with gr.Row():
-                selected_tags = gr.CheckboxGroup(elem_id='selected_tags', label='Selected content types:', choices=scan_choices, value=['All'])
-            
-            with gr.Accordion(label='🔧 Scan Options', open=False):
-                with gr.Row(elem_id='civitai_update_toggles'):
-                    overwrite_toggle = gr.Checkbox(elem_id='overwrite_toggle', label='Overwrite any existing files (previews, HTMLs, tags, descriptions)', value=True, min_width=300)
-                    skip_hash_toggle = gr.Checkbox(elem_id='skip_hash_toggle', label='One-Time Hash Generation for externally downloaded models', value=True, min_width=300)
-                    do_html_gen = gr.Checkbox(elem_id='do_html_gen', label='Save HTML file for each model when updating info & tags', value=False, min_width=300)
-            
-            gr.Markdown('---')
-            gr.Markdown('### 📝 Update Model Information')
-            gr.Markdown('Fetch and update metadata, tags, and descriptions from CivitAI.')
-            
-            with gr.Row():
-                save_all_tags = gr.Button(value='📝 Update model info & tags', interactive=True, visible=True, variant='primary')
-                cancel_all_tags = gr.Button(value='Cancel updating model info & tags', interactive=False, visible=False)
-            with gr.Row():
-                tag_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-
-            with gr.Row():
-                sync_sha256_cache = gr.Button(value='🔄 Sync checkpoint SHA256 cache', interactive=True, visible=True)
-            with gr.Row():
-                sync_sha256_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-            
-            gr.Markdown('---')
-            gr.Markdown('### 🖼️ Update Model Previews')
-            gr.Markdown('Download and refresh preview images for your models.')
-            
-            with gr.Row():
-                update_preview = gr.Button(value='🖼️ Update model preview', interactive=True, visible=True, variant='primary')
-                cancel_update_preview = gr.Button(value='Cancel updating model previews', interactive=False, visible=False)
-            with gr.Row():
-                preview_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-            
-            gr.Markdown('---')
-            gr.Markdown('### 🔍 Check for Updates')
-            gr.Markdown('Scan your collection for newer versions available on CivitAI.')
-            
-            with gr.Row():
-                ver_search = gr.Button(value='🔍 Scan for available updates', interactive=True, visible=True, variant='primary')
-                cancel_ver_search = gr.Button(value='Cancel updates scan', interactive=False, visible=False)
-                load_to_browser_outdated = gr.Button(value='Load outdated models to browser', interactive=False, visible=False)
-            with gr.Row():
-                version_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-
         ## Queue Tab
         with gr.Tab(label='Download Queue', elem_id='queueTab'):
             gr.Markdown('## 📥 Download Queue Manager', elem_id='queue_header')
@@ -528,7 +478,46 @@ def on_ui_tabs():
                 local_preview_html = gr.HTML(elem_id='local_preview_html')
 
             # ── Maintenance: bulk tools (organize by base model, validate, load-to-browser) ──
-            with gr.Accordion(label='🔧 Maintenance (bulk tools)', open=False):
+            with gr.Accordion(label='🔧 Maintenance & Updates', open=False):
+                # ── Update from CivitAI (moved here from the old Update Models tab) ──
+                gr.Markdown('### 🔄 Update from CivitAI')
+                gr.Markdown('Fetch metadata, tags and previews, and check for newer versions of your installed models.')
+
+                with gr.Row():
+                    selected_tags = gr.CheckboxGroup(elem_id='selected_tags', label='Selected content types:', choices=scan_choices, value=['All'])
+
+                with gr.Accordion(label='🔧 Scan Options', open=False):
+                    with gr.Row(elem_id='civitai_update_toggles'):
+                        overwrite_toggle = gr.Checkbox(elem_id='overwrite_toggle', label='Overwrite any existing files (previews, HTMLs, tags, descriptions)', value=True, min_width=300)
+                        skip_hash_toggle = gr.Checkbox(elem_id='skip_hash_toggle', label='One-Time Hash Generation for externally downloaded models', value=True, min_width=300)
+                        do_html_gen = gr.Checkbox(elem_id='do_html_gen', label='Save HTML file for each model when updating info & tags', value=False, min_width=300)
+
+                with gr.Row():
+                    save_all_tags = gr.Button(value='📝 Update model info & tags', interactive=True, visible=True, variant='primary')
+                    cancel_all_tags = gr.Button(value='Cancel updating model info & tags', interactive=False, visible=False)
+                with gr.Row():
+                    tag_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+
+                with gr.Row():
+                    sync_sha256_cache = gr.Button(value='🔄 Sync checkpoint SHA256 cache', interactive=True, visible=True)
+                with gr.Row():
+                    sync_sha256_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+
+                with gr.Row():
+                    update_preview = gr.Button(value='🖼️ Update model preview', interactive=True, visible=True, variant='primary')
+                    cancel_update_preview = gr.Button(value='Cancel updating model previews', interactive=False, visible=False)
+                with gr.Row():
+                    preview_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+
+                with gr.Row():
+                    ver_search = gr.Button(value='🔍 Scan for available updates', interactive=True, visible=True, variant='primary')
+                    cancel_ver_search = gr.Button(value='Cancel updates scan', interactive=False, visible=False)
+                    load_to_browser_outdated = gr.Button(value='Load outdated models to browser', interactive=False, visible=False)
+                with gr.Row():
+                    version_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+
+                gr.Markdown('---')
+                gr.Markdown('### 📦 Installed Models & Organization')
                 with gr.Row():
                     selected_tags_local = gr.CheckboxGroup(elem_id='selected_tags_local', label='Selected content types:', choices=local_scan_choices, value=['Checkpoint', 'LORA'])
 
