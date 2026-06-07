@@ -971,6 +971,20 @@ function multi_model_select(modelName, modelType, isChecked) {
     syncUpdateBtn();
 }
 
+// Local Models tab: update only the checked (outdated) cards. Reuses the global
+// selectedModels list (populated by the card checkboxes via multi_model_select)
+// and the existing update_selected_trigger → update_selected_models pipeline.
+function updateSelectedLocalModels() {
+    if (!selectedModels || selectedModels.length === 0) {
+        alert('Select one or more outdated models (checkbox on the cards) to update.');
+        return;
+    }
+    const trigger = gradioApp().querySelector('#update_selected_trigger textarea');
+    if (!trigger) return;
+    trigger.value = JSON.stringify(selectedModels);
+    updateInput(trigger);
+}
+
 function sendClick(location) {
     const clickEvent = new MouseEvent('click', {
         view: window,

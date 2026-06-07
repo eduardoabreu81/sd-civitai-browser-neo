@@ -52,8 +52,8 @@ Render de cards é **um só** mecanismo (`model_list_html` → `civmodelcard`) r
 
 ### Fase 1 — Consolidação de abas
 1. **✅ FEITO** Merge da aba Update Models dentro do Local Models (accordion "Maintenance & Updates"), preservando lógica.
-2. **B3** Padrão único de ações por modelo (card → painel de detalhe com o mesmo conjunto de ações).
-3. **A2** Carregar "outdated/installed" no próprio grid do Local (em vez do handoff pro Browser).
+2. **✅ FEITO (A2)** Removidos os botões "Load installed/outdated to browser". Browser mantém a detecção de instalados; o controle de atualização vive no Local. Scans (updates/installed/organize) agora **refrescam o grid do Local**; multi-seleção via checkbox dos cards desatualizados + botão "Update selected" (reusa `update_selected_models`); update por modelo no painel.
+3. **B3** Padrão único de ações por modelo (card → painel de detalhe com o mesmo conjunto de ações).
 
 ### Fase 2 — Coesão do Local Models
 4. **E2** Fechar lacunas: paginação no grid, troca de versão no painel, mover-pra-subpasta por card.

@@ -4574,8 +4574,7 @@ def scan_finish():
         gr.update(interactive=True, visible=True),
         gr.update(interactive=True, visible=True),
         gr.update(interactive=True, visible=True),
-        gr.update(interactive=False, visible=False),
-        gr.update(interactive=not no_update, visible=not no_update)
+        gr.update(interactive=False, visible=False)
     )
 
 

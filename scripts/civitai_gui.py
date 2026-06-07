@@ -464,6 +464,10 @@ def on_ui_tabs():
             with gr.Row():
                 local_list_html = gr.HTML(value='<div style="font-size: 24px; text-align: center; margin: 50px;">Click "Load local models" to list your installed models.</div>', elem_id='local_list_html')
 
+            # Batch action: update the models checked on outdated cards (reuses update_selected pipeline)
+            with gr.Row():
+                local_update_selected_btn = gr.Button(value='⬆️ Update selected', elem_id='localUpdateSelectedBtn')
+
             # ── Detail panel for the selected card ──
             with gr.Row():
                 local_base_model = gr.Textbox(label='Base model:', interactive=False, lines=1)
@@ -512,7 +516,6 @@ def on_ui_tabs():
                 with gr.Row():
                     ver_search = gr.Button(value='🔍 Scan for available updates', interactive=True, visible=True, variant='primary')
                     cancel_ver_search = gr.Button(value='Cancel updates scan', interactive=False, visible=False)
-                    load_to_browser_outdated = gr.Button(value='Load outdated models to browser', interactive=False, visible=False)
                 with gr.Row():
                     version_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
 
@@ -534,7 +537,6 @@ def on_ui_tabs():
                 with gr.Row():
                     load_installed = gr.Button(value='📋 Load all installed models', interactive=True, visible=True, variant='primary')
                     cancel_installed = gr.Button(value='Cancel loading models', interactive=False, visible=False)
-                    load_to_browser_installed = gr.Button(value='Load installed models to browser', interactive=False, visible=False)
                 with gr.Row():
                     installed_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
 
@@ -1040,6 +1042,9 @@ def on_ui_tabs():
             outputs=[update_single_trigger]
         )
 
+        # Batch update of checked (outdated) cards → reuses the update_selected pipeline
+        local_update_selected_btn.click(fn=None, _js='() => updateSelectedLocalModels()')
+
         model_sent.change(
             fn=_file.model_from_sent,
             inputs=[model_sent, type_sent],
@@ -1414,14 +1419,6 @@ def on_ui_tabs():
 
         cancel_btn_list = [cancel_all_tags, cancel_ver_search, cancel_installed, cancel_update_preview, cancel_organize]
 
-        browser = [save_all_tags, ver_search, load_installed, update_preview]
-
-        browser_installed_load = [cancel_installed, load_to_browser_installed, installed_progress]
-        browser_outdated_load = [cancel_ver_search, load_to_browser_outdated, version_progress]
-
-        browser_installed_list = page_outputs + browser + browser_installed_load
-        browser_outdated_list = page_outputs + browser + browser_outdated_load
-
         # Page Button Functions #
 
         page_btn_list = {
@@ -1474,9 +1471,12 @@ def on_ui_tabs():
                 load_installed,
                 update_preview,
                 organize_models,
-                cancel_ver_search,
-                load_to_browser_outdated
+                cancel_ver_search
             ]
+        ).then(
+            fn=_file.render_local_browser,
+            inputs=local_render_inputs,
+            outputs=[local_list_html_input]
         )
 
         load_installed.click(
@@ -1511,9 +1511,12 @@ def on_ui_tabs():
                 load_installed,
                 update_preview,
                 organize_models,
-                cancel_installed,
-                load_to_browser_installed
+                cancel_installed
             ]
+        ).then(
+            fn=_file.render_local_browser,
+            inputs=local_render_inputs,
+            outputs=[local_list_html_input]
         )
 
         save_all_tags.click(
@@ -1625,9 +1628,12 @@ def on_ui_tabs():
                 load_installed,
                 update_preview,
                 organize_models,
-                cancel_organize,
-                load_to_browser_installed
+                cancel_organize
             ]
+        ).then(
+            fn=_file.render_local_browser,
+            inputs=local_render_inputs,
+            outputs=[local_list_html_input]
         )
 
         undo_organization.click(
@@ -1716,15 +1722,6 @@ def on_ui_tabs():
             _js='(json) => downloadBlobFile(json, "dashboard_stats.json", "application/json")'
         )
 
-        load_to_browser_outdated.click(
-            fn=_file.load_to_browser,
-            inputs=load_to_browser_inputs,
-            outputs=browser_outdated_list
-        ).then(
-            fn=_file.enter_update_mode,
-            outputs=[update_mode_banner]
-        )
-
         update_all_trigger.change(
             fn=_download.update_all_models,
             inputs=[download_start, create_json, download_manager_html],
@@ -1771,12 +1768,6 @@ def on_ui_tabs():
             fn=_file.exit_update_mode,
             inputs=load_to_browser_inputs,
             outputs=[update_mode_banner, list_html_input, get_prev_page, get_next_page, page_slider]
-        )
-
-        load_to_browser_installed.click(
-            fn=_file.load_to_browser,
-            inputs=load_to_browser_inputs,
-            outputs=browser_installed_list
         )
 
         # Settings function
