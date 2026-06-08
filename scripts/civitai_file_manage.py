@@ -523,7 +523,7 @@ def _find_model_by_sha256(sha256):
                 data = _api.safe_json_load(json_path)
                 if not data:
                     continue
-                if data.get('sha256', '').upper() != sha256_upper:
+                if (data.get('sha256') or '').upper() != sha256_upper:
                     continue
 
                 json_base = os.path.splitext(file)[0]
@@ -2070,7 +2070,7 @@ def version_match(file_paths, api_response, log=False):
         json_path = f"{os.path.splitext(path)[0]}.json"
         data = _api.safe_json_load(json_path)
         if data:
-            sha = data.get('sha256', '').upper()
+            sha = (data.get('sha256') or '').upper()
             if sha:
                 installed_hashes.add(sha)
                 vid = data.get('modelVersionId')
@@ -2121,7 +2121,7 @@ def version_match(file_paths, api_response, log=False):
             vid = ver.get('id')
             found = False
             for file_entry in ver.get('files', []):
-                sha = file_entry.get('hashes', {}).get('SHA256', '').upper()
+                sha = (file_entry.get('hashes', {}).get('SHA256') or '').upper()
                 if sha in installed_hashes:
                     bm = (ver.get('baseModel') or '').strip()
                     vname = ver.get('name', '')
