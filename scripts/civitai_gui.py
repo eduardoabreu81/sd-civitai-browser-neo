@@ -469,96 +469,64 @@ def on_ui_tabs():
             with gr.Row():
                 local_size_slider = gr.Slider(label='Tile size:', minimum=8, maximum=20, value=12, step=0.25, elem_id='localSizeSlider')
 
-            # ── Maintenance: bulk tools (organize by base model, validate, load-to-browser) ──
+            # ── Maintenance: bulk tools, scoped to the Content type / Base model filters above ──
             with gr.Accordion(label='🔧 Maintenance & Updates', open=False):
-                # ── Update from CivitAI (moved here from the old Update Models tab) ──
-                gr.Markdown('### 🔄 Update from CivitAI')
-                gr.Markdown('Fetch metadata, tags and previews, and check for newer versions of your installed models.')
+                gr.Markdown('Bulk tools act on the models matching the **Content type** / **Base model** filters above.')
 
-                with gr.Row():
-                    selected_tags = gr.CheckboxGroup(elem_id='selected_tags', label='Selected content types:', choices=scan_choices, value=['All'])
+                # Single content-type control = the dropdown above. These mirror it and stay
+                # hidden — kept only so the existing scan bindings (file_scan_inputs) work unchanged.
+                selected_tags = gr.CheckboxGroup(elem_id='selected_tags', choices=scan_choices, value=['Checkpoint', 'LORA'], visible=False)
+                selected_tags_local = gr.CheckboxGroup(elem_id='selected_tags_local', choices=local_scan_choices, value=['Checkpoint', 'LORA'], visible=False)
 
-                with gr.Accordion(label='🔧 Scan Options', open=False):
+                with gr.Accordion(label='⚙️ Scan options', open=False):
                     with gr.Row(elem_id='civitai_update_toggles'):
-                        overwrite_toggle = gr.Checkbox(elem_id='overwrite_toggle', label='Overwrite any existing files (previews, HTMLs, tags, descriptions)', value=True, min_width=300)
-                        skip_hash_toggle = gr.Checkbox(elem_id='skip_hash_toggle', label='One-Time Hash Generation for externally downloaded models', value=True, min_width=300)
-                        do_html_gen = gr.Checkbox(elem_id='do_html_gen', label='Save HTML file for each model when updating info & tags', value=False, min_width=300)
+                        overwrite_toggle = gr.Checkbox(elem_id='overwrite_toggle', label='Overwrite existing files (previews, HTMLs, tags, descriptions)', value=True, min_width=300)
+                        skip_hash_toggle = gr.Checkbox(elem_id='skip_hash_toggle', label='One-time hash generation for externally downloaded models', value=True, min_width=300)
+                        do_html_gen = gr.Checkbox(elem_id='do_html_gen', label='Save an HTML file per model when updating info & tags', value=False, min_width=300)
+                    # hidden mirrors kept only to preserve file_scan_inputs_local bindings
+                    with gr.Row(elem_id='civitai_local_toggles', visible=False):
+                        overwrite_toggle_local = gr.Checkbox(elem_id='overwrite_toggle_local', value=True)
+                        skip_hash_toggle_local = gr.Checkbox(elem_id='skip_hash_toggle_local', value=True)
+                        do_html_gen_local = gr.Checkbox(elem_id='do_html_gen_local', value=False)
 
+                gr.Markdown('**🔄 Update from CivitAI** — metadata, tags, previews and newer-version check.')
                 with gr.Row():
-                    save_all_tags = gr.Button(value='📝 Update model info & tags', interactive=True, visible=True, variant='primary')
-                    cancel_all_tags = gr.Button(value='Cancel updating model info & tags', interactive=False, visible=False)
+                    save_all_tags = gr.Button(value='📝 Update info & tags', interactive=True, variant='primary')
+                    cancel_all_tags = gr.Button(value='✖ Cancel', interactive=False, visible=False, variant='stop')
+                    update_preview = gr.Button(value='🖼️ Update previews', interactive=True, variant='primary')
+                    cancel_update_preview = gr.Button(value='✖ Cancel', interactive=False, visible=False, variant='stop')
+                with gr.Row():
+                    ver_search = gr.Button(value='🔍 Scan for updates', interactive=True, variant='primary')
+                    cancel_ver_search = gr.Button(value='✖ Cancel', interactive=False, visible=False, variant='stop')
+                    sync_sha256_cache = gr.Button(value='🔄 Sync SHA256 cache', interactive=True)
                 with gr.Row():
                     tag_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-
-                with gr.Row():
-                    sync_sha256_cache = gr.Button(value='🔄 Sync checkpoint SHA256 cache', interactive=True, visible=True)
-                with gr.Row():
+                    preview_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+                    version_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
                     sync_sha256_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
 
+                gr.Markdown('**📁 Organize & validate** — sort models into base-model subfolders (SDXL, Pony, FLUX…) and check placement.')
                 with gr.Row():
-                    update_preview = gr.Button(value='🖼️ Update model preview', interactive=True, visible=True, variant='primary')
-                    cancel_update_preview = gr.Button(value='Cancel updating model previews', interactive=False, visible=False)
+                    organize_models = gr.Button(value='📁 Organize into subfolders', interactive=True, variant='primary')
+                    cancel_organize = gr.Button(value='✖ Cancel', interactive=False, visible=False, variant='stop')
+                    validate_org_btn = gr.Button(value='🔍 Validate organization', interactive=True)
                 with gr.Row():
-                    preview_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-
-                with gr.Row():
-                    ver_search = gr.Button(value='🔍 Scan for available updates', interactive=True, visible=True, variant='primary')
-                    cancel_ver_search = gr.Button(value='Cancel updates scan', interactive=False, visible=False)
-                with gr.Row():
-                    version_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-
-                gr.Markdown('---')
-                gr.Markdown('### 📦 Installed Models & Organization')
-                with gr.Row():
-                    selected_tags_local = gr.CheckboxGroup(elem_id='selected_tags_local', label='Selected content types:', choices=local_scan_choices, value=['Checkpoint', 'LORA'])
-
-                with gr.Accordion(label='🔧 Scan Options', open=False):
-                    with gr.Row(elem_id='civitai_local_toggles'):
-                        overwrite_toggle_local = gr.Checkbox(elem_id='overwrite_toggle_local', label='Overwrite any existing files (previews, HTMLs, tags, descriptions)', value=True, min_width=300)
-                        skip_hash_toggle_local = gr.Checkbox(elem_id='skip_hash_toggle_local', label='One-Time Hash Generation for externally downloaded models', value=True, min_width=300)
-                        do_html_gen_local = gr.Checkbox(elem_id='do_html_gen_local', label='Save HTML file for each model when updating info & tags', value=False, min_width=300)
-
-                gr.Markdown('---')
-                gr.Markdown('### 📋 Load Installed Models')
-                gr.Markdown('Scan and load information about all models currently installed on your system.')
-
-                with gr.Row():
-                    load_installed = gr.Button(value='📋 Load all installed models', interactive=True, visible=True, variant='primary')
-                    cancel_installed = gr.Button(value='Cancel loading models', interactive=False, visible=False)
-                with gr.Row():
-                    installed_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-
-                gr.Markdown('---')
-                gr.Markdown('### 📁 Model Organization')
-                gr.Markdown('Automatically organize your models into subfolders by base model type (SDXL, Pony, FLUX, etc.)')
-
-                with gr.Row():
-                    organize_models = gr.Button(value='📁 Organize models into subfolders by type', interactive=True, visible=True, variant='primary')
-                    cancel_organize = gr.Button(value='Cancel organization', interactive=False, visible=False)
+                    undo_organization = gr.Button(value='↶ Undo last organization', interactive=True, variant='secondary')
+                    fix_misplaced_btn = gr.Button(value='✅ Fix misplaced files', interactive=True, visible=False, variant='secondary')
+                    undo_fix_btn = gr.Button(value='↶ Undo fix', interactive=True, visible=False, variant='secondary')
                 with gr.Row():
                     organize_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-
-                with gr.Row():
-                    undo_organization = gr.Button(value='↶ Undo Last Organization', interactive=True, visible=True, variant='secondary')
-                with gr.Row():
-                    undo_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-
-                gr.Markdown('---')
-                gr.Markdown('### 🔍 Validate Organization')
-                gr.Markdown('Check whether all models are in their correct subfolders — without moving anything. Optionally fix any misplaced files.')
-
-                with gr.Row():
-                    validate_org_btn = gr.Button(value='🔍 Validate organization', interactive=True, visible=True, variant='primary')
-                with gr.Row():
                     validate_org_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-                with gr.Row():
-                    fix_misplaced_btn = gr.Button(value='✅ Fix misplaced files', interactive=True, visible=False, variant='secondary')
-                with gr.Row():
+                    undo_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
                     fix_misplaced_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-                with gr.Row():
-                    undo_fix_btn = gr.Button(value='↶ Undo Fix', interactive=True, visible=False, variant='secondary')
-                with gr.Row():
                     undo_fix_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+
+                # Legacy full scan (superseded by "Load local models" above) — hidden, but kept
+                # because the scan bindings still reference load_installed as an output.
+                with gr.Row(visible=False):
+                    load_installed = gr.Button(value='📋 Load all installed models', interactive=True)
+                    cancel_installed = gr.Button(value='Cancel loading models', interactive=False)
+                    installed_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
 
                 validate_plan_state = gr.State(value='{}')
 
@@ -1026,6 +994,21 @@ def on_ui_tabs():
             local_content_type, local_base_filter, local_use_search,
             local_search, local_tile_count, local_nsfw
         ]
+
+        # The top "Content type" dropdown is the single content-type control for the whole
+        # Local tab: mirror it into the hidden CheckboxGroups the maintenance scans consume,
+        # so bulk ops act on the same types the user is browsing.
+        def _sync_local_scope(types):
+            types = types or []
+            scoped = types if types else ['All']
+            local = [t for t in types if t in ('Checkpoint', 'LORA')] or ['Checkpoint', 'LORA']
+            return gr.update(value=scoped), gr.update(value=local)
+
+        local_content_type.change(
+            fn=_sync_local_scope,
+            inputs=[local_content_type],
+            outputs=[selected_tags, selected_tags_local]
+        )
 
         # User-initiated loads render straight into the VISIBLE grid so Gradio shows
         # its loading spinner over it; .then re-applies the tile size.
