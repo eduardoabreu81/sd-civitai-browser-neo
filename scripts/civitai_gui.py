@@ -1255,8 +1255,7 @@ def on_ui_tabs():
                     current_model,
                     download_finish,
                     queue_trigger
-                ],
-                show_progress='hidden'
+                ]
             )
 
         _download_finish_event = download_finish.change(
