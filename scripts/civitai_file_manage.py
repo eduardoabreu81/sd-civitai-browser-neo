@@ -4764,7 +4764,7 @@ def load_to_browser(content_type, sort_type, period_type, use_search_term, searc
         gr.update(value='<div style="min-height: 0px;"></div>')
     )
 
-def render_local_browser(content_type, base_filter, use_search_term, search_term, tile_count, nsfw):
+def render_local_browser(content_type, base_filter, use_search_term, search_term, tile_count, nsfw, only_updates=False):
     """Scan local model folders (filtered) and render the local-models card grid.
 
     Self-contained on purpose: it builds its OWN model data and does NOT go through
@@ -4833,6 +4833,21 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
         bf_lower = {b.lower() for b in bf}
         items = [it for it in items
                  if any((v.get('baseModel') or '').lower() in bf_lower for v in it.get('modelVersions', []))]
+
+    # "Only models with updates" filter: reuse the scan's per-family outdated detection.
+    # No extra API calls — the fetched items already carry modelVersions.
+    if only_updates and items:
+        _updated, _outdated = version_match(files, {'items': items})
+        outdated_ids = set()
+        for entry in _outdated:
+            try:
+                outdated_ids.add(int(str(entry[0]).replace('&ids=', '')))
+            except (ValueError, TypeError, IndexError):
+                pass
+        items = [it for it in items if it.get('id') in outdated_ids]
+        if not items:
+            gl.json_data = {'items': [], 'metadata': {}}
+            return gr.update(value='<div style="font-size: 24px; text-align: center; margin: 50px;">All loaded models are up to date 🎉</div>')
 
     # Publish to gl.json_data so the detail panel can resolve clicked cards.
     gl.json_data = {'items': items, 'metadata': {}}

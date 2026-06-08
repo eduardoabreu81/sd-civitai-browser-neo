@@ -467,7 +467,8 @@ def on_ui_tabs():
                 local_search = gr.Textbox(label='', placeholder='Filter local models by name', elem_id='localSearchBox')
                 local_load_btn = gr.Button(value='📋 Load local models', elem_id='localLoadBtn', variant='primary')
             with gr.Row():
-                local_size_slider = gr.Slider(label='Tile size:', minimum=8, maximum=20, value=12, step=0.25, elem_id='localSizeSlider')
+                local_size_slider = gr.Slider(label='Tile size:', minimum=8, maximum=20, value=12, step=0.25, elem_id='localSizeSlider', scale=4)
+                local_only_updates = gr.Checkbox(label='⬆️ Only models with updates', value=False, elem_id='localOnlyUpdates', scale=1, min_width=220)
 
             # ── Card grid ──
             with gr.Row():
@@ -475,7 +476,8 @@ def on_ui_tabs():
 
             # Batch action: update the models checked on outdated cards (reuses update_selected pipeline)
             with gr.Row():
-                local_update_selected_btn = gr.Button(value='⬆️ Update selected', elem_id='localUpdateSelectedBtn')
+                local_update_mode = gr.Radio(choices=['Replace installed', 'Keep installed (download alongside)'], value='Replace installed', label='When updating:', elem_id='localUpdateMode', scale=2)
+                local_update_selected_btn = gr.Button(value='⬆️ Update selected', elem_id='localUpdateSelectedBtn', scale=1)
             # Live download progress mirrored from #DownloadProgress (so updates started here
             # are visible without leaving the tab). Pure JS target — no Python binding.
             with gr.Row():
@@ -999,7 +1001,7 @@ def on_ui_tabs():
         ]
         local_render_inputs = [
             local_content_type, local_base_filter, local_use_search,
-            local_search, local_tile_count, local_nsfw
+            local_search, local_tile_count, local_nsfw, local_only_updates
         ]
 
         # The Organization tab's "Content types to scan" (selected_tags) is the single visible
@@ -1028,6 +1030,13 @@ def on_ui_tabs():
             show_progress='full'
         ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
         local_search.submit(
+            fn=_file.render_local_browser,
+            inputs=local_render_inputs,
+            outputs=[local_list_html],
+            show_progress='full'
+        ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
+        # Toggling "Only models with updates" re-renders the grid with the same filters.
+        local_only_updates.change(
             fn=_file.render_local_browser,
             inputs=local_render_inputs,
             outputs=[local_list_html],
@@ -1802,7 +1811,7 @@ def on_ui_tabs():
 
         update_single_trigger.change(
             fn=_download.download_single_update,
-            inputs=[update_single_trigger, download_start, create_json, download_manager_html],
+            inputs=[update_single_trigger, download_start, create_json, download_manager_html, local_update_mode],
             outputs=[
                 download_model,
                 cancel_model,
@@ -1816,7 +1825,7 @@ def on_ui_tabs():
 
         update_selected_trigger.change(
             fn=_download.update_selected_models,
-            inputs=[update_selected_trigger, download_start, create_json, download_manager_html],
+            inputs=[update_selected_trigger, download_start, create_json, download_manager_html, local_update_mode],
             outputs=[
                 download_model,
                 cancel_model,
