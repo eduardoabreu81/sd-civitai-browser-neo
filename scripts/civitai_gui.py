@@ -469,30 +469,6 @@ def on_ui_tabs():
             with gr.Row():
                 local_size_slider = gr.Slider(label='Tile size:', minimum=8, maximum=20, value=12, step=0.25, elem_id='localSizeSlider')
 
-            # ── Card grid ──
-            with gr.Row():
-                local_list_html = gr.HTML(value='<div style="font-size: 24px; text-align: center; margin: 50px;">Click "Load local models" to list your installed models.</div>', elem_id='local_list_html')
-
-            # Batch action: update the models checked on outdated cards (reuses update_selected pipeline)
-            with gr.Row():
-                local_update_selected_btn = gr.Button(value='⬆️ Update selected', elem_id='localUpdateSelectedBtn')
-
-            # ── Detail panel for the selected card ──
-            with gr.Row():
-                local_base_model = gr.Textbox(label='Base model:', interactive=False, lines=1)
-                local_version = gr.Dropdown(label='Version:', choices=[], interactive=False, value=None)
-                local_filename = gr.Textbox(label='Model filename:', interactive=False)
-            with gr.Row():
-                local_trained_tags = gr.Textbox(label='Trained tags (if any):', value=None, interactive=False, lines=1, scale=6)
-                local_send_tags_btn = gr.Button(value='➕ Add to prompt', scale=1, min_width=120, interactive=False, visible=False)
-            with gr.Row():
-                local_new_name = gr.Textbox(label='New name (rename):', interactive=False, max_lines=1, scale=4)
-                local_rename_btn = gr.Button(value='✏️ Rename', interactive=False, scale=1)
-                local_update_btn = gr.Button(value='⬆️ Update to latest', interactive=False, scale=1)
-                local_delete_btn = gr.Button(value='🗑️ Delete', interactive=False, variant='stop', scale=1)
-            with gr.Row():
-                local_preview_html = gr.HTML(elem_id='local_preview_html')
-
             # ── Maintenance: bulk tools (organize by base model, validate, load-to-browser) ──
             with gr.Accordion(label='🔧 Maintenance & Updates', open=False):
                 # ── Update from CivitAI (moved here from the old Update Models tab) ──
@@ -585,6 +561,30 @@ def on_ui_tabs():
                     undo_fix_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
 
                 validate_plan_state = gr.State(value='{}')
+
+            # ── Card grid ──
+            with gr.Row():
+                local_list_html = gr.HTML(value='<div style="font-size: 24px; text-align: center; margin: 50px;">Click "Load local models" to list your installed models.</div>', elem_id='local_list_html')
+
+            # Batch action: update the models checked on outdated cards (reuses update_selected pipeline)
+            with gr.Row():
+                local_update_selected_btn = gr.Button(value='⬆️ Update selected', elem_id='localUpdateSelectedBtn')
+
+            # ── Detail panel for the selected card ──
+            with gr.Row():
+                local_base_model = gr.Textbox(label='Base model:', interactive=False, lines=1)
+                local_version = gr.Dropdown(label='Version:', choices=[], interactive=False, value=None)
+                local_filename = gr.Textbox(label='Model filename:', interactive=False)
+            with gr.Row():
+                local_trained_tags = gr.Textbox(label='Trained tags (if any):', value=None, interactive=False, lines=1, scale=6)
+                local_send_tags_btn = gr.Button(value='➕ Add to prompt', scale=1, min_width=120, interactive=False, visible=False)
+            with gr.Row():
+                local_new_name = gr.Textbox(label='New name (rename):', interactive=False, max_lines=1, scale=4)
+                local_rename_btn = gr.Button(value='✏️ Rename', interactive=False, scale=1)
+                local_update_btn = gr.Button(value='⬆️ Update to latest', interactive=False, scale=1)
+                local_delete_btn = gr.Button(value='🗑️ Delete', interactive=False, variant='stop', scale=1)
+            with gr.Row():
+                local_preview_html = gr.HTML(elem_id='local_preview_html')
 
         ## Dashboard Tab
         with gr.Tab(label='Dashboard', elem_id='dashboardTab'):
