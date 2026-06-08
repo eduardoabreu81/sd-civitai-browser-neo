@@ -548,18 +548,26 @@ def download_single_update(trigger_value, download_start, create_json, current_h
         # Try without family match (no-family models)
         matched = [i for i in gl.update_items if i['model_id'] == model_id_int]
 
-    if not matched:
-        html = download_manager_html(current_html)
-        return (
-            gr.update(interactive=False, visible=False),
-            gr.update(interactive=False, visible=False),
-            gr.update(interactive=False, visible=False),
-            gr.update(value=download_start),
-            gr.update(value='<div style="min-height: 100px;"></div>'),
-            gr.update(value=html)
-        )
-
-    model_list_json = _build_model_list_for_update(matched[:1])
+    if matched:
+        model_list_json = _build_model_list_for_update(matched[:1])
+    else:
+        # No prior "Scan for updates" (the Local Models flow): resolve the model straight
+        # from gl.json_data, which render_local_browser populated with full modelVersions.
+        # selected_to_queue then auto-resolves the newest version per installed family.
+        item = next((it for it in gl.json_data.get('items', [])
+                     if str(it.get('id')) == str(model_id_int)), None)
+        if not item:
+            html = download_manager_html(current_html)
+            return (
+                gr.update(interactive=False, visible=False),
+                gr.update(interactive=False, visible=False),
+                gr.update(interactive=False, visible=False),
+                gr.update(value=download_start),
+                gr.update(value='<div style="min-height: 100px;"></div>'),
+                gr.update(value=html)
+            )
+        model_name = item.get('name') or f'Model {model_id_int}'
+        model_list_json = json.dumps([f"{model_name} ({model_id_int})"])
 
     # If user selected specific versions (revamp), pass them to selected_to_queue
     forced_version_ids = None

@@ -1045,6 +1045,63 @@ function _createWorkerInterval(callback, ms) {
     return worker;
 }
 
+// Mirror the live #DownloadProgress bar into the Local Models tab, so updates started
+// from there (Update to latest / Update selected) show progress without switching tabs.
+function setLocalDownloadProgressBar(attempt) {
+    attempt = attempt || 0;
+    const target = document.querySelector('#local_download_progress');
+    if (!target) return;
+
+    // Wait until the native progress bar exists (download starts async), then mirror it.
+    // Give up after ~10s so an update that queues nothing (already on latest) doesn't
+    // leave a retry loop running forever.
+    const container0 = document.querySelector('#DownloadProgress');
+    const bar0 = container0 && container0.querySelector('.progress-bar');
+    if (!bar0 || !bar0.style.width) {
+        if (attempt < 20) {
+            setTimeout(() => setLocalDownloadProgressBar(attempt + 1), 500);
+        }
+        return;
+    }
+
+    const render = (pct, label, state) => {
+        const colour = state === 'failed' ? '#b54a4a' : (state === 'done' ? '#3a8f4f' : '#3b6fb5');
+        target.innerHTML =
+            '<div style="margin:6px 0;">' +
+              '<div style="font-size:12px;opacity:.8;margin-bottom:3px;">' + (label || '') + '</div>' +
+              '<div style="background:#2a2a2a;border-radius:6px;overflow:hidden;height:20px;">' +
+                '<div style="height:100%;width:' + pct + '%;background:' + colour + ';' +
+                'transition:width .2s;text-align:center;color:#fff;font-size:12px;line-height:20px;">' +
+                  pct.toFixed(1) + '%' +
+                '</div>' +
+              '</div>' +
+            '</div>';
+    };
+
+    const worker = _createWorkerInterval(() => {
+        const container = document.querySelector('#DownloadProgress');
+        if (!container) { return; } // user switched tab / not in DOM
+        const bar = container.querySelector('.progress-bar');
+        const innerEl = container.querySelector('.progress-level-inner');
+        if (!bar || !bar.style.width) { return; }
+        const pct = parseFloat(bar.style.width) || 0;
+        const label = innerEl ? innerEl.innerText : '';
+
+        if (/Encountered an error during download of|not found on CivitAI servers|requires a personal CivitAI API/.test(label)) {
+            render(0, 'Download failed', 'failed');
+            worker.stop();
+            return;
+        }
+        if (pct >= 100) {
+            render(100, 'Completed', 'done');
+            worker.stop();
+            setTimeout(() => { if (target) target.innerHTML = '<div style="min-height:0px;"></div>'; }, 4000);
+            return;
+        }
+        render(pct, label, 'active');
+    }, 300);
+}
+
 function setDownloadProgressBar() {
     const gradio_html = gradioApp().querySelector('#queue_html_input textarea');
     let browserContainer = document.querySelector('#DownloadProgress');

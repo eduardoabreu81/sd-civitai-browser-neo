@@ -476,6 +476,10 @@ def on_ui_tabs():
             # Batch action: update the models checked on outdated cards (reuses update_selected pipeline)
             with gr.Row():
                 local_update_selected_btn = gr.Button(value='⬆️ Update selected', elem_id='localUpdateSelectedBtn')
+            # Live download progress mirrored from #DownloadProgress (so updates started here
+            # are visible without leaving the tab). Pure JS target — no Python binding.
+            with gr.Row():
+                local_download_progress = gr.HTML(value='<div style="min-height: 0px;"></div>', elem_id='local_download_progress')
 
             # ── Detail panel for the selected card ──
             with gr.Row():
@@ -1235,6 +1239,7 @@ def on_ui_tabs():
 
         for component in [download_start, queue_trigger]:
             component.change(fn=None, _js='() => setDownloadProgressBar()')
+            component.change(fn=None, _js='() => setLocalDownloadProgressBar()')
             component.change(
                 fn=_download.download_create_thread,
                 inputs=[download_finish, queue_trigger],
