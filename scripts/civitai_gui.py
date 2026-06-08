@@ -1254,8 +1254,7 @@ def on_ui_tabs():
                     download_progress,
                     current_model,
                     download_finish,
-                    queue_trigger,
-                    update_mode_banner
+                    queue_trigger
                 ],
                 show_progress='hidden'
             )
