@@ -287,6 +287,10 @@ function updateCard(modelNameWithSuffix, allowRefresh = true) {
     if (hideInstalledToggle) {
         hideInstalled(hideInstalledToggle.checked);
     }
+
+    // A card whose status just changed (e.g. outdated -> installed after an update) must be
+    // re-evaluated against the Local "Only models with updates" view filter.
+    filterLocalOutdated();
 }
 
 // === VIDEO HOVER-TO-PLAY ===
@@ -1092,24 +1096,41 @@ function setLocalDownloadProgressBar(attempt) {
             '</div>';
     };
 
+    const clearSoon = () => setTimeout(() => {
+        const t = document.querySelector('#local_download_progress');
+        if (t) t.innerHTML = '<div style="min-height:0px;"></div>';
+    }, 3000);
+
+    let sawProgress = false;
     const worker = _createWorkerInterval(() => {
         const container = document.querySelector('#DownloadProgress');
-        if (!container) { return; } // user switched tab / not in DOM
-        const bar = container.querySelector('.progress-bar');
-        const innerEl = container.querySelector('.progress-level-inner');
-        if (!bar || !bar.style.width) { return; }
+        const bar = container && container.querySelector('.progress-bar');
+        const innerEl = container && container.querySelector('.progress-level-inner');
+        if (!bar || !bar.style.width) {
+            // Native bar gone/reset. If we'd already shown progress, the download finished
+            // (Gradio clears #DownloadProgress on completion) — finalize so the bar doesn't
+            // stay stuck at the last percentage.
+            if (sawProgress) {
+                render(100, 'Completed', 'done');
+                worker.stop();
+                clearSoon();
+            }
+            return;
+        }
         const pct = parseFloat(bar.style.width) || 0;
         const label = innerEl ? innerEl.innerText : '';
+        sawProgress = true;
 
         if (/Encountered an error during download of|not found on CivitAI servers|requires a personal CivitAI API/.test(label)) {
             render(0, 'Download failed', 'failed');
             worker.stop();
+            clearSoon();
             return;
         }
         if (pct >= 100) {
             render(100, 'Completed', 'done');
             worker.stop();
-            setTimeout(() => { if (target) target.innerHTML = '<div style="min-height:0px;"></div>'; }, 4000);
+            clearSoon();
             return;
         }
         render(pct, label, 'active');
@@ -1445,6 +1466,8 @@ function reapplyFilters() {
     if (hideBannedToggle && bannedListInput) {
         refreshBannedCreators(bannedListInput.value, hideBannedToggle.checked);
     }
+
+    filterLocalOutdated();
 }
 
 // Toggle description visibility
