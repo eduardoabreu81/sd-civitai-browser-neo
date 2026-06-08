@@ -1440,11 +1440,15 @@ def on_ui_tabs():
         # here because it needs refresh_inputs/page_outputs. Guarded so it only runs
         # in a Browser-search context — after a Local update gl.url_list is a local
         # sentinel (not http), so we skip it to avoid clobbering the Browser grid.
-        def _post_download_page_refresh(*args):
+        def _post_download_page_refresh(content_type, sort_type, period_type, use_search_term,
+                                        search_term, current_page, base_filter, only_liked,
+                                        nsfw, exact_search, tile_count):
             url1 = gl.url_list.get(1) if isinstance(gl.url_list, dict) else None
             if not (isinstance(url1, str) and url1.startswith('http')):
                 return tuple(gr.update() for _ in page_outputs)
-            return _api.initial_model_page(*args, from_update_tab=True)
+            return _api.initial_model_page(content_type, sort_type, period_type, use_search_term,
+                                           search_term, current_page, base_filter, only_liked,
+                                           nsfw, exact_search, tile_count, from_update_tab=True)
 
         _download_finish_event.then(
             fn=_post_download_page_refresh,
