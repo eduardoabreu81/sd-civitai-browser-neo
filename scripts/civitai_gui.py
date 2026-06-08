@@ -1001,7 +1001,7 @@ def on_ui_tabs():
         ]
         local_render_inputs = [
             local_content_type, local_base_filter, local_use_search,
-            local_search, local_tile_count, local_nsfw, local_only_updates
+            local_search, local_tile_count, local_nsfw
         ]
 
         # The Organization tab's "Content types to scan" (selected_tags) is the single visible
@@ -1028,25 +1028,24 @@ def on_ui_tabs():
             inputs=local_render_inputs,
             outputs=[local_list_html],
             show_progress='full'
-        ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
+        ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)'
+        ).then(fn=None, _js='() => filterLocalOutdated()')
         local_search.submit(
             fn=_file.render_local_browser,
             inputs=local_render_inputs,
             outputs=[local_list_html],
             show_progress='full'
-        ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
-        # Toggling "Only models with updates" re-renders the grid with the same filters.
-        local_only_updates.change(
-            fn=_file.render_local_browser,
-            inputs=local_render_inputs,
-            outputs=[local_list_html],
-            show_progress='full'
-        ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
+        ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)'
+        ).then(fn=None, _js='() => filterLocalOutdated()')
+        # "Only models with updates" is a pure client-side view filter over the already-loaded
+        # cards (no re-scan): show only cards the grid already marked civmodelcardoutdated.
+        local_only_updates.change(fn=None, _js='() => filterLocalOutdated()')
 
         # Action-triggered refreshes still flow through the hidden input → visible grid,
         # then size the tiles (mirrors the Browser list_html_input pattern).
         local_list_html_input.change(fn=HTMLChange, inputs=[local_list_html_input], outputs=local_list_html)
         local_list_html_input.change(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
+        local_list_html_input.change(fn=None, _js='() => filterLocalOutdated()')
         local_size_slider.change(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
 
         # Card click → detail panel

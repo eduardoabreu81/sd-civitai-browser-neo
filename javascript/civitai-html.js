@@ -1045,6 +1045,20 @@ function _createWorkerInterval(callback, ms) {
     return worker;
 }
 
+// "Only models with updates" view filter on the Local Models grid. Pure client-side:
+// hides every card the grid did NOT mark as outdated. Re-applied after each render so it
+// works both as a pre-filter (checked before Load) and a post-filter (toggled after Load).
+function filterLocalOutdated() {
+    const cb = document.querySelector('#localOnlyUpdates input[type="checkbox"]');
+    const onlyOutdated = cb ? cb.checked : false;
+    const grid = document.querySelector('#local_list_html');
+    if (!grid) return;
+    grid.querySelectorAll('figure.civmodelcard').forEach(card => {
+        const isOutdated = card.classList.contains('civmodelcardoutdated');
+        card.style.display = (onlyOutdated && !isOutdated) ? 'none' : '';
+    });
+}
+
 // Mirror the live #DownloadProgress bar into the Local Models tab, so updates started
 // from there (Update to latest / Update selected) show progress without switching tabs.
 function setLocalDownloadProgressBar(attempt) {
