@@ -1052,8 +1052,7 @@ def on_ui_tabs():
                     download_finish,
                     queue_trigger,
                     update_mode_banner
-                ],
-                show_progress='hidden'
+                ]
             )
 
         _download_finish_event = download_finish.change(
