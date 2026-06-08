@@ -1048,18 +1048,21 @@ def on_ui_tabs():
         local_list_html_input.change(fn=None, _js='() => filterLocalOutdated()')
         local_size_slider.change(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
 
-        # Card click → detail panel
+        # Card click → detail panel. show_progress='hidden' so Gradio doesn't briefly reveal
+        # the visible=False outputs (e.g. "Add to prompt") just to show a loading spinner.
         local_model_select.change(
             fn=update_local_model_info,
             inputs=[local_model_select],
-            outputs=local_detail_outputs
+            outputs=local_detail_outputs,
+            show_progress='hidden'
         )
 
         # Version dropdown change → refresh panel for the chosen version
         local_version.select(
             fn=update_local_version,
             inputs=[local_model_string, local_version],
-            outputs=local_detail_outputs
+            outputs=local_detail_outputs,
+            show_progress='hidden'
         )
 
         # Rename → refresh grid (spinner over the grid during the re-scan)
