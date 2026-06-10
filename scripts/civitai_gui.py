@@ -959,6 +959,14 @@ def on_ui_tabs():
             except (TypeError, ValueError):
                 is_local_only = False
 
+            # Partial items (recovered via /model-versions/by-hash because the /models
+            # endpoint 500s on them) only carry the installed version — "Update to latest"
+            # would re-download that same version (and delete the file first in Replace
+            # mode), so updating must stay disabled for them.
+            _items = gl.json_data.get('items', []) if isinstance(gl.json_data, dict) else []
+            _item = next((it for it in _items if str(it.get('id')) == str(model_id)), None)
+            is_partial = bool(_item and _item.get('partial'))
+
             version_out = (model_versions if model_versions else gr.update()) if set_version else gr.update()
 
             return (
@@ -971,7 +979,7 @@ def on_ui_tabs():
                 gr.update(value=base_name, interactive=True),           # local_new_name
                 gr.update(interactive=True),                            # local_rename_btn
                 gr.update(interactive=True),                            # local_delete_btn
-                gr.update(interactive=not is_local_only),               # local_update_btn (CivitAI only)
+                gr.update(interactive=not is_local_only and not is_partial),  # local_update_btn (CivitAI, full data only)
                 tags_u,                                                 # local_trained_tags
                 gr.update(interactive=has_tags, visible=has_tags),      # local_send_tags_btn
                 gr.update(value=model_string),                          # local_model_string
@@ -1103,12 +1111,12 @@ def on_ui_tabs():
         # Batch update of checked (outdated) cards → reuses the update_selected pipeline
         local_update_selected_btn.click(fn=None, _js="() => { setCivDownloadOrigin('local'); updateSelectedLocalModels(); }")
 
-        # Clear results (keep the filter inputs) → reset the grid + detail panel to placeholders
+        # Clear results (keep the filter inputs) → reset the grid + the whole detail panel
         _local_grid_placeholder = '<div style="font-size: 24px; text-align: center; margin: 50px;">Click "Load local models" to list your installed models.</div>'
         local_clear_btn.click(
-            fn=lambda: (gr.update(value=_local_grid_placeholder), gr.update(value='')),
+            fn=lambda: (gr.update(value=_local_grid_placeholder),) + _local_empty,
             inputs=[],
-            outputs=[local_list_html, local_preview_html],
+            outputs=[local_list_html] + local_detail_outputs,
             show_progress='hidden'
         )
 
@@ -1262,12 +1270,19 @@ def on_ui_tabs():
             show_progress='hidden'
         )
 
-        # Clear results (keep the filter inputs) → reset the card grid + preview to placeholders
+        # Clear results (keep the filter inputs) → reset grid, preview and the model/version/file
+        # dropdowns so no stale selection survives the clear.
         _browser_grid_placeholder = '<div style="font-size: 24px; text-align: center; margin: 50px;">Click the search icon to load models.<br>Use the filter icon to filter results.</div>'
         clear_results.click(
-            fn=lambda: (gr.update(value=_browser_grid_placeholder), gr.update(value='')),
+            fn=lambda: (
+                gr.update(value=_browser_grid_placeholder),
+                gr.update(value=''),
+                gr.update(choices=[], value=None, interactive=False),
+                gr.update(choices=[], value=None, interactive=False),
+                gr.update(choices=[], value=None, interactive=False),
+            ),
             inputs=[],
-            outputs=[list_html, preview_html],
+            outputs=[list_html, preview_html, list_models, list_versions, file_list],
             show_progress='hidden'
         )
 

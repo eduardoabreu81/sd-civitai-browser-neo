@@ -2508,17 +2508,32 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
             yield lst[i:i + n]
 
     if not from_installed:
-        model_chunks = list(chunks(all_model_ids, 500))
+        # Chunks of 100 ids (one page each). Kept small because a single huge model
+        # (e.g. RealDream, id 153568) makes the /models endpoint 500 on ANY batch that
+        # contains it. A failed batch is retried one id at a time below, so one broken
+        # model no longer silently drops every other model in its chunk from the scan.
+        model_chunks = list(chunks(all_model_ids, 100))
 
         base_url = f"https://{_api.get_civitai_domain()}/api/v1/models?limit=100&nsfw=true"
-        url_list = [f"{base_url}{''.join(chunk)}" for chunk in model_chunks]
 
-        url_count = len(all_model_ids) // 100
-        if len(all_model_ids) % 100 != 0:
-            url_count += 1
+        def fetch_chunk_per_id(chunk_ids):
+            rescued = []
+            for id_param in chunk_ids:
+                try:
+                    single = requests.get(f"{base_url}{id_param}", timeout=(60, 30), proxies=proxies, verify=ssl)
+                    if single.status_code == 200:
+                        rescued.extend(single.json().get('items', []))
+                    else:
+                        debug_print(f"{id_param.replace('&ids=', 'id ')}: HTTP {single.status_code} (skipped)")
+                except Exception as e:
+                    debug_print(f"{id_param.replace('&ids=', 'id ')}: {type(e).__name__} (skipped)")
+            return rescued
+
+        url_count = len(model_chunks)
         url_done = 0
         api_response = {}
-        for url in url_list:
+        for chunk in model_chunks:
+            url = f"{base_url}{''.join(chunk)}"
             while url:
                 try:
                     if progress != None:
@@ -2538,10 +2553,13 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
                         )
                     else:
                         print(f"Error: Received status code {response.status_code} with URL: {url}")
+                        print('Retrying this batch one model at a time (a single broken model can fail a whole batch)...')
+                        all_items.extend(fetch_chunk_per_id(chunk))
                         url = None
                     url_done += 1
                 except requests.exceptions.Timeout:
-                    print(f"Request timed out for {url}. Skipping...")
+                    print(f"Request timed out for {url}. Retrying this batch one model at a time...")
+                    all_items.extend(fetch_chunk_per_id(chunk))
                     url = None
                 except requests.exceptions.ConnectionError:
                     print('Failed to connect to the API. The servers might be offline.')
@@ -4904,6 +4922,10 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
                                     'description': v.get('description') or '',
                                     'creator': {'username': 'CivitAI'},
                                     'tags': [],
+                                    # Only the installed version is known (the /models endpoint 500s
+                                    # for this model) — updating is unsafe: it would "update" to the
+                                    # installed version itself. Consumers must not offer updates.
+                                    'partial': True,
                                     'modelVersions': [v],
                                 }
                         else:

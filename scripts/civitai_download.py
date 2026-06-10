@@ -568,6 +568,11 @@ def download_single_update(trigger_value, download_start, create_json, current_h
         # selected_to_queue then auto-resolves the newest version per installed family.
         item = next((it for it in gl.json_data.get('items', [])
                      if str(it.get('id')) == str(model_id_int)), None)
+        # 'partial' items only carry the installed version (recovered via by-hash) —
+        # "updating" them would re-download the installed version itself. Refuse.
+        if item and item.get('partial'):
+            print(f"Model {model_id_int} has no full version list (recovered card) — update skipped.")
+            item = None
         if not item:
             html = download_manager_html(current_html)
             return (
