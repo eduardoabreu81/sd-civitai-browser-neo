@@ -2198,6 +2198,13 @@ def get_headers(referer=None, no_api=None):
     return headers
 
 def request_civit_api(api_url=None, skip_error_check=False):
+    # TEMP DIAGNOSTIC: pinpoint who issues a batched multi-ids request (the source of
+    # the civitai.red HTTP 500). Remove once the offending caller is fixed.
+    if api_url and api_url.count('ids=') > 1:
+        import traceback
+        print('[CivitAI Neo][DEBUG] batched multi-ids request — call stack:\n'
+              + ''.join(traceback.format_stack()[-7:-1]))
+
     headers = get_headers()
     proxies, ssl = get_proxies()
     max_attempts = 3
