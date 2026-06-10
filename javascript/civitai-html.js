@@ -1063,10 +1063,32 @@ function filterLocalOutdated() {
     });
 }
 
+// Records which tab started the current download so the Browser and Local progress
+// bars stay independent: a download started in one tab must NOT light up the bar in
+// the other when you switch tabs mid-download. The single global queue is unchanged;
+// this only gates the *visual* mirroring. Sets a body class so CSS can hide the
+// Browser's native #DownloadProgress for Local-originated downloads.
+// Default origin so restore-on-load / Browser downloads are never mistaken for Local.
+window.civDownloadOrigin = window.civDownloadOrigin || 'browser';
+function setCivDownloadOrigin(origin) {
+    window.civDownloadOrigin = origin;
+    const b = document.body;
+    if (!b) return;
+    b.classList.toggle('civ-dl-origin-local', origin === 'local');
+    b.classList.toggle('civ-dl-origin-browser', origin === 'browser');
+}
+
 // Mirror the live #DownloadProgress bar into the Local Models tab, so updates started
 // from there (Update to latest / Update selected) show progress without switching tabs.
 function setLocalDownloadProgressBar(attempt) {
     attempt = attempt || 0;
+    // Only mirror downloads that were started from the Local tab. A Browser-originated
+    // download must not appear here when the user switches over mid-download.
+    if (window.civDownloadOrigin !== 'local') {
+        const t = document.querySelector('#local_download_progress');
+        if (t) t.innerHTML = '<div style="min-height:0px;"></div>';
+        return;
+    }
     const target = document.querySelector('#local_download_progress');
     if (!target) return;
 

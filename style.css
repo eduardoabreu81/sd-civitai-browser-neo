@@ -1998,3 +1998,10 @@
     background: rgba(200, 180, 100, 0.2);
     color: #c8b464;
 }
+
+/* Keep download progress independent per tab: when a download was started from the
+   Local Models tab, don't let the Browser tab's native progress bar light up for it.
+   (The bar still drives the Queue tab via inline width, which display:none preserves.) */
+body.civ-dl-origin-local #DownloadProgress {
+    display: none !important;
+}

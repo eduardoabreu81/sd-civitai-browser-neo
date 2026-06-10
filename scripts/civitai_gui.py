@@ -365,6 +365,7 @@ def on_ui_tabs():
                     pass # Row used for button placement on mobile
             with gr.Row(elem_id='select_all_models_container'):
                 select_all = gr.Button(value='Select All', elem_id='select_all_models', visible=False)
+                clear_results = gr.Button(value='🧹 Clear results', elem_id='clear_results_btn', scale=0, min_width=130)
             with gr.Row():
                 gr.HTML(value=(
                     '<div class="card-legend">'
@@ -466,6 +467,7 @@ def on_ui_tabs():
                 local_base_filter = gr.Dropdown(label='Base model:', choices=get_base_models(), value=None, type='value', multiselect=True, elem_id='localBaseFilter')
                 local_search = gr.Textbox(label='', placeholder='Filter local models by name', elem_id='localSearchBox')
                 local_load_btn = gr.Button(value='📋 Load local models', elem_id='localLoadBtn', variant='primary')
+                local_clear_btn = gr.Button(value='🧹 Clear', elem_id='localClearBtn', scale=0, min_width=90)
             with gr.Row():
                 local_size_slider = gr.Slider(label='Tile size:', minimum=8, maximum=20, value=12, step=0.25, elem_id='localSizeSlider', scale=4)
                 local_only_updates = gr.Checkbox(label='⬆️ Only models with updates', value=False, elem_id='localOnlyUpdates', scale=1, min_width=220)
@@ -1091,6 +1093,7 @@ def on_ui_tabs():
         ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
 
         # Update → reuse the existing single-update pipeline via update_single_trigger
+        local_update_btn.click(fn=None, _js="() => setCivDownloadOrigin('local')")
         local_update_btn.click(
             fn=trigger_local_update,
             inputs=[local_model_id],
@@ -1098,7 +1101,16 @@ def on_ui_tabs():
         )
 
         # Batch update of checked (outdated) cards → reuses the update_selected pipeline
-        local_update_selected_btn.click(fn=None, _js='() => updateSelectedLocalModels()')
+        local_update_selected_btn.click(fn=None, _js="() => { setCivDownloadOrigin('local'); updateSelectedLocalModels(); }")
+
+        # Clear results (keep the filter inputs) → reset the grid + detail panel to placeholders
+        _local_grid_placeholder = '<div style="font-size: 24px; text-align: center; margin: 50px;">Click "Load local models" to list your installed models.</div>'
+        local_clear_btn.click(
+            fn=lambda: (gr.update(value=_local_grid_placeholder), gr.update(value='')),
+            inputs=[],
+            outputs=[local_list_html, local_preview_html],
+            show_progress='hidden'
+        )
 
         # Trained tags → txt2img prompt (reuses the Browser's sendTagsToPrompt)
         local_send_tags_btn.click(fn=None, inputs=[local_trained_tags], _js='(tags) => sendTagsToPrompt(tags)')
@@ -1203,6 +1215,7 @@ def on_ui_tabs():
             ]
         )
 
+        download_model.click(fn=None, _js="() => setCivDownloadOrigin('browser')")
         download_model.click(
             fn=_download.download_start,
             inputs=[
@@ -1228,6 +1241,7 @@ def on_ui_tabs():
             show_progress='hidden'
         )
 
+        download_selected.click(fn=None, _js="() => setCivDownloadOrigin('browser')")
         download_selected.click(
             fn=_download.selected_to_queue,
             inputs=[
@@ -1245,6 +1259,15 @@ def on_ui_tabs():
                 download_progress,
                 download_manager_html
             ],
+            show_progress='hidden'
+        )
+
+        # Clear results (keep the filter inputs) → reset the card grid + preview to placeholders
+        _browser_grid_placeholder = '<div style="font-size: 24px; text-align: center; margin: 50px;">Click the search icon to load models.<br>Use the filter icon to filter results.</div>'
+        clear_results.click(
+            fn=lambda: (gr.update(value=_browser_grid_placeholder), gr.update(value='')),
+            inputs=[],
+            outputs=[list_html, preview_html],
             show_progress='hidden'
         )
 

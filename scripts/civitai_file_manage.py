@@ -4805,19 +4805,27 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
         gl.json_data = {'items': [], 'metadata': {}}
         return gr.update(value=empty_msg)
 
-    # Fetch all resolvable models from CivitAI (chunks of 100 ids per request).
-    def _chunks(lst, n):
-        for i in range(0, len(lst), n):
-            yield lst[i:i + n]
-
+    # Fetch each resolvable model from CivitAI via the single-model endpoint.
+    # NOTE: the batched multi-ids endpoint (?ids=a&ids=b...) is rejected with HTTP 500
+    # by some CivitAI domains/mirrors (e.g. civitai.red), which is why the old "load
+    # installed" flow was unreliable. The /models/{id} endpoint is rock solid, so we
+    # fetch per-id (in parallel) and tolerate individual failures.
     items = []
     if all_ids:
-        base_url = f"https://{_api.get_civitai_domain()}/api/v1/models?limit=100&nsfw=true"
-        for chunk in _chunks(all_ids, 100):
-            api_url = base_url + ''.join(f'&ids={mid}' for mid in chunk)
-            resp = _api.request_civit_api(api_url)
-            if isinstance(resp, dict):
-                items.extend(resp.get('items', []))
+        from concurrent.futures import ThreadPoolExecutor
+
+        domain = _api.get_civitai_domain()
+
+        def _fetch_one(mid):
+            resp = _api.request_civit_api(f"https://{domain}/api/v1/models/{mid}")
+            if isinstance(resp, dict) and resp.get('id') is not None:
+                return resp
+            return None
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            for model in pool.map(_fetch_one, all_ids):
+                if model is not None:
+                    items.append(model)
 
     # Merge local-only fallback cards (not found on CivitAI)
     existing_ids = {it.get('id') for it in items}
