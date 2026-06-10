@@ -1063,12 +1063,11 @@ function filterLocalOutdated() {
     });
 }
 
-// Records which tab started the current download so the Browser and Local progress
-// bars stay independent: a download started in one tab must NOT light up the bar in
-// the other when you switch tabs mid-download. The single global queue is unchanged;
-// this only gates the *visual* mirroring. Sets a body class so CSS can hide the
-// Browser's native #DownloadProgress for Local-originated downloads.
-// Default origin so restore-on-load / Browser downloads are never mistaken for Local.
+// Per-tab download progress gating. Each queue item carries a dl_origin attribute
+// ('browser' | 'local'), written by Python when the item was enqueued. The origin of
+// the item that is DOWNLOADING NOW drives which tab shows progress — so queued items
+// from different tabs hand the bars over correctly, and clicking an update in one tab
+// can't hijack the bar of a download already running from the other.
 window.civDownloadOrigin = window.civDownloadOrigin || 'browser';
 function setCivDownloadOrigin(origin) {
     window.civDownloadOrigin = origin;
@@ -1078,17 +1077,19 @@ function setCivDownloadOrigin(origin) {
     b.classList.toggle('civ-dl-origin-browser', origin === 'browser');
 }
 
+// Origin of the queue item currently downloading (the active item sits in the
+// non-queue list while still having the civitai_dl_item class).
+function _currentDlOrigin() {
+    const list = document.getElementById('civitai_dl_list');
+    const item = list && (list.querySelector('.civitai_nonqueue_list .civitai_dl_item')
+                          || list.querySelector('.civitai_dl_item'));
+    return (item && item.getAttribute('dl_origin')) || 'browser';
+}
+
 // Mirror the live #DownloadProgress bar into the Local Models tab, so updates started
 // from there (Update to latest / Update selected) show progress without switching tabs.
 function setLocalDownloadProgressBar(attempt) {
     attempt = attempt || 0;
-    // Only mirror downloads that were started from the Local tab. A Browser-originated
-    // download must not appear here when the user switches over mid-download.
-    if (window.civDownloadOrigin !== 'local') {
-        const t = document.querySelector('#local_download_progress');
-        if (t) t.innerHTML = '<div style="min-height:0px;"></div>';
-        return;
-    }
     const target = document.querySelector('#local_download_progress');
     if (!target) return;
 
@@ -1101,6 +1102,13 @@ function setLocalDownloadProgressBar(attempt) {
         if (attempt < 20) {
             setTimeout(() => setLocalDownloadProgressBar(attempt + 1), 500);
         }
+        return;
+    }
+
+    // Only mirror downloads whose queue item originated in the Local tab. Checked after
+    // the bar exists so the item's dl_origin attribute is already in the DOM.
+    if (_currentDlOrigin() !== 'local') {
+        target.innerHTML = '<div style="min-height:0px;"></div>';
         return;
     }
 
@@ -1175,6 +1183,8 @@ function setDownloadProgressBar() {
     dlBtn.innerText = 'Cancel';
     dlBtn.setAttribute('onclick', 'cancelQueueDl()');
     let dlId = dlItem.getAttribute('dl_id');
+    // The starting item's origin decides which tab shows progress (CSS body class).
+    setCivDownloadOrigin(dlItem.getAttribute('dl_origin') || 'browser');
     let selector = '.civitai_dl_item[dl_id="' + parseInt(dlId) + '"]';
 
     let dlProgressBar = null;

@@ -4788,17 +4788,15 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
     Self-contained on purpose: it builds its OWN model data and does NOT go through
     initial_model_page / the Browser's gl.url_list / gl.previous_inputs state machine,
     so the Local grid is independent of the Browser tab (no cross-filtering, no stale
-    'list that no longer exists' after a download). It DOES set gl.json_data to the
-    local set so the detail panel (update_model_info) can resolve the clicked card.
+    'list that no longer exists' after a download). The result is published to
+    gl.local_json_data (separate from the Browser's gl.json_data) and the Local detail
+    panel resolves clicks against it via json_input.
 
     Filters: content_type (folders), search_term (by name), base_filter (by baseModel).
     All matching models are fetched (not just the first page). Files that resolve to a
     CivitAI model id render from the API; the rest show as local-only fallback cards
     with target='local' so clicks route to the Local tab's hidden selector.
     """
-    gl.update_mode = False
-    gl.from_update_tab = False
-
     debug_print(f"Local render — content_type={content_type} base={base_filter} "
                 f"search={search_term!r} ({use_search_term})")
 
@@ -4830,7 +4828,7 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
 
     empty_msg = '<div style="font-size: 24px; text-align: center; margin: 50px;">No local models found for the selected filters.<br>Use the Maintenance tools below to scan/enrich models first.</div>'
     if not all_ids and not fallback_items:
-        gl.json_data = {'items': [], 'metadata': {}}
+        gl.local_json_data = {'items': [], 'metadata': {}}
         return gr.update(value=empty_msg)
 
     # Fetch one model per request via the single-id listing query (/models?ids=N).
@@ -4845,7 +4843,12 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
 
         headers = _api.get_headers()
         proxies, ssl = _api.get_proxies()
-        test_domains = ['civitai.com', 'civitai.red']  # try .com first, .red as fallback
+        # civitai.com first (fastest, fewest 5xx in practice), then the user-configured
+        # domain as fallback (covers mirrors/region domains like civitai.red).
+        test_domains = ['civitai.com']
+        _configured = _api.get_civitai_domain()
+        if _configured and _configured not in test_domains:
+            test_domains.append(_configured)
 
         def _chunks(lst, n):
             for i in range(0, len(lst), n):
@@ -4968,9 +4971,9 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
         items = [it for it in items
                  if any((v.get('baseModel') or '').lower() in bf_lower for v in it.get('modelVersions', []))]
 
-    # Publish to gl.json_data so the detail panel can resolve clicked cards.
-    gl.json_data = {'items': items, 'metadata': {}}
-    gl.url_list = {1: 'local://'}
+    # Publish to gl.local_json_data (NOT gl.json_data) so the Local detail panel can
+    # resolve clicked cards without clobbering the Browser tab's dataset/pagination.
+    gl.local_json_data = {'items': items, 'metadata': {}}
 
     debug_print(f"Local — rendering {len(items)} card(s)"
                 + (f" after base-model filter {bf}" if bf else ""))
@@ -4978,7 +4981,7 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
     if not items:
         return gr.update(value=empty_msg)
 
-    html = _api.model_list_html(gl.json_data, target='local')
+    html = _api.model_list_html(gl.local_json_data, target='local')
     return gr.update(value=html)
 
 

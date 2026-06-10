@@ -158,7 +158,7 @@ elif os_type == 'Linux':
 class TimeOutFunction(Exception):
     pass
 
-def create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch=False, old_file_path=None, version_id=None):
+def create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch=False, old_file_path=None, version_id=None, origin='browser'):
     global dl_manager_count
     if model_id:
         model_id = int(model_id)
@@ -168,14 +168,19 @@ def create_model_item(dl_url, model_filename, install_path, model_name, version_
         model_sha256 = None
 
     filtered_items = []
+    main_folder = None
 
-    for item in gl.json_data['items']:
+    for item in _all_known_items():
         if int(item['id']) == int(model_id):
             filtered_items.append(item)
             content_type = item['type']
             desc = item['description']
             main_folder = _api.contenttype_folder(content_type, desc)
             break
+
+    if main_folder is None:
+        debug_print(f"create_model_item: model {model_id} not found in any tab dataset — skipped")
+        return None
 
     sub_folder = os.path.normpath(os.path.relpath(install_path, main_folder))
 
@@ -207,6 +212,7 @@ def create_model_item(dl_url, model_filename, install_path, model_name, version_
         'sub_folder': sub_folder,
         '_api_ready': False,
         'old_file_path': old_file_path,  # retention: path of old file being replaced (may differ from new filename)
+        'origin': origin,  # which tab started this download ('browser' | 'local') — drives per-tab progress bars
     }
 
     _dl_log.log_queued(item)
@@ -307,7 +313,18 @@ def _resolve_versions_to_download(versions_list, model_folder):
     return base_result if base_result else [versions_list[0]]
 
 
-def selected_to_queue(model_list, subfolder, download_start, create_json, current_html, forced_version_ids=None, keep_installed=False):
+def _all_known_items():
+    """Model items from both tab datasets — Browser (gl.json_data) first, then Local
+    Models (gl.local_json_data). The tabs keep separate datasets so one doesn't clobber
+    the other, but download/update flows may be fed from either."""
+    items = []
+    for data in (gl.json_data, getattr(gl, 'local_json_data', None)):
+        if isinstance(data, dict):
+            items.extend(data.get('items', []))
+    return items
+
+
+def selected_to_queue(model_list, subfolder, download_start, create_json, current_html, forced_version_ids=None, keep_installed=False, origin='browser'):
     """Enqueue models for download.
 
     Args:
@@ -316,6 +333,8 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
         keep_installed: When True, do NOT resolve/pass the old installed file path, so the
             currently-installed version is kept alongside the newly downloaded one
             (retention is skipped). Default False = replace the old version.
+        origin: which tab initiated the download ('browser' | 'local') — carried on each
+            queue item so the UI can show progress only in the originating tab.
     """
     global total_count, current_count
     if gl.download_queue:
@@ -329,10 +348,11 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
     skipped_names = []
 
     ## === ANXETY EDITs ===
+    known_items = _all_known_items()
     for model_string in model_list:
         model_name, model_id = _api.extract_model_info(model_string)
         item_found = None
-        for item in gl.json_data['items']:
+        for item in known_items:
             if int(item['id']) == int(model_id):
                 item_found = item
                 break
@@ -450,7 +470,7 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
                 if not old_file_path:
                     old_file_path = _file.find_installed_file_by_model_id(model_id, model_filename) or None
 
-            model_item = create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch, old_file_path=old_file_path, version_id=version_id)
+            model_item = create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch, old_file_path=old_file_path, version_id=version_id, origin=origin)
             if model_item:
                 gl.download_queue.append(model_item)
                 total_count += 1
@@ -502,7 +522,7 @@ def update_all_models(download_start, create_json, current_html, keep_installed=
             gr.update(value=html)
         )
     model_list_json = _build_model_list_for_update(items)
-    return selected_to_queue(model_list_json, None, download_start, create_json, current_html, keep_installed=keep_installed)
+    return selected_to_queue(model_list_json, None, download_start, create_json, current_html, keep_installed=keep_installed, origin='local')
 
 
 def _keep_from_mode(update_mode):
@@ -519,7 +539,7 @@ def update_selected_models(trigger_value, download_start, create_json, current_h
         return update_all_models(download_start, create_json, current_html, keep_installed=keep)
     if not model_list:
         return update_all_models(download_start, create_json, current_html, keep_installed=keep)
-    return selected_to_queue(json.dumps(model_list), None, download_start, create_json, current_html, keep_installed=keep)
+    return selected_to_queue(json.dumps(model_list), None, download_start, create_json, current_html, keep_installed=keep, origin='local')
 
 
 def download_single_update(trigger_value, download_start, create_json, current_html, update_mode='Replace installed'):
@@ -563,10 +583,10 @@ def download_single_update(trigger_value, download_start, create_json, current_h
     if matched:
         model_list_json = _build_model_list_for_update(matched[:1])
     else:
-        # No prior "Scan for updates" (the Local Models flow): resolve the model straight
-        # from gl.json_data, which render_local_browser populated with full modelVersions.
+        # No prior "Scan for updates" (the Local Models flow): resolve the model from
+        # either tab dataset (render_local_browser publishes to gl.local_json_data).
         # selected_to_queue then auto-resolves the newest version per installed family.
-        item = next((it for it in gl.json_data.get('items', [])
+        item = next((it for it in _all_known_items()
                      if str(it.get('id')) == str(model_id_int)), None)
         # 'partial' items only carry the installed version (recovered via by-hash) —
         # "updating" them would re-download the installed version itself. Refuse.
@@ -591,7 +611,7 @@ def download_single_update(trigger_value, download_start, create_json, current_h
     if selected_version_ids:
         forced_version_ids = {str(model_id_int): selected_version_ids}
 
-    return selected_to_queue(model_list_json, None, download_start, create_json, current_html, forced_version_ids=forced_version_ids, keep_installed=keep)
+    return selected_to_queue(model_list_json, None, download_start, create_json, current_html, forced_version_ids=forced_version_ids, keep_installed=keep, origin='local')
 
 
 def gr_progress_threadable():
@@ -1445,7 +1465,7 @@ def download_manager_html(current_html):
     for item in gl.download_queue:
         if item['dl_id'] not in existing_item_ids:
             download_item = (
-                f'<div class="civitai_dl_item" dl_id="{item["dl_id"]}" style="display: flex; font-size: var(--section-header-text-size);">'
+                f'<div class="civitai_dl_item" dl_id="{item["dl_id"]}" dl_origin="{item.get("origin") or "browser"}" style="display: flex; font-size: var(--section-header-text-size);">'
                 f'<div class="dl_name" style="{get_style(1, False)}"><span title="{item["model_name"]}">{item["model_name"]}</span></div>'
                 f'<div class="dl_ver" style="{get_style(0.75, True)}"><span title="{item["version_name"]}">{item["version_name"]}</span></div>'
                 f'<div class="dl_path" style="{get_style(1.5, True)}"><span title="{item["install_path"]}">{item["install_path"]}</span></div>'

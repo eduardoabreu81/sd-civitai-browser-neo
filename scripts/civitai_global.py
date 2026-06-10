@@ -26,11 +26,12 @@ def init():
     if not os.path.exists(config_folder):
         os.mkdir(config_folder)
 
-    global download_queue, last_version, cancel_status, recent_model, last_url, json_data, json_info, main_folder, previous_inputs, download_fail, sortNewest, isDownloading, scan_files, from_update_tab, url_list, print, subfolder_json, organization_backup_file, last_organization_backup, update_mode, update_items, local_browser_fallback_items
+    global download_queue, last_version, cancel_status, recent_model, last_url, json_data, local_json_data, json_info, main_folder, previous_inputs, download_fail, sortNewest, isDownloading, scan_files, from_update_tab, url_list, print, subfolder_json, organization_backup_file, last_organization_backup, update_mode, update_items, local_browser_fallback_items
 
     cancel_status = None
     recent_model = None
     json_data = None
+    local_json_data = None   # Local Models tab dataset — kept separate so the tabs don't clobber each other
     json_info = None
     main_folder = None
     previous_inputs = None

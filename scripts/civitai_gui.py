@@ -937,14 +937,16 @@ def on_ui_tabs():
         def _build_local_panel(model_string, model_version=None, set_version=True):
             """Build the Local detail-panel updates for a model/version.
             Reuses _api.update_model_info and routes its outputs to local_* components.
+            Resolves against gl.local_json_data (json_input) so the panel keeps working
+            no matter what the Browser tab loaded meanwhile.
             set_version=False keeps the version dropdown as-is (used on version switch)."""
-            if not model_string or not gl.json_data:
+            if not model_string or not gl.local_json_data:
                 return _local_empty
 
             model_name, model_id = _api.extract_model_info(model_string)
-            model_versions = _api.update_model_versions(model_id)
+            model_versions = _api.update_model_versions(model_id, json_input=gl.local_json_data)
             chosen = model_version or (model_versions.get('value') if model_versions else None)
-            info = _api.update_model_info(model_string, chosen)
+            info = _api.update_model_info(model_string, chosen, json_input=gl.local_json_data)
             (html, tags_u, base_model_u, _dl, _img, _del, _flist,
              model_filename_u, _url, model_id_u, current_sha256_u, _ip, _sf) = info
 
@@ -963,7 +965,7 @@ def on_ui_tabs():
             # endpoint 500s on them) only carry the installed version — "Update to latest"
             # would re-download that same version (and delete the file first in Replace
             # mode), so updating must stay disabled for them.
-            _items = gl.json_data.get('items', []) if isinstance(gl.json_data, dict) else []
+            _items = gl.local_json_data.get('items', []) if isinstance(gl.local_json_data, dict) else []
             _item = next((it for it in _items if str(it.get('id')) == str(model_id)), None)
             is_partial = bool(_item and _item.get('partial'))
 
@@ -1101,7 +1103,7 @@ def on_ui_tabs():
         ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
 
         # Update → reuse the existing single-update pipeline via update_single_trigger
-        local_update_btn.click(fn=None, _js="() => setCivDownloadOrigin('local')")
+        # (download origin is carried per queue item — dl_origin — not set at click time)
         local_update_btn.click(
             fn=trigger_local_update,
             inputs=[local_model_id],
@@ -1109,7 +1111,7 @@ def on_ui_tabs():
         )
 
         # Batch update of checked (outdated) cards → reuses the update_selected pipeline
-        local_update_selected_btn.click(fn=None, _js="() => { setCivDownloadOrigin('local'); updateSelectedLocalModels(); }")
+        local_update_selected_btn.click(fn=None, _js='() => updateSelectedLocalModels()')
 
         # Clear results (keep the filter inputs) → reset the grid + the whole detail panel
         _local_grid_placeholder = '<div style="font-size: 24px; text-align: center; margin: 50px;">Click "Load local models" to list your installed models.</div>'
@@ -1223,7 +1225,6 @@ def on_ui_tabs():
             ]
         )
 
-        download_model.click(fn=None, _js="() => setCivDownloadOrigin('browser')")
         download_model.click(
             fn=_download.download_start,
             inputs=[
@@ -1249,7 +1250,6 @@ def on_ui_tabs():
             show_progress='hidden'
         )
 
-        download_selected.click(fn=None, _js="() => setCivDownloadOrigin('browser')")
         download_selected.click(
             fn=_download.selected_to_queue,
             inputs=[
