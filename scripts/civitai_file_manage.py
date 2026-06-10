@@ -4794,13 +4794,16 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
     debug_print(f"Local — {len(files)} file(s) in {len(folders_to_check)} folder(s), resolving model IDs...")
 
     all_ids = []
+    id_to_paths = {}          # model_id -> [file_path, ...]  (to recover cards if the API fails)
     fallback_items = []
     for file_path in files:
         model_id = get_models(file_path, gen_hash=False)
         if model_id in (None, 'offline', 'Model not found'):
             fallback_items.append(_build_local_fallback_browser_item(file_path))
         else:
-            all_ids.append(int(model_id) if str(model_id).lstrip('-').isdigit() else model_id)
+            mid = int(model_id) if str(model_id).lstrip('-').isdigit() else model_id
+            all_ids.append(mid)
+            id_to_paths.setdefault(mid, []).append(file_path)
 
     all_ids = sorted(set(all_ids), key=lambda x: str(x))
     gl.local_browser_fallback_items = fallback_items
@@ -4824,71 +4827,107 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
 
         headers = _api.get_headers()
         proxies, ssl = _api.get_proxies()
-
-        # TEST: civitai.com first, civitai.red as fallback. Logs which domain answered.
-        test_domains = ['civitai.com', 'civitai.red']
+        test_domains = ['civitai.com', 'civitai.red']  # try .com first, .red as fallback
 
         def _chunks(lst, n):
             for i in range(0, len(lst), n):
                 yield lst[i:i + n]
 
-        # Fast path: ONE batched request per domain (all ids at once, 100/page).
-        # civitai.com supports the multi-ids query; civitai.red often 500s on it
-        # (and even on /models/{id}). Fall back to per-id only if batched gets nothing.
-        def _fetch_batched(dom):
-            collected = []
-            for chunk in _chunks(all_ids, 100):
+        def _get_items(url, read_to):
+            """GET -> (items_list, status_str). items_list is None only on error."""
+            try:
+                r = requests.get(url, headers=headers, timeout=(8, read_to), proxies=proxies, verify=ssl)
+                if r.status_code == 200:
+                    data = r.json()
+                    return (data.get('items') or []) if isinstance(data, dict) else [], '200'
+                return None, f'HTTP {r.status_code}'
+            except Exception as e:
+                return None, type(e).__name__
+
+        def _fetch_one(mid):
+            for dom in test_domains:
+                url = f"https://{dom}/api/v1/models?ids={mid}&nsfw=true"
+                debug_print(url)
+                res, status = _get_items(url, read_to=12)
+                if res:
+                    debug_print(f"  id={mid} [{dom}]: 200 OK")
+                    return res[0]
+                debug_print(f"  id={mid} [{dom}]: {status}")
+            return None
+
+        def _fetch_chunk(chunk):
+            # Fast path: one batched request for the chunk (per domain). A small chunk
+            # means one poisoning id (e.g. RealDream, which 500s the whole /models batch)
+            # only forces per-id for its own chunk, not the entire library.
+            for dom in test_domains:
                 url = (f"https://{dom}/api/v1/models?limit=100&nsfw=true"
                        + ''.join(f'&ids={i}' for i in chunk))
                 debug_print(url)
-                try:
-                    r = requests.get(url, headers=headers, timeout=(8, 40), proxies=proxies, verify=ssl)
-                    if r.status_code == 200:
-                        data = r.json()
-                        found = (data.get('items') or []) if isinstance(data, dict) else []
-                        debug_print(f"  batched [{dom}]: 200 OK, {len(found)} item(s)")
-                        collected.extend(found)
-                    else:
-                        debug_print(f"  batched [{dom}]: HTTP {r.status_code} — aborting this domain")
-                        return None
-                except Exception as e:
-                    debug_print(f"  batched [{dom}]: {type(e).__name__} — aborting this domain")
-                    return None
-            return collected
+                res, status = _get_items(url, read_to=30)
+                if res is not None:
+                    debug_print(f"  batched [{dom}] {len(chunk)} ids: 200 OK, {len(res)} item(s)")
+                    return res
+                debug_print(f"  batched [{dom}] {len(chunk)} ids: {status}")
+            # Batch poisoned -> per-id this chunk only.
+            out = []
+            for mid in chunk:
+                m = _fetch_one(mid)
+                if m is not None:
+                    out.append(m)
+            return out
 
-        for dom in test_domains:
-            got = _fetch_batched(dom)
-            if got:
-                items = got
-                break
-
-        # Resilient fallback: per-id across domains (only if batched failed everywhere).
-        if not items:
-            debug_print("Local — batched got nothing on all domains, falling back to per-id...")
-
-            def _fetch_one(mid):
+        def _recover_via_version(mid):
+            """Huge models (e.g. RealDream) 500 the /models endpoint but resolve fine via
+            /model-versions/by-hash. Build a card from the installed file's version so the
+            model stays visible with the right baseModel/name (update-check is skipped —
+            we only know the installed version, not the full list)."""
+            for fp in id_to_paths.get(mid, []):
+                jp = os.path.splitext(fp)[0] + '.json'
+                d = _api.safe_json_load(jp) if os.path.exists(jp) else None
+                sha = (str(d.get('sha256')).upper().strip() if d and d.get('sha256') else '')
+                if not sha:
+                    continue
                 for dom in test_domains:
-                    url = f"https://{dom}/api/v1/models?ids={mid}&nsfw=true"
+                    url = f"https://{dom}/api/v1/model-versions/by-hash/{sha}"
                     debug_print(url)
                     try:
-                        r = requests.get(url, headers=headers, timeout=(8, 20), proxies=proxies, verify=ssl)
+                        r = requests.get(url, headers=headers, timeout=(8, 15), proxies=proxies, verify=ssl)
                         if r.status_code == 200:
-                            data = r.json()
-                            found = (data.get('items') or []) if isinstance(data, dict) else []
-                            if found:
-                                debug_print(f"  id={mid} [{dom}]: 200 OK")
-                                return found[0]
-                            debug_print(f"  id={mid} [{dom}]: 200 but no items")
+                            v = r.json()
+                            if isinstance(v, dict) and v.get('id'):
+                                m = v.get('model') or {}
+                                debug_print(f"  id={mid}: recovered via /model-versions/by-hash [{dom}]")
+                                return {
+                                    'id': mid,
+                                    'name': m.get('name') or os.path.splitext(os.path.basename(fp))[0],
+                                    'type': m.get('type') or _detect_content_type_from_path(fp),
+                                    'description': v.get('description') or '',
+                                    'creator': {'username': 'CivitAI'},
+                                    'tags': [],
+                                    'modelVersions': [v],
+                                }
                         else:
-                            debug_print(f"  id={mid} [{dom}]: HTTP {r.status_code}")
+                            debug_print(f"  id={mid} by-hash [{dom}]: HTTP {r.status_code}")
                     except Exception as e:
-                        debug_print(f"  id={mid} [{dom}]: {type(e).__name__}")
-                return None
+                        debug_print(f"  id={mid} by-hash [{dom}]: {type(e).__name__}")
+            # Last resort: local-only card so the model never just disappears.
+            paths = id_to_paths.get(mid, [])
+            return _build_local_fallback_browser_item(paths[0]) if paths else None
 
+        chunk_list = list(_chunks(all_ids, 12))
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            for res in pool.map(_fetch_chunk, chunk_list):
+                items.extend(res)
+
+        # Recover ids that resolved to NO item (huge models that 500 /models, or 404s).
+        fetched_ids = {it.get('id') for it in items}
+        missing = [mid for mid in all_ids if mid not in fetched_ids]
+        if missing:
+            debug_print(f"Local — {len(missing)} model(s) failed /models, recovering via version endpoint...")
             with ThreadPoolExecutor(max_workers=8) as pool:
-                for model in pool.map(_fetch_one, all_ids):
-                    if model is not None:
-                        items.append(model)
+                for it in pool.map(_recover_via_version, missing):
+                    if it is not None:
+                        items.append(it)
 
     debug_print(f"Local — API done, {len(items)} model(s) fetched OK")
 
