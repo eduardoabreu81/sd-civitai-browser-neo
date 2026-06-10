@@ -4805,21 +4805,31 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
         gl.json_data = {'items': [], 'metadata': {}}
         return gr.update(value=empty_msg)
 
-    # Fetch each resolvable model from CivitAI via the single-model endpoint.
-    # NOTE: the batched multi-ids endpoint (?ids=a&ids=b...) is rejected with HTTP 500
-    # by some CivitAI domains/mirrors (e.g. civitai.red), which is why the old "load
-    # installed" flow was unreliable. The /models/{id} endpoint is rock solid, so we
-    # fetch per-id (in parallel) and tolerate individual failures.
+    # Fetch one model per request via the single-id listing query (/models?ids=N).
+    # NOTE on civitai.red (the "green"/SFW domain): BOTH the batched multi-ids query
+    # (?ids=a&ids=b...) AND the /models/{id} path-param form return HTTP 500. The single
+    # ?ids={id} listing form is the proven-reliable one (it's what the detail panel uses).
+    # Single attempt, no retry: a model that errors (e.g. moderated/taken-down -> 500) is
+    # skipped quietly instead of stalling the whole grid on backoff.
     items = []
     if all_ids:
         from concurrent.futures import ThreadPoolExecutor
 
         domain = _api.get_civitai_domain()
+        headers = _api.get_headers()
+        proxies, ssl = _api.get_proxies()
 
         def _fetch_one(mid):
-            resp = _api.request_civit_api(f"https://{domain}/api/v1/models/{mid}")
-            if isinstance(resp, dict) and resp.get('id') is not None:
-                return resp
+            url = f"https://{domain}/api/v1/models?ids={mid}&nsfw=true"
+            try:
+                r = requests.get(url, headers=headers, timeout=(30, 30), proxies=proxies, verify=ssl)
+                if r.status_code == 200:
+                    data = r.json()
+                    found = (data.get('items') or []) if isinstance(data, dict) else []
+                    if found:
+                        return found[0]
+            except Exception:
+                pass
             return None
 
         with ThreadPoolExecutor(max_workers=8) as pool:
