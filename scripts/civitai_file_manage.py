@@ -4822,26 +4822,31 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
     if all_ids:
         from concurrent.futures import ThreadPoolExecutor
 
-        domain = _api.get_civitai_domain()
         headers = _api.get_headers()
         proxies, ssl = _api.get_proxies()
 
+        # TEST: try civitai.com first, fall back to civitai.red. Logs which domain
+        # answered per id so we can compare reliability. Short timeout so a slow/dead
+        # domain fails fast instead of stalling the grid.
+        test_domains = ['civitai.com', 'civitai.red']
+
         def _fetch_one(mid):
-            url = f"https://{domain}/api/v1/models?ids={mid}&nsfw=true"
-            debug_print(url)
-            try:
-                r = requests.get(url, headers=headers, timeout=(30, 30), proxies=proxies, verify=ssl)
-                if r.status_code == 200:
-                    data = r.json()
-                    found = (data.get('items') or []) if isinstance(data, dict) else []
-                    if found:
-                        debug_print(f"  id={mid}: 200 OK")
-                        return found[0]
-                    debug_print(f"  id={mid}: 200 but no items (skipped)")
-                else:
-                    debug_print(f"  id={mid}: HTTP {r.status_code} (skipped)")
-            except Exception as e:
-                debug_print(f"  id={mid}: {type(e).__name__} (skipped)")
+            for dom in test_domains:
+                url = f"https://{dom}/api/v1/models?ids={mid}&nsfw=true"
+                debug_print(url)
+                try:
+                    r = requests.get(url, headers=headers, timeout=(8, 20), proxies=proxies, verify=ssl)
+                    if r.status_code == 200:
+                        data = r.json()
+                        found = (data.get('items') or []) if isinstance(data, dict) else []
+                        if found:
+                            debug_print(f"  id={mid} [{dom}]: 200 OK")
+                            return found[0]
+                        debug_print(f"  id={mid} [{dom}]: 200 but no items")
+                    else:
+                        debug_print(f"  id={mid} [{dom}]: HTTP {r.status_code}")
+                except Exception as e:
+                    debug_print(f"  id={mid} [{dom}]: {type(e).__name__}")
             return None
 
         with ThreadPoolExecutor(max_workers=8) as pool:
