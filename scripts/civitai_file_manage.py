@@ -4825,34 +4825,70 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
         headers = _api.get_headers()
         proxies, ssl = _api.get_proxies()
 
-        # TEST: try civitai.com first, fall back to civitai.red. Logs which domain
-        # answered per id so we can compare reliability. Short timeout so a slow/dead
-        # domain fails fast instead of stalling the grid.
+        # TEST: civitai.com first, civitai.red as fallback. Logs which domain answered.
         test_domains = ['civitai.com', 'civitai.red']
 
-        def _fetch_one(mid):
-            for dom in test_domains:
-                url = f"https://{dom}/api/v1/models?ids={mid}&nsfw=true"
+        def _chunks(lst, n):
+            for i in range(0, len(lst), n):
+                yield lst[i:i + n]
+
+        # Fast path: ONE batched request per domain (all ids at once, 100/page).
+        # civitai.com supports the multi-ids query; civitai.red often 500s on it
+        # (and even on /models/{id}). Fall back to per-id only if batched gets nothing.
+        def _fetch_batched(dom):
+            collected = []
+            for chunk in _chunks(all_ids, 100):
+                url = (f"https://{dom}/api/v1/models?limit=100&nsfw=true"
+                       + ''.join(f'&ids={i}' for i in chunk))
                 debug_print(url)
                 try:
-                    r = requests.get(url, headers=headers, timeout=(8, 20), proxies=proxies, verify=ssl)
+                    r = requests.get(url, headers=headers, timeout=(8, 40), proxies=proxies, verify=ssl)
                     if r.status_code == 200:
                         data = r.json()
                         found = (data.get('items') or []) if isinstance(data, dict) else []
-                        if found:
-                            debug_print(f"  id={mid} [{dom}]: 200 OK")
-                            return found[0]
-                        debug_print(f"  id={mid} [{dom}]: 200 but no items")
+                        debug_print(f"  batched [{dom}]: 200 OK, {len(found)} item(s)")
+                        collected.extend(found)
                     else:
-                        debug_print(f"  id={mid} [{dom}]: HTTP {r.status_code}")
+                        debug_print(f"  batched [{dom}]: HTTP {r.status_code} — aborting this domain")
+                        return None
                 except Exception as e:
-                    debug_print(f"  id={mid} [{dom}]: {type(e).__name__}")
-            return None
+                    debug_print(f"  batched [{dom}]: {type(e).__name__} — aborting this domain")
+                    return None
+            return collected
 
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            for model in pool.map(_fetch_one, all_ids):
-                if model is not None:
-                    items.append(model)
+        for dom in test_domains:
+            got = _fetch_batched(dom)
+            if got:
+                items = got
+                break
+
+        # Resilient fallback: per-id across domains (only if batched failed everywhere).
+        if not items:
+            debug_print("Local — batched got nothing on all domains, falling back to per-id...")
+
+            def _fetch_one(mid):
+                for dom in test_domains:
+                    url = f"https://{dom}/api/v1/models?ids={mid}&nsfw=true"
+                    debug_print(url)
+                    try:
+                        r = requests.get(url, headers=headers, timeout=(8, 20), proxies=proxies, verify=ssl)
+                        if r.status_code == 200:
+                            data = r.json()
+                            found = (data.get('items') or []) if isinstance(data, dict) else []
+                            if found:
+                                debug_print(f"  id={mid} [{dom}]: 200 OK")
+                                return found[0]
+                            debug_print(f"  id={mid} [{dom}]: 200 but no items")
+                        else:
+                            debug_print(f"  id={mid} [{dom}]: HTTP {r.status_code}")
+                    except Exception as e:
+                        debug_print(f"  id={mid} [{dom}]: {type(e).__name__}")
+                return None
+
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                for model in pool.map(_fetch_one, all_ids):
+                    if model is not None:
+                        items.append(model)
 
     debug_print(f"Local — API done, {len(items)} model(s) fetched OK")
 
