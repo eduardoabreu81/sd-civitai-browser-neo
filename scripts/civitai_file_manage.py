@@ -4781,8 +4781,8 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
     gl.update_mode = False
     gl.from_update_tab = False
 
-    print(f"[Local Browser] render start — content_type={content_type} base={base_filter} "
-          f"search={search_term!r} ({use_search_term})")
+    debug_print(f"Local render — content_type={content_type} base={base_filter} "
+                f"search={search_term!r} ({use_search_term})")
 
     folders_to_check = _resolve_browser_local_folders(content_type)
     files = list_files(folders_to_check) if folders_to_check else []
@@ -4791,7 +4791,7 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
     if use_search_term == 'Model name' and local_term:
         files = [f for f in files if local_term in os.path.splitext(os.path.basename(f))[0].lower()]
 
-    print(f"[Local Browser] {len(files)} file(s) in {len(folders_to_check)} folder(s) — resolving model IDs...")
+    debug_print(f"Local — {len(files)} file(s) in {len(folders_to_check)} folder(s), resolving model IDs...")
 
     all_ids = []
     fallback_items = []
@@ -4805,8 +4805,7 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
     all_ids = sorted(set(all_ids), key=lambda x: str(x))
     gl.local_browser_fallback_items = fallback_items
 
-    print(f"[Local Browser] resolved {len(all_ids)} CivitAI id(s), {len(fallback_items)} local-only "
-          f"— fetching from API...")
+    debug_print(f"Local — resolved {len(all_ids)} CivitAI id(s), {len(fallback_items)} local-only, fetching from API...")
 
     empty_msg = '<div style="font-size: 24px; text-align: center; margin: 50px;">No local models found for the selected filters.<br>Use the Maintenance tools below to scan/enrich models first.</div>'
     if not all_ids and not fallback_items:
@@ -4829,20 +4828,20 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
 
         def _fetch_one(mid):
             url = f"https://{domain}/api/v1/models?ids={mid}&nsfw=true"
-            print(f"[Local Browser] API GET {url}")
+            debug_print(url)
             try:
                 r = requests.get(url, headers=headers, timeout=(30, 30), proxies=proxies, verify=ssl)
                 if r.status_code == 200:
                     data = r.json()
                     found = (data.get('items') or []) if isinstance(data, dict) else []
                     if found:
-                        print(f"[Local Browser]   id={mid}: 200 OK")
+                        debug_print(f"  id={mid}: 200 OK")
                         return found[0]
-                    print(f"[Local Browser]   id={mid}: 200 but no items (skipped)")
+                    debug_print(f"  id={mid}: 200 but no items (skipped)")
                 else:
-                    print(f"[Local Browser]   id={mid}: HTTP {r.status_code} (skipped)")
+                    debug_print(f"  id={mid}: HTTP {r.status_code} (skipped)")
             except Exception as e:
-                print(f"[Local Browser]   id={mid}: {type(e).__name__} (skipped)")
+                debug_print(f"  id={mid}: {type(e).__name__} (skipped)")
             return None
 
         with ThreadPoolExecutor(max_workers=8) as pool:
@@ -4850,7 +4849,7 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
                 if model is not None:
                     items.append(model)
 
-    print(f"[Local Browser] API done — {len(items)} model(s) fetched OK")
+    debug_print(f"Local — API done, {len(items)} model(s) fetched OK")
 
     # Merge local-only fallback cards (not found on CivitAI)
     existing_ids = {it.get('id') for it in items}
@@ -4871,8 +4870,8 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
     gl.json_data = {'items': items, 'metadata': {}}
     gl.url_list = {1: 'local://'}
 
-    print(f"[Local Browser] rendering {len(items)} card(s)"
-          + (f" after base-model filter {bf}" if bf else ""))
+    debug_print(f"Local — rendering {len(items)} card(s)"
+                + (f" after base-model filter {bf}" if bf else ""))
 
     if not items:
         return gr.update(value=empty_msg)
