@@ -496,6 +496,7 @@ def on_ui_tabs():
             with gr.Row():
                 local_new_name = gr.Textbox(label='New name (rename):', interactive=False, max_lines=1, scale=4)
                 local_rename_btn = gr.Button(value='✏️ Rename', interactive=False, scale=1)
+                local_download_version_btn = gr.Button(value='⬇️ Download selected version', interactive=False, scale=1)
                 local_update_btn = gr.Button(value='⬆️ Update to latest', interactive=False, scale=1)
                 local_delete_btn = gr.Button(value='🗑️ Delete', interactive=False, variant='stop', scale=1)
             with gr.Row():
@@ -932,6 +933,7 @@ def on_ui_tabs():
             gr.update(value=None, interactive=False),               # local_trained_tags
             gr.update(interactive=False, visible=False),            # local_send_tags_btn
             gr.update(value=''),                                    # local_model_string
+            gr.update(interactive=False),                           # local_download_version_btn
         )
 
         def _build_local_panel(model_string, model_version=None, set_version=True):
@@ -969,6 +971,10 @@ def on_ui_tabs():
             _item = next((it for it in _items if str(it.get('id')) == str(model_id)), None)
             is_partial = bool(_item and _item.get('partial'))
 
+            # "Download selected version" only makes sense for a version that is NOT the
+            # one installed (the dropdown marks installed versions with '[Installed]').
+            is_installed_ver = '[Installed]' in str(chosen or '')
+
             version_out = (model_versions if model_versions else gr.update()) if set_version else gr.update()
 
             return (
@@ -985,6 +991,7 @@ def on_ui_tabs():
                 tags_u,                                                 # local_trained_tags
                 gr.update(interactive=has_tags, visible=has_tags),      # local_send_tags_btn
                 gr.update(value=model_string),                          # local_model_string
+                gr.update(interactive=not is_local_only and not is_partial and not is_installed_ver),  # local_download_version_btn
             )
 
         def update_local_model_info(input):
@@ -1005,11 +1012,28 @@ def on_ui_tabs():
                 return gr.update()
             return gr.update(value=f"{model_id_value}||[]")
 
+        def trigger_local_version_download(model_id_value, version_display):
+            """Funnel 'download the version chosen in the dropdown' into the single-update
+            pipeline as model_id||[version_id]. The 'When updating:' radio decides whether
+            the installed version is replaced or kept alongside (same as Update to latest)."""
+            if not model_id_value or not version_display:
+                return gr.update()
+            vname = str(version_display).replace(' (Early Access)', '').replace(' [Installed]', '').strip()
+            items = gl.local_json_data.get('items', []) if isinstance(gl.local_json_data, dict) else []
+            item = next((it for it in items if str(it.get('id')) == str(model_id_value)), None)
+            ver = next((v for v in (item.get('modelVersions', []) if item else [])
+                        if (v.get('name') or '').strip() == vname), None)
+            if not ver or ver.get('id') is None:
+                debug_print(f"Download selected version: could not resolve '{version_display}' for model {model_id_value}")
+                return gr.update()
+            return gr.update(value=f"{model_id_value}||[{ver['id']}]")
+
         local_detail_outputs = [
             local_preview_html, local_version, local_base_model, local_filename,
             local_sha256, local_model_id, local_new_name,
             local_rename_btn, local_delete_btn, local_update_btn,
-            local_trained_tags, local_send_tags_btn, local_model_string
+            local_trained_tags, local_send_tags_btn, local_model_string,
+            local_download_version_btn
         ]
         local_render_inputs = [
             local_content_type, local_base_filter, local_use_search,
@@ -1107,6 +1131,14 @@ def on_ui_tabs():
         local_update_btn.click(
             fn=trigger_local_update,
             inputs=[local_model_id],
+            outputs=[update_single_trigger]
+        )
+
+        # Download the version chosen in the dropdown → same pipeline, with the version id
+        # forced (model_id||[version_id]); honors the 'When updating:' replace/keep radio.
+        local_download_version_btn.click(
+            fn=trigger_local_version_download,
+            inputs=[local_model_id, local_version],
             outputs=[update_single_trigger]
         )
 
