@@ -15,6 +15,7 @@ import scripts.civitai_download as _download
 import scripts.civitai_file_manage as _file
 import scripts.civitai_global as gl
 import scripts.civitai_api as _api
+import scripts.civitai_mcp as _mcp
 from scripts.civitai_global import print, debug_print
 
 
@@ -270,6 +271,33 @@ def get_base_models():
         return default_options
 
 ## === ANXETY EDITs ===
+def build_account_badge_html():
+    """Background account badge for the Dashboard.
+
+    Auto-connects with the saved API key via the MCP whoami (cached) and renders
+    a small passive badge — no button, no interaction. Returns '' (invisible)
+    when account features are disabled or no key is set, so the slot collapses.
+    """
+    from html import escape
+    if not getattr(opts, 'account_features_mcp', True):
+        return ''
+    if not (getattr(opts, 'custom_api_key', '') or '').strip():
+        return ''
+
+    res = _mcp.whoami()
+    if not res.get('ok'):
+        return ('<div style="opacity:0.7;font-size:12px;">⚠️ CivitAI account not connected '
+                f'({escape(str(res.get("error", "")))})</div>')
+
+    data = res.get('data') if isinstance(res.get('data'), dict) else {}
+    username = data.get('username') or data.get('user') or data.get('name')
+    image = data.get('image') or data.get('avatar')
+    label = escape(str(username)) if username else escape((res.get('text') or 'Connected').split('\n')[0])
+    avatar = (f'<img src="{escape(str(image))}" style="width:24px;height:24px;border-radius:50%;'
+              'object-fit:cover;">') if image else '<span style="font-size:18px;">👤</span>'
+    return ('<div style="display:flex;align-items:center;gap:8px;font-size:14px;padding:4px 0;">'
+            f'{avatar}<span>Connected as <strong>{label}</strong></span></div>')
+
 def on_ui_tabs():
     page_header = getattr(opts, 'page_header', False)
     lobe_directory = None
@@ -569,9 +597,14 @@ def on_ui_tabs():
 
         ## Dashboard Tab
         with gr.Tab(label='Dashboard', elem_id='dashboardTab'):
+            # Account badge: auto-connects in the background with the saved API key
+            # (populated by civitai_interface.load). Renders empty/invisible when there
+            # is no key or the account feature is disabled — no button, no interaction.
+            account_badge_html = gr.HTML(value='', elem_id='civitai_account_badge')
+
             gr.Markdown('## 📊 Model Collection Statistics', elem_id='dashboard_header')
             gr.Markdown('View disk usage statistics for your model collection organized by type.')
-            
+
             with gr.Row():
                 dashboard_content_types = gr.CheckboxGroup(
                     elem_id='dashboard_content_types', 
@@ -1974,6 +2007,13 @@ def on_ui_tabs():
             outputs=[restore_queue_input]
         )
 
+        # Background account badge: connects with the saved API key on UI load,
+        # no button/interaction (renders empty when disabled or no key).
+        civitai_interface.load(
+            fn=build_account_badge_html,
+            outputs=[account_badge_html]
+        )
+
     tab_name = 'CivitAI Browser Neo'
     return (civitai_interface, tab_name, 'civitai_interface_neo'),
 
@@ -2010,6 +2050,16 @@ def on_ui_settings():
             section=browser,
             category_id=cat_id
         ).info('You can create your own API key in your CivitAI account settings, this required for some downloads. Requires UI reload')
+    )
+
+    shared.opts.add_option(
+        'account_features_mcp',
+        shared.OptionInfo(
+            default=True,
+            label='Account features (favorite, follow, notifications)',
+            section=browser,
+            category_id=cat_id
+        ).info('Connects automatically with your API key (via the CivitAI MCP server) to enable favorites, follows and new-version notifications. Turn off to disable all account features. Requires UI reload')
     )
 
     shared.opts.add_option(
