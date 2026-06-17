@@ -1360,7 +1360,7 @@ def extract_model_info(input_string):
 
     return name, int(id_number)
 
-def update_model_info(model_string=None, model_version=None, only_html=False, input_id=None, json_input=None, from_preview=False):
+def update_model_info(model_string=None, model_version=None, only_html=False, input_id=None, json_input=None, from_preview=False, prefer_cached_images=False):
     video_playback = getattr(opts, 'video_playback', True)
     meta_btn = getattr(opts, 'individual_meta_btn', True)
     playback = ''
@@ -1530,6 +1530,13 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
 
                 if is_local_only:
                     api_version = {'images': []}
+                elif prefer_cached_images:
+                    # Local tab: render purely from the images the grid already cached
+                    # in gl.local_json_data — zero network, instant click. The per-image
+                    # generation meta (prompt/sampler/...) is intentionally skipped here;
+                    # it's only consumed by the txt2img/img2img "CivitAI" button card,
+                    # not the Local detail panel.
+                    api_version = {'images': selected_version.get('images', []) or []}
                 else:
                     url = f"https://{get_civitai_domain()}/api/v1/model-versions/{selected_version['id']}"
                     api_version = request_civit_api(url)

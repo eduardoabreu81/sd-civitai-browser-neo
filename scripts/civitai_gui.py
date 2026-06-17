@@ -949,7 +949,7 @@ def on_ui_tabs():
             model_name, model_id = _api.extract_model_info(model_string)
             model_versions = _api.update_model_versions(model_id, json_input=gl.local_json_data)
             chosen = model_version or (model_versions.get('value') if model_versions else None)
-            info = _api.update_model_info(model_string, chosen, json_input=gl.local_json_data)
+            info = _api.update_model_info(model_string, chosen, json_input=gl.local_json_data, prefer_cached_images=True)
             (html, tags_u, base_model_u, _dl, _img, _del, _flist,
              model_filename_u, _url, model_id_u, current_sha256_u, _ip, _sf) = info
 
