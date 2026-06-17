@@ -381,29 +381,38 @@ def delete_model(delete_finish=None, model_filename=None, model_string=None, lis
         model_versions = model_ver
 
     (model_name, ver_value, ver_choices) = _file.card_update(model_versions, model_string, list_versions, False)
-    if not model_json:
-        if model_id != None:
-            selected_content_type = None
-            for item in gl.json_data['items']:
+    selected_content_type = None
+    desc = None
+    if model_json:
+        for item in model_json['items']:
+            selected_content_type = item['type']
+            desc = item['description']
+    elif model_id is not None:
+        items = gl.json_data.get('items', []) if isinstance(gl.json_data, dict) else []
+        for item in items:
+            try:
                 if int(item['id']) == int(model_id):
                     selected_content_type = item['type']
                     desc = item['description']
                     break
+            except (TypeError, ValueError, KeyError):
+                continue
 
-            if selected_content_type == None:
-                print('Model ID not found in json_data. (delete_model)')
-                return
-    else:
-        for item in model_json['items']:
-            selected_content_type = item['type']
-            desc = item['description']
-
-    model_folder = os.path.join(_api.contenttype_folder(selected_content_type, desc))
+    # Resolve which folders to search. When the content type is unknown — e.g. the
+    # model isn't in the Browser's current json_data, which is common on the isolated
+    # Local tab — fall back to scanning every known model folder instead of aborting.
+    search_folders = []
+    if selected_content_type is not None:
+        folder = _api.contenttype_folder(selected_content_type, desc)
+        if folder:
+            search_folders = [folder]
+    if not search_folders:
+        search_folders = _get_all_model_folders()
 
     # Delete based on provided SHA-256 hash
     if sha256:
         sha256_upper = sha256.upper()
-        for root, _, files in os.walk(model_folder, followlinks=True):
+        for root, files in _walk_model_folders(search_folders):
             for file in files:
                 if file.endswith('.json'):
                     file_path = os.path.join(root, file)
@@ -449,7 +458,7 @@ def delete_model(delete_finish=None, model_filename=None, model_string=None, lis
     filename_to_delete = os.path.splitext(model_filename)[0]
     aria2_file = model_filename + '.aria2'
     if not deleted:
-        for root, dirs, files in os.walk(model_folder, followlinks=True):
+        for root, files in _walk_model_folders(search_folders):
             for file in files:
                 current_file_name = os.path.splitext(file)[0]
                 if filename_to_delete == current_file_name or aria2_file == file:
@@ -480,6 +489,17 @@ def delete_model(delete_finish=None, model_filename=None, model_string=None, lis
         gr.update(value=model_name),  # Current Model
         gr.update(value=ver_value, choices=ver_choices)  # Version List
     )
+
+def _walk_model_folders(folders):
+    """Yield (root, files) for every directory under each model folder.
+
+    Flattens os.walk across multiple roots so delete paths can search either a
+    single content-type folder or every known model folder with identical code.
+    """
+    for folder in folders:
+        for root, _, files in os.walk(folder, followlinks=True):
+            yield root, files
+
 
 def _get_all_model_folders():
     """Return all on-disk model folders across known content types."""
@@ -514,19 +534,37 @@ def _find_model_by_sha256(sha256):
     sha256_upper = sha256.upper()
     model_extensions = ['.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.zip', '.vae', '.th']
 
+    def _sidecar_matches(data):
+        """True if the sidecar metadata carries the target SHA256.
+
+        Handles both the flat 'sha256' field written by this extension and the
+        nested files[].hashes.SHA256 form found in full model / .api_info.json blobs.
+        """
+        if not data:
+            return False
+        if (data.get('sha256') or '').upper() == sha256_upper:
+            return True
+        files = data.get('files')
+        if isinstance(files, list):
+            for entry in files:
+                hashes = entry.get('hashes') if isinstance(entry, dict) else None
+                if isinstance(hashes, dict) and (hashes.get('SHA256') or '').upper() == sha256_upper:
+                    return True
+        return False
+
     for model_folder in _get_all_model_folders():
         for root, _, files in os.walk(model_folder, followlinks=True):
             for file in files:
                 if not file.endswith('.json'):
                     continue
                 json_path = os.path.join(root, file)
-                data = _api.safe_json_load(json_path)
-                if not data:
-                    continue
-                if (data.get('sha256') or '').upper() != sha256_upper:
+                if not _sidecar_matches(_api.safe_json_load(json_path)):
                     continue
 
+                # Strip '.json' and an optional '.api_info' to get the model base name.
                 json_base = os.path.splitext(file)[0]
+                if json_base.endswith('.api_info'):
+                    json_base = json_base[:-len('.api_info')]
                 for ext in model_extensions:
                     candidate = os.path.join(root, json_base + ext)
                     if os.path.exists(candidate):
@@ -579,33 +617,63 @@ def find_installed_file_by_model_id(model_id, exclude_filename=None):
     return ''
 
 
-def delete_installed_by_sha256(sha256, delete_finish=None):
+def delete_installed_by_sha256(sha256, delete_finish=None, model_id=None, model_filename=None):
     """
-    Simplified delete function for installed models using only SHA256.
-    Searches all model folders for a match and deletes the model.
+    Delete an installed model located primarily by SHA256, with fallbacks so models
+    whose sidecar hash is missing/mismatched (manually-added or renamed files) can
+    still be removed:
+      1. SHA256 match via sidecar (.json / .api_info.json).
+      2. CivitAI modelId via sidecar.
+      3. On-disk filename base-name scan.
     """
-    if not sha256:
-        print("No SHA256 provided for deletion")
+    root, found_filename, _ = _find_model_by_sha256(sha256) if sha256 else (None, None, None)
+
+    # Fallback 1: locate by CivitAI modelId via sidecar.
+    if not found_filename and model_id:
+        path = find_installed_file_by_model_id(model_id)
+        if path:
+            root, found_filename = os.path.dirname(path), os.path.basename(path)
+
+    # Fallback 2: locate by on-disk filename base name.
+    if not found_filename and model_filename:
+        target_base = os.path.splitext(os.path.basename(model_filename))[0]
+        model_extensions = ('.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.zip', '.vae', '.th')
+        for model_folder in _get_all_model_folders():
+            for r, _, files in os.walk(model_folder, followlinks=True):
+                for f in files:
+                    base, ext = os.path.splitext(f)
+                    if base == target_base and ext.lower() in model_extensions:
+                        root, found_filename = r, f
+                        break
+                if found_filename:
+                    break
+            if found_filename:
+                break
+
+    if not found_filename:
+        print(f"Delete failed: could not locate model "
+              f"(sha256={(sha256 or '').upper() or 'none'}, "
+              f"model_id={model_id or 'none'}, filename={model_filename or 'none'})")
         return gr.update(value=_download.random_number(delete_finish))
 
-    root, model_filename, _ = _find_model_by_sha256(sha256)
-    if not model_filename:
-        print(f"Could not find model with SHA256: {sha256.upper()}")
-        return gr.update(value=_download.random_number(delete_finish))
-
-    model_file_path = os.path.join(root, model_filename)
+    model_file_path = os.path.join(root, found_filename)
+    use_trash = getattr(opts, 'civitai_neo_delete_to_trash', True)
     try:
-        send2trash(model_file_path)
-        print(f"Model moved to trash: {model_file_path}")
+        if use_trash:
+            send2trash(model_file_path)
+            print(f"Model moved to trash: {model_file_path}")
+        else:
+            os.remove(model_file_path)
+            print(f"Model deleted: {model_file_path}")
     except Exception:
         os.remove(model_file_path)
         print(f"Model deleted: {model_file_path}")
 
     # Delete associated files (sidecars, previews, numbered images)
-    base_filename = os.path.splitext(model_filename)[0]
+    base_filename = os.path.splitext(found_filename)[0]
     delete_associated_files(root, base_filename)
 
-    print(f"Successfully deleted model with SHA256: {sha256.upper()}")
+    print(f"Successfully deleted model: {model_file_path}")
     return gr.update(value=_download.random_number(delete_finish))
 
 
@@ -4641,6 +4709,18 @@ def scan_finish():
     )
 
 
+def reset_update_items():
+    """Drop any scan-derived update set.
+
+    gl.update_items is a Browser/Maintenance-scan artifact shared process-wide. The Local
+    Models tab resolves updates/retention from gl.local_json_data and on-disk state, so a
+    leftover scan result must not bleed into it. Called when the user (re-)loads or filters
+    the Local browser — NOT from render_local_browser itself, so a scan's freshly-collected
+    items survive the scan's own post-render.
+    """
+    gl.update_items = []
+
+
 def _render_update_mode_banner(count):
     """Return the full HTML for the Update Mode banner + mode switcher."""
     retention = getattr(opts, 'civitai_neo_update_retention', 'replace')
@@ -4782,7 +4862,37 @@ def load_to_browser(content_type, sort_type, period_type, use_search_term, searc
         gr.update(value='<div style="min-height: 0px;"></div>')
     )
 
-def render_local_browser(content_type, base_filter, use_search_term, search_term, tile_count, nsfw):
+def _sort_local_items(items, sort_order):
+    """Sort the Local grid items in place. Items must already carry '_local_mtime'
+    (on-disk file mtime, stamped by render_local_browser). 'Name' sorts use the model
+    name; 'downloaded' sorts use the file mtime. Unknown values fall back to Name (A-Z)."""
+    name_key = lambda it: (it.get('name') or '').lower()
+    mtime_key = lambda it: it.get('_local_mtime', 0.0)
+    if sort_order == 'Name (Z-A)':
+        items.sort(key=name_key, reverse=True)
+    elif sort_order == 'Recently downloaded':
+        items.sort(key=mtime_key, reverse=True)
+    elif sort_order == 'Oldest downloaded':
+        items.sort(key=mtime_key)
+    else:  # 'Name (A-Z)' — default
+        items.sort(key=name_key)
+    return items
+
+
+def resort_local_browser(sort_order):
+    """Re-order the already-loaded Local grid WITHOUT re-scanning folders or hitting
+    the API. Operates on the cached gl.local_json_data (stamped with '_local_mtime'
+    during render_local_browser), so changing 'Sort by:' is instant."""
+    data = getattr(gl, 'local_json_data', None)
+    items = data.get('items', []) if isinstance(data, dict) else []
+    if not items:
+        return gr.update()  # nothing loaded yet — leave the grid as-is
+    _sort_local_items(items, sort_order)
+    gl.local_json_data = {'items': items, 'metadata': data.get('metadata', {})}
+    return gr.update(value=_api.model_list_html(gl.local_json_data, target='local'))
+
+
+def render_local_browser(content_type, base_filter, use_search_term, search_term, tile_count, nsfw, sort_order='Name (A-Z)'):
     """Scan local model folders (filtered) and render the local-models card grid.
 
     Self-contained on purpose: it builds its OWN model data and does NOT go through
@@ -4970,6 +5080,21 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
         bf_lower = {b.lower() for b in bf}
         items = [it for it in items
                  if any((v.get('baseModel') or '').lower() in bf_lower for v in it.get('modelVersions', []))]
+
+    # Stamp each item with its on-disk file mtime so the grid can be re-sorted later
+    # (resort_local_browser) without re-scanning. API-resolved cards get their mtime
+    # from id_to_paths; local-only fallback cards carry their own local_file_path.
+    for it in items:
+        paths = id_to_paths.get(it.get('id')) or ([it['local_file_path']] if it.get('local_file_path') else [])
+        best = 0.0
+        for fp in paths:
+            try:
+                best = max(best, os.path.getmtime(fp))
+            except OSError:
+                pass
+        it['_local_mtime'] = best
+
+    _sort_local_items(items, sort_order)
 
     # Publish to gl.local_json_data (NOT gl.json_data) so the Local detail panel can
     # resolve clicked cards without clobbering the Browser tab's dataset/pagination.

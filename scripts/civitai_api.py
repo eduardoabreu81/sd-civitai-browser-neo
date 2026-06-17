@@ -590,102 +590,110 @@ def model_list_html(json_data, target=''):
             # Try PNG first, then fallback to JPEG if PNG does not exist
             imgtag = '<img src="./file=html/card-no-preview.png" onerror="this.onerror=null;this.src=\'./file=html/card-no-preview.jpg\';"></img>'
 
-        # Install status - check if model is installed and determine if it's outdated
-        ## Note: Sensitive check for updates by `name_match`... (It is possible that an outdated version of the model will not be marked as outdated)
+        # Install status - check if model is installed and whether it's outdated.
+        # Strategy (unified with version_match): group by the reliable `baseModel`
+        # field and use the array index (0 = newest) instead of fragile version-name
+        # parsing. Semantic name comparison is used only as a tie-breaker when BOTH
+        # the installed and the newest names carry clean numeric versions (e.g. v1.0
+        # vs v2.0); free-text names ("Pearl", "Last", "Nu") fall back to array index.
         installstatus = ''
         installed_file_sha256 = None  # Track SHA256 of installed file for delete functionality
+        installed_versions_count = 0
         model_versions = item.get('modelVersions', [])
         if model_versions:
             precise_check = getattr(opts, 'precise_version_check', True)
-            installed_map, available_map = {}, {}  # family -> list of version parts
-            installed_all, available_all = [], []  # all versions (no family grouping)
+
+            # Newest (lowest) array index per baseModel; index 0 is newest overall.
+            base_newest_idx = {}
+            for idx, version in enumerate(model_versions):
+                bm = (version.get('baseModel') or '').strip()
+                if bm not in base_newest_idx:
+                    base_newest_idx[bm] = idx
+
+            installed_entries = []     # (idx, baseModel, version_name)
+            installed_basemodels = []  # ordered unique baseModels installed
             installed_versions_found = set()
 
-            # --- Collect version and installation info ---
-            for version in model_versions:
+            # --- Collect installation info ---
+            for idx, version in enumerate(model_versions):
                 version_name = version.get('name', '')
-                family, version_parts = _file.extract_version_from_ver_name(version_name)
-
-                if precise_check and family:
-                    available_map.setdefault(family, []).append(version_parts)
-                else:
-                    available_all.append(version_parts)
-
-                # Check if any file of this version is installed
+                version_installed = False
                 for file in version.get('files', []):
                     file_name = file['name'].lower()
                     file_sha256 = normalize_sha256(file.get('hashes', {}).get('SHA256', ''))
-                    name_match = file_name in existing_files
-                    sha_match = file_sha256 and file_sha256 in existing_files_sha256
-
-                    if sha_match or name_match:
+                    if (file_sha256 and file_sha256 in existing_files_sha256) or (file_name in existing_files):
                         # Store SHA256 of first installed file found (for delete button)
                         if not installed_file_sha256:
                             installed_file_sha256 = file_sha256
-                        installed_versions_found.add(version_name)
-                        if precise_check and family:
-                            installed_map.setdefault(family, []).append(version_parts)
-                        else:
-                            installed_all.append(version_parts)
+                        version_installed = True
                         break
+                if version_installed:
+                    bm = (version.get('baseModel') or '').strip()
+                    installed_entries.append((idx, bm, version_name))
+                    installed_versions_found.add(version_name)
+                    if bm not in installed_basemodels:
+                        installed_basemodels.append(bm)
 
             installed_versions_count = len(installed_versions_found)
 
-            # Check installed
-            has_installed = bool(installed_map or installed_all)
-            if has_installed:
+            if installed_entries:
                 has_outdated = False
                 has_latest = False
 
-                def is_outdated(inst, avail):
-                    """Compare max installed and available versions"""
-                    max_inst = max(inst, key=lambda x: x or [0])
-                    max_avail = max(avail, key=lambda x: x or [0])
-                    cmp = _file.compare_version_parts(max_inst, max_avail)
-                    return cmp < 0
+                for idx, bm, version_name in installed_entries:
+                    if precise_check:
+                        newest_idx = base_newest_idx.get(bm, 0)
+                    else:
+                        newest_idx = 0
+                    newest_name = model_versions[newest_idx].get('name', '')
 
-                # Comparison by families
-                if precise_check and available_map:
-                    for fam, avail in available_map.items():
-                        inst = installed_map.get(fam)
-                        if not inst:
-                            continue
-                        if is_outdated(inst, avail):
-                            has_outdated = True
-                        else:
-                            has_latest = True
-                # Comparison without families
-                elif installed_all and available_all:
-                    has_outdated = is_outdated(installed_all, available_all)
-                    has_latest = not has_outdated
+                    # Prefer semantic comparison only when both names are clean numbers.
+                    _f1, inst_parts = _file.extract_version_from_ver_name(version_name)
+                    _f2, newest_parts = _file.extract_version_from_ver_name(newest_name)
+                    if inst_parts and newest_parts:
+                        outdated = _file.compare_version_parts(inst_parts, newest_parts) < 0
+                    else:
+                        outdated = idx > newest_idx
 
+                    if outdated:
+                        has_outdated = True
+                    else:
+                        has_latest = True
+
+                # has_latest wins: if any installed version is the newest for its
+                # baseModel, the model is "up to date" for you (green/blue).
                 if has_latest:
-                    has_cross_family = False
-                    if precise_check and available_map:
-                        for fam in available_map:
-                            if fam not in installed_map:
-                                has_cross_family = True
-                                break
+                    # Cross-family (blue): the model offers another baseModel you
+                    # don't have AND that lineage has something NEWER than your
+                    # installed version. Versions come ordered by date (index 0 =
+                    # newest overall), so an alternative baseModel only counts when
+                    # its newest version sits at a lower index than yours. This
+                    # ignores old/abandoned variants in other baseModels.
+                    my_newest_idx = min(idx for idx, _bm, _n in installed_entries)
+                    has_cross_family = (
+                        precise_check
+                        and any(
+                            bm not in installed_basemodels and newest_i < my_newest_idx
+                            for bm, newest_i in base_newest_idx.items()
+                        )
+                    )
                     installstatus = 'civmodelcardcrossfamily' if has_cross_family else 'civmodelcardinstalled'
                 elif has_outdated:
                     installstatus = 'civmodelcardoutdated'
                 else:
                     installstatus = 'civmodelcardinstalled'
 
-            # Multi-family badge: when multiple distinct families are installed on the same model
-            # (e.g. Pony V1 AND Illustrious V1), show all abbreviations: "PONY · IL"
-            if show_status_badges and len(installed_map) > 1:
+            # Multi-family badge: when versions of multiple distinct baseModels are
+            # installed on the same model (e.g. Pony AND Illustrious), show all
+            # abbreviations: "PONY · IL"
+            if show_status_badges and len(installed_basemodels) > 1:
                 shorts = []
                 seen_shorts = set()
-                for ver in model_versions:
-                    ver_name = ver.get('name', '')
-                    fam, _ = _file.extract_version_from_ver_name(ver_name)
-                    if fam and fam in installed_map:
-                        bm = ver.get('baseModel', '')
-                        short = get_base_model_short(bm)
-                        if short and short not in seen_shorts:
-                            shorts.append(short)
-                            seen_shorts.add(short)
+                for bm in installed_basemodels:
+                    short = get_base_model_short(bm)
+                    if short and short not in seen_shorts:
+                        shorts.append(short)
+                        seen_shorts.add(short)
                 if len(shorts) > 1:
                     base_model_short = ' · '.join(shorts)
 
@@ -833,19 +841,23 @@ def model_list_html(json_data, target=''):
 
     # Build HTML
     HTML = '<div class="column civmodellist">'
-    sorted_models = {} if gl.sortNewest else None
+    # The Browser's "sort by date" toggle (gl.sortNewest) groups cards into dated
+    # sections. The Local Models grid renders in its own order (set by render_local_browser's
+    # Sort by:), so it deliberately ignores gl.sortNewest — keeping the two tabs isolated.
+    group_by_date = gl.sortNewest and target != 'local'
+    sorted_models = {} if group_by_date else None
     favorite_creators = set(_file.FavoriteCreators.get_as_list())
 
     for item in json_data['items']:
         model_card, date = get_model_card(item, existing_files, existing_files_sha256, playback, favorite_creators)
-        if gl.sortNewest:
+        if group_by_date:
             if date not in sorted_models:
                 sorted_models[date] = []
             sorted_models[date].append(model_card)
         else:
             HTML += model_card
 
-    if gl.sortNewest:
+    if group_by_date:
         HTML += '<div class="date-sections-container">'
         for date, cards in sorted(sorted_models.items(), reverse=True):
             if not cards:

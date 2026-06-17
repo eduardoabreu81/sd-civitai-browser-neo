@@ -2096,24 +2096,27 @@ function deleteInstalledModel(event, modelString, sha256, installedCount = 1) {
         return;
     }
     
-    // Set SHA256 value
+    // Set SHA256 value and let Gradio's reactive store register it before we click.
     sha256Input.value = sha256;
     updateInput(sha256Input);
-    
-    // Wait a bit for the SHA256 to be set, then trigger delete
-    setTimeout(() => {
-        // Trigger delete by updating delete_trigger_btn click
+
+    const triggerDelete = () => {
         const deleteButton = gradioApp().querySelector('#delete_trigger_btn');
-        if (deleteButton) {
-            deleteButton.click();
-            // After deletion completes, update the card visually (remove installed state).
-            // Skip pressRefresh() fallback to avoid expensive full-page API re-fetch.
-            setTimeout(() => updateCard(modelString + '.None', false), 500);
-        } else {
+        if (!deleteButton) {
             console.error('Could not find #delete_trigger_btn element');
             alert('Error: Delete button not found. Please try using the delete button in the model details panel.');
+            return;
         }
-    }, 100);
+        deleteButton.click();
+        // After deletion completes, update the card visually (remove installed state).
+        // Skip pressRefresh() fallback to avoid expensive full-page API re-fetch.
+        setTimeout(() => updateCard(modelString + '.None', false), 500);
+    };
+
+    // Two animation frames guarantee the 'input' event has propagated into Gradio's
+    // store, so the backend reads the SHA256 we just set — not a stale/empty value.
+    // (Replaces a fixed 100ms timeout that could fire before propagation under load.)
+    requestAnimationFrame(() => requestAnimationFrame(triggerDelete));
 }
 
 

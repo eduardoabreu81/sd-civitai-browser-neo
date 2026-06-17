@@ -465,6 +465,7 @@ def on_ui_tabs():
             with gr.Row(elem_id='localSearchRow'):
                 local_content_type = gr.Dropdown(label='Content type:', choices=content_choices, value=['Checkpoint', 'LORA'], type='value', multiselect=True, elem_id='localContentType')
                 local_base_filter = gr.Dropdown(label='Base model:', choices=get_base_models(), value=None, type='value', multiselect=True, elem_id='localBaseFilter')
+                local_sort = gr.Dropdown(label='Sort by:', choices=['Name (A-Z)', 'Name (Z-A)', 'Recently downloaded', 'Oldest downloaded'], value='Name (A-Z)', type='value', elem_id='localSortBy')
                 local_search = gr.Textbox(label='', placeholder='Filter local models by name', elem_id='localSearchBox')
                 local_load_btn = gr.Button(value='📋 Load local models', elem_id='localLoadBtn', variant='primary')
                 local_clear_btn = gr.Button(value='🧹 Clear', elem_id='localClearBtn', scale=0, min_width=90)
@@ -1037,7 +1038,7 @@ def on_ui_tabs():
         ]
         local_render_inputs = [
             local_content_type, local_base_filter, local_use_search,
-            local_search, local_tile_count, local_nsfw
+            local_search, local_tile_count, local_nsfw, local_sort
         ]
 
         # The Organization tab's "Content types to scan" (selected_tags) is the single visible
@@ -1059,7 +1060,11 @@ def on_ui_tabs():
 
         # User-initiated loads render straight into the VISIBLE grid so Gradio shows
         # its loading spinner over it; .then re-applies the tile size.
+        # Invalidate any stale scan-derived update set before a fresh Local load/filter,
+        # so Local updates/retention resolve from current local_json_data / on-disk state.
         local_load_btn.click(
+            fn=_file.reset_update_items
+        ).then(
             fn=_file.render_local_browser,
             inputs=local_render_inputs,
             outputs=[local_list_html],
@@ -1067,6 +1072,8 @@ def on_ui_tabs():
         ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)'
         ).then(fn=None, _js='() => filterLocalOutdated()')
         local_search.submit(
+            fn=_file.reset_update_items
+        ).then(
             fn=_file.render_local_browser,
             inputs=local_render_inputs,
             outputs=[local_list_html],
@@ -1076,6 +1083,17 @@ def on_ui_tabs():
         # "Only models with updates" is a pure client-side view filter over the already-loaded
         # cards (no re-scan): show only cards the grid already marked civmodelcardoutdated.
         local_only_updates.change(fn=None, _js='() => filterLocalOutdated()')
+
+        # "Sort by:" re-orders the already-loaded grid in place (no folder re-scan / API
+        # call) by reusing the cached gl.local_json_data; then re-applies tile size + the
+        # outdated view filter. If nothing is loaded yet it's a no-op.
+        local_sort.change(
+            fn=_file.resort_local_browser,
+            inputs=[local_sort],
+            outputs=[local_list_html],
+            show_progress='hidden'
+        ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)'
+        ).then(fn=None, _js='() => filterLocalOutdated()')
 
         # Action-triggered refreshes still flow through the hidden input → visible grid,
         # then size the tiles (mirrors the Browser list_html_input pattern).
@@ -1116,9 +1134,9 @@ def on_ui_tabs():
         # Delete (with confirm) → refresh grid (spinner over the grid during the re-scan)
         local_delete_btn.click(
             fn=_file.delete_installed_by_sha256,
-            inputs=[local_sha256, local_delete_finish],
+            inputs=[local_sha256, local_delete_finish, local_model_id, local_filename],
             outputs=[local_delete_finish],
-            _js="(s, f) => { if (!confirm('Delete this model and all its files?')) throw new Error('cancelled'); return [s, f]; }"
+            _js="(s, f, mid, fn) => { if (!confirm('Delete this model and all its files?')) throw new Error('cancelled'); return [s, f, mid, fn]; }"
         ).then(
             fn=_file.render_local_browser,
             inputs=local_render_inputs,

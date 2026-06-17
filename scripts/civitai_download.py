@@ -573,38 +573,30 @@ def download_single_update(trigger_value, download_start, create_json, current_h
     except Exception:
         return update_all_models(download_start, create_json, current_html, keep_installed=keep)  # fallback
 
-    matched = [i for i in gl.update_items
-               if i['model_id'] == model_id_int and
-               (i.get('family') or '').upper() == family_str]
-    if not matched:
-        # Try without family match (no-family models)
-        matched = [i for i in gl.update_items if i['model_id'] == model_id_int]
-
-    if matched:
-        model_list_json = _build_model_list_for_update(matched[:1])
-    else:
-        # No prior "Scan for updates" (the Local Models flow): resolve the model from
-        # either tab dataset (render_local_browser publishes to gl.local_json_data).
-        # selected_to_queue then auto-resolves the newest version per installed family.
-        item = next((it for it in _all_known_items()
-                     if str(it.get('id')) == str(model_id_int)), None)
-        # 'partial' items only carry the installed version (recovered via by-hash) —
-        # "updating" them would re-download the installed version itself. Refuse.
-        if item and item.get('partial'):
-            print(f"Model {model_id_int} has no full version list (recovered card) — update skipped.")
-            item = None
-        if not item:
-            html = download_manager_html(current_html)
-            return (
-                gr.update(interactive=False, visible=False),
-                gr.update(interactive=False, visible=False),
-                gr.update(interactive=False, visible=False),
-                gr.update(value=download_start),
-                gr.update(value='<div style="min-height: 100px;"></div>'),
-                gr.update(value=html)
-            )
-        model_name = item.get('name') or f'Model {model_id_int}'
-        model_list_json = json.dumps([f"{model_name} ({model_id_int})"])
+    # Resolve the model fresh from the current datasets (the Local browser publishes to
+    # gl.local_json_data). We deliberately do NOT consult gl.update_items here: it is a
+    # Browser/Maintenance-scan artifact, and a stale entry would otherwise leak a wrong
+    # version/retention target into a Local update ("updates misturados"). selected_to_queue
+    # auto-resolves the newest version per installed family (or the forced version below).
+    item = next((it for it in _all_known_items()
+                 if str(it.get('id')) == str(model_id_int)), None)
+    # 'partial' items only carry the installed version (recovered via by-hash) —
+    # "updating" them would re-download the installed version itself. Refuse.
+    if item and item.get('partial'):
+        print(f"Model {model_id_int} has no full version list (recovered card) — update skipped.")
+        item = None
+    if not item:
+        html = download_manager_html(current_html)
+        return (
+            gr.update(interactive=False, visible=False),
+            gr.update(interactive=False, visible=False),
+            gr.update(interactive=False, visible=False),
+            gr.update(value=download_start),
+            gr.update(value='<div style="min-height: 100px;"></div>'),
+            gr.update(value=html)
+        )
+    model_name = item.get('name') or f'Model {model_id_int}'
+    model_list_json = json.dumps([f"{model_name} ({model_id_int})"])
 
     # If user selected specific versions (revamp), pass them to selected_to_queue
     forced_version_ids = None
