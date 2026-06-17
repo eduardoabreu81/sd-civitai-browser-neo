@@ -1142,13 +1142,20 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
     gl.recent_model = item['model_name']
     gl.last_version = item['version_name']
 
-    # #2 Lazy API fetch: deferred from enqueue time for batch performance
+    # #2 Lazy API fetch: deferred from enqueue time for batch performance.
+    # Resolve against the item's OWN model_json (carried from whichever tab started
+    # the download), NOT the default gl.json_data — that holds only the Browser tab's
+    # current search, so a Local-tab update whose model isn't in that search would
+    # resolve to nothing, leaving preview_html empty and making save_images silently
+    # download no gallery images.
     if not item.get('_api_ready'):
-        _lazy_versions = _api.update_model_versions(item['model_id'])
+        _mj = item.get('model_json')
+        _mj = _mj if isinstance(_mj, dict) and _mj.get('items') else None
+        _lazy_versions = _api.update_model_versions(item['model_id'], json_input=_mj)
         if _lazy_versions:
             item['model_versions'] = _lazy_versions
         try:
-            _lazy_result = _api.update_model_info(None, (item['model_versions'] or {}).get('value'), False, item['model_id'])
+            _lazy_result = _api.update_model_info(None, (item['model_versions'] or {}).get('value'), False, item['model_id'], json_input=_mj)
             item['preview_html'] = _lazy_result[0].get('value', '') if isinstance(_lazy_result[0], dict) else ''
             item['existing_path'] = (_lazy_result[11].get('value') if isinstance(_lazy_result[11], dict) else None) or item['install_path']
         except Exception as _e:
