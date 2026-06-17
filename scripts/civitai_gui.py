@@ -1007,10 +1007,38 @@ def on_ui_tabs():
             (keeps the dropdown selection intact)."""
             return _build_local_panel(model_string, model_version, set_version=False)
 
-        def trigger_local_update(model_id_value):
-            """Funnel a local model into the existing single-update pipeline."""
+        def trigger_local_update(model_id_value, installed_sha=''):
+            """Funnel a local model into the existing single-update pipeline.
+
+            "Update to latest" must KEEP the installed baseModel family (e.g. a model
+            page hosting both Illustrious and Pony versions). We anchor on the installed
+            file's SHA256 to find its baseModel, then force the newest version sharing
+            that baseModel (versions are ordered newest-first). This bypasses the looser
+            auto-resolution so the update can never jump to a different family.
+            Falls back to '||[]' (auto-resolve, which is family-safe in update flows)
+            only if the installed version/baseModel can't be resolved here."""
             if not model_id_value:
                 return gr.update()
+            target_id = None
+            items = gl.local_json_data.get('items', []) if isinstance(gl.local_json_data, dict) else []
+            item = next((it for it in items if str(it.get('id')) == str(model_id_value)), None)
+            versions = item.get('modelVersions', []) if item else []
+            sha = (installed_sha or '').upper().strip()
+            if versions and sha:
+                inst_base = None
+                for ver in versions:
+                    if any((f.get('hashes', {}).get('SHA256') or '').upper() == sha
+                           for f in ver.get('files', [])):
+                        inst_base = (ver.get('baseModel') or '').strip()
+                        break
+                if inst_base:
+                    # versions[0] = newest overall → first match = newest of this baseModel
+                    for ver in versions:
+                        if (ver.get('baseModel') or '').strip() == inst_base and ver.get('id') is not None:
+                            target_id = ver['id']
+                            break
+            if target_id is not None:
+                return gr.update(value=f"{model_id_value}||[{target_id}]")
             return gr.update(value=f"{model_id_value}||[]")
 
         def trigger_local_version_download(model_id_value, version_display):
@@ -1148,7 +1176,7 @@ def on_ui_tabs():
         # (download origin is carried per queue item — dl_origin — not set at click time)
         local_update_btn.click(
             fn=trigger_local_update,
-            inputs=[local_model_id],
+            inputs=[local_model_id, local_sha256],
             outputs=[update_single_trigger]
         )
 

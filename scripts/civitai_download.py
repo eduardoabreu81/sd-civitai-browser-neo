@@ -233,8 +233,13 @@ def _resolve_versions_to_download(versions_list, model_folder):
     if not versions_list:
         return []
 
-    # Collect SHA256 hashes from local JSON files in the model folder
+    # Collect SHA256 hashes AND cached modelVersionIds from local JSON files in the
+    # model folder. The cached versionId is a second identity signal: when a sidecar
+    # lacks a sha256 (or it diverges), matching by versionId still lets us detect the
+    # installed family/baseModel — aligning this with version_match, so an installed
+    # model never falls through to the global-newest version (wrong family) fallback.
     installed_hashes = set()
+    installed_cached_ver_ids = set()
     if model_folder and os.path.isdir(str(model_folder)):
         for root, _, files in os.walk(str(model_folder), followlinks=True):
             for fname in files:
@@ -245,10 +250,16 @@ def _resolve_versions_to_download(versions_list, model_folder):
                             sha = data.get('sha256', '')
                             if sha:
                                 installed_hashes.add(sha.upper())
+                            vid = data.get('modelVersionId')
+                            if vid is not None:
+                                try:
+                                    installed_cached_ver_ids.add(int(vid))
+                                except (ValueError, TypeError):
+                                    pass
                     except Exception:
                         pass
 
-    if not installed_hashes:
+    if not installed_hashes and not installed_cached_ver_ids:
         return [versions_list[0]]
 
     # Build two parallel maps:
@@ -271,15 +282,19 @@ def _resolve_versions_to_download(versions_list, model_folder):
         if bm and bm not in latest_by_base:
             latest_by_base[bm] = ver
 
-        for file_entry in ver.get('files', []):
-            sha = file_entry.get('hashes', {}).get('SHA256', '').upper()
-            if sha and sha in installed_hashes:
-                installed_ver_ids.add(vid)
-                if family:
-                    installed_families.add(family)
-                if bm:
-                    installed_bases.add(bm)
-                break
+        is_installed = vid in installed_cached_ver_ids
+        if not is_installed:
+            for file_entry in ver.get('files', []):
+                sha = file_entry.get('hashes', {}).get('SHA256', '').upper()
+                if sha and sha in installed_hashes:
+                    is_installed = True
+                    break
+        if is_installed:
+            installed_ver_ids.add(vid)
+            if family:
+                installed_families.add(family)
+            if bm:
+                installed_bases.add(bm)
 
     # --- Phase 1: family-based resolution (preferred, more precise) ---
     seen_ids = set()
