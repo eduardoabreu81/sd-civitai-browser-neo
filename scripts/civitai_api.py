@@ -1226,7 +1226,35 @@ def insert_metadata(page_nr, api_url=None):
     return gl.json_data
 
 ## === ANXETY EDITs ===
-def update_model_versions(model_id, json_input=None, base_filter=None):
+def _match_installed_versions_from_paths(file_paths, version_files, installed_versions):
+    """Mark installed versions by inspecting only the known installed file paths.
+
+    Cheap alternative to walking (and json.load-ing) the whole content-type tree:
+    for each known file, match its name against the version filenames and its
+    sidecar's sha256 against the version hashes. Used by the Local detail panel,
+    which already knows which 1-3 files back the clicked model.
+    """
+    for file_path in file_paths or []:
+        base = os.path.basename(file_path).lower()
+        for version_name, version_filename, _ in version_files:
+            if base == version_filename.lower():
+                installed_versions.add(version_name)
+                break
+        sidecar = os.path.splitext(file_path)[0] + '.json'
+        try:
+            if os.path.exists(sidecar):
+                with open(sidecar, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                sha256 = normalize_sha256(data.get('sha256')) if isinstance(data, dict) else None
+                if sha256:
+                    for version_name, _, file_sha256 in version_files:
+                        if sha256 == file_sha256:
+                            installed_versions.add(version_name)
+                            break
+        except Exception as e:
+            debug_print(f"[Local installed-match] {sidecar}: {e}")
+
+def update_model_versions(model_id, json_input=None, base_filter=None, installed_file_paths=None):
     if json_input:
         api_json = json_input
     else:
@@ -1255,28 +1283,34 @@ def update_model_versions(model_id, json_input=None, base_filter=None):
                     version_filename = version_file['name']
                     version_files.add((version['name'], version_filename, file_sha256))
 
-            for root, _, files in os.walk(model_folder, followlinks=True):
-                for file in files:
-                    if file.endswith('.json'):
-                        try:
-                            json_path = os.path.join(root, file)
-                            with open(json_path, 'r', encoding='utf-8') as f:
-                                json_data = json.load(f)
-                                if isinstance(json_data, dict):
-                                    sha256 = normalize_sha256(json_data.get('sha256'))
-                                    if sha256:
-                                        for version_name, _, file_sha256 in version_files:
-                                            if sha256 == file_sha256:
-                                                installed_versions.add(version_name)
-                                                break
-                        except Exception as e:
-                            print(f"failed to read: '{file}': {e}")
+            if installed_file_paths is not None:
+                # Local detail panel: we already know this model's installed file(s),
+                # so match just those instead of walking the whole content-type tree
+                # (thousands of json.load calls per click on large libraries).
+                _match_installed_versions_from_paths(installed_file_paths, version_files, installed_versions)
+            else:
+                for root, _, files in os.walk(model_folder, followlinks=True):
+                    for file in files:
+                        if file.endswith('.json'):
+                            try:
+                                json_path = os.path.join(root, file)
+                                with open(json_path, 'r', encoding='utf-8') as f:
+                                    json_data = json.load(f)
+                                    if isinstance(json_data, dict):
+                                        sha256 = normalize_sha256(json_data.get('sha256'))
+                                        if sha256:
+                                            for version_name, _, file_sha256 in version_files:
+                                                if sha256 == file_sha256:
+                                                    installed_versions.add(version_name)
+                                                    break
+                            except Exception as e:
+                                print(f"failed to read: '{file}': {e}")
 
-                    # filename_check
-                    for version_name, version_filename, _ in version_files:
-                        if file.lower() == version_filename.lower():
-                            installed_versions.add(version_name)
-                            break
+                        # filename_check
+                        for version_name, version_filename, _ in version_files:
+                            if file.lower() == version_filename.lower():
+                                installed_versions.add(version_name)
+                                break
 
             version_names = list(versions_dict.keys())
             # Build display names with [Installed] and (Early Access) if applicable

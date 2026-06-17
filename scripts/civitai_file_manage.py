@@ -5086,6 +5086,10 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
     # from id_to_paths; local-only fallback cards carry their own local_file_path.
     for it in items:
         paths = id_to_paths.get(it.get('id')) or ([it['local_file_path']] if it.get('local_file_path') else [])
+        # Persist the installed file path(s) so the detail panel can detect the
+        # installed version from just these 1-3 files instead of walking (and
+        # json.load-ing) the entire content-type tree on every card click.
+        it['_local_paths'] = paths
         best = 0.0
         for fp in paths:
             try:

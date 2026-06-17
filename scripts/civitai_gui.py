@@ -980,7 +980,16 @@ def on_ui_tabs():
                 return _local_empty
 
             model_name, model_id = _api.extract_model_info(model_string)
-            model_versions = _api.update_model_versions(model_id, json_input=gl.local_json_data)
+            # Installed file path(s) for this model, stamped by render_local_browser.
+            # Lets update_model_versions detect the installed version from these 1-3
+            # files instead of walking the whole content-type tree on every click.
+            # Falls back to the full walk (None) when an item predates the stamp.
+            _panel_items = gl.local_json_data.get('items', []) if isinstance(gl.local_json_data, dict) else []
+            _panel_item = next((it for it in _panel_items if str(it.get('id')) == str(model_id)), None)
+            _installed_paths = (_panel_item.get('_local_paths') or []) if _panel_item else []
+            model_versions = _api.update_model_versions(
+                model_id, json_input=gl.local_json_data,
+                installed_file_paths=_installed_paths or None)
             chosen = model_version or (model_versions.get('value') if model_versions else None)
             info = _api.update_model_info(model_string, chosen, json_input=gl.local_json_data, prefer_cached_images=True)
             (html, tags_u, base_model_u, _dl, _img, _del, _flist,
