@@ -1370,14 +1370,22 @@ def on_ui_tabs():
             show_progress='hidden'
         )
 
+        def _selected_to_queue_filtered(model_list, subfolder, dl_start, create_json_v, html, base_filter_v):
+            # Pass the active Browser base-model filter so a bulk download picks the
+            # newest version MATCHING the filter (not the global-newest, which may be
+            # a base the user didn't select, e.g. Anima/Chroma).
+            return _download.selected_to_queue(
+                model_list, subfolder, dl_start, create_json_v, html, base_filter=base_filter_v)
+
         download_selected.click(
-            fn=_download.selected_to_queue,
+            fn=_selected_to_queue_filtered,
             inputs=[
                 selected_model_list,
                 subfolder_selected,
                 download_start,
                 create_json,
-                download_manager_html
+                download_manager_html,
+                base_filter
             ],
             outputs=[
                 download_model,

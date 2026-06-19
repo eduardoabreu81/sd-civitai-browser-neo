@@ -572,7 +572,55 @@ def _find_model_by_sha256(sha256):
     return None, None, None
 
 
-def find_installed_file_by_model_id(model_id, exclude_filename=None):
+MODEL_FILE_EXTENSIONS = ['.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.zip', '.vae', '.th']
+
+
+def build_installed_index():
+    """Walk every model folder ONCE and index installed files for batch operations.
+
+    A bulk download otherwise re-walks the whole model tree per model (once in
+    _resolve_versions_to_download for installed-version detection, once in
+    find_installed_file_by_model_id for retention) — O(models x files). This
+    single pass returns reusable lookups so the per-model cost drops to O(1):
+
+      {'hashes': {SHA256...}, 'ver_ids': {modelVersionId...},
+       'by_model_id': {modelId: [model_file_path, ...]}}
+    """
+    index = {'hashes': set(), 'ver_ids': set(), 'by_model_id': {}}
+    for model_folder in _get_all_model_folders():
+        for root, _, files in os.walk(model_folder, followlinks=True):
+            fileset = set(files)
+            for file in files:
+                if not file.endswith('.json'):
+                    continue
+                data = _api.safe_json_load(os.path.join(root, file))
+                if not data:
+                    continue
+                sha = data.get('sha256') or ''
+                if sha:
+                    index['hashes'].add(sha.upper())
+                vid = data.get('modelVersionId')
+                if vid is not None:
+                    try:
+                        index['ver_ids'].add(int(vid))
+                    except (ValueError, TypeError):
+                        pass
+                sidecar_id = data.get('modelId')
+                if sidecar_id is None and isinstance(data.get('model'), dict):
+                    sidecar_id = data['model'].get('id')
+                try:
+                    mid = int(sidecar_id)
+                except (TypeError, ValueError):
+                    continue
+                json_base = os.path.splitext(file)[0]
+                for ext in MODEL_FILE_EXTENSIONS:
+                    if (json_base + ext) in fileset:
+                        index['by_model_id'].setdefault(mid, []).append(os.path.join(root, json_base + ext))
+                        break
+    return index
+
+
+def find_installed_file_by_model_id(model_id, exclude_filename=None, index=None):
     """Locate an installed model file by its CivitAI modelId (via the .json sidecar).
 
     Retention fallback for updates triggered without a prior update-scan (e.g. from the
@@ -580,7 +628,8 @@ def find_installed_file_by_model_id(model_id, exclude_filename=None):
     the currently-installed version so it can be removed/trashed per the retention policy.
 
     Returns the full path of an installed file for this model whose base name differs
-    from exclude_filename, or '' if none is found.
+    from exclude_filename, or '' if none is found. Pass a prebuilt index from
+    build_installed_index() to avoid re-walking the tree (used by batch downloads).
     """
     try:
         target_id = int(model_id)
@@ -588,7 +637,14 @@ def find_installed_file_by_model_id(model_id, exclude_filename=None):
         return ''
 
     exclude_base = os.path.splitext(exclude_filename)[0] if exclude_filename else None
-    model_extensions = ['.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.zip', '.vae', '.th']
+    model_extensions = MODEL_FILE_EXTENSIONS
+
+    if index is not None:
+        for path in index.get('by_model_id', {}).get(target_id, []):
+            if exclude_base and os.path.splitext(os.path.basename(path))[0] == exclude_base:
+                continue
+            return path
+        return ''
 
     for model_folder in _get_all_model_folders():
         for root, _, files in os.walk(model_folder, followlinks=True):

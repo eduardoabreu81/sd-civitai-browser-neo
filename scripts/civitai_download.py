@@ -219,7 +219,23 @@ def create_model_item(dl_url, model_filename, install_path, model_name, version_
     return item
 
 
-def _resolve_versions_to_download(versions_list, model_folder):
+def _pick_filtered_or_first(versions_list, base_filter):
+    """Newest version whose baseModel is in base_filter, else the first version.
+
+    versions_list is newest-first, so the first match is the newest match. Keeps a
+    filtered bulk download from grabbing a newer version of an UNSELECTED base
+    (e.g. Anima/Chroma when the user filtered Illustrious/NoobAI in the search).
+    """
+    if base_filter:
+        wanted = {str(b).strip().lower() for b in base_filter if b}
+        if wanted:
+            for ver in versions_list:
+                if (ver.get('baseModel') or '').strip().lower() in wanted:
+                    return ver
+    return versions_list[0]
+
+
+def _resolve_versions_to_download(versions_list, model_folder, base_filter=None, installed_scan=None):
     """Return the list of model versions to download for a batch update.
 
     For models with multiple installed families (e.g. Pony V1 AND Illustrious V1
@@ -238,29 +254,33 @@ def _resolve_versions_to_download(versions_list, model_folder):
     # lacks a sha256 (or it diverges), matching by versionId still lets us detect the
     # installed family/baseModel — aligning this with version_match, so an installed
     # model never falls through to the global-newest version (wrong family) fallback.
-    installed_hashes = set()
-    installed_cached_ver_ids = set()
-    if model_folder and os.path.isdir(str(model_folder)):
-        for root, _, files in os.walk(str(model_folder), followlinks=True):
-            for fname in files:
-                if fname.endswith('.json'):
-                    try:
-                        data = _api.safe_json_load(os.path.join(root, fname))
-                        if data:
-                            sha = data.get('sha256', '')
-                            if sha:
-                                installed_hashes.add(sha.upper())
-                            vid = data.get('modelVersionId')
-                            if vid is not None:
-                                try:
-                                    installed_cached_ver_ids.add(int(vid))
-                                except (ValueError, TypeError):
-                                    pass
-                    except Exception:
-                        pass
+    if installed_scan is not None:
+        # Batch path: reuse the index built once for the whole download (no per-model walk).
+        installed_hashes, installed_cached_ver_ids = installed_scan
+    else:
+        installed_hashes = set()
+        installed_cached_ver_ids = set()
+        if model_folder and os.path.isdir(str(model_folder)):
+            for root, _, files in os.walk(str(model_folder), followlinks=True):
+                for fname in files:
+                    if fname.endswith('.json'):
+                        try:
+                            data = _api.safe_json_load(os.path.join(root, fname))
+                            if data:
+                                sha = data.get('sha256', '')
+                                if sha:
+                                    installed_hashes.add(sha.upper())
+                                vid = data.get('modelVersionId')
+                                if vid is not None:
+                                    try:
+                                        installed_cached_ver_ids.add(int(vid))
+                                    except (ValueError, TypeError):
+                                        pass
+                        except Exception:
+                            pass
 
     if not installed_hashes and not installed_cached_ver_ids:
-        return [versions_list[0]]
+        return [_pick_filtered_or_first(versions_list, base_filter)]
 
     # Build two parallel maps:
     #  - family  (extracted from version name) — more precise when it works
@@ -325,7 +345,7 @@ def _resolve_versions_to_download(versions_list, model_folder):
                 base_result.append(ver)
                 seen_ids.add(vid)
 
-    return base_result if base_result else [versions_list[0]]
+    return base_result if base_result else [_pick_filtered_or_first(versions_list, base_filter)]
 
 
 def _all_known_items():
@@ -339,7 +359,7 @@ def _all_known_items():
     return items
 
 
-def selected_to_queue(model_list, subfolder, download_start, create_json, current_html, forced_version_ids=None, keep_installed=False, origin='browser'):
+def selected_to_queue(model_list, subfolder, download_start, create_json, current_html, forced_version_ids=None, keep_installed=False, origin='browser', base_filter=None):
     """Enqueue models for download.
 
     Args:
@@ -364,6 +384,11 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
 
     ## === ANXETY EDITs ===
     known_items = _all_known_items()
+    # Scan the model tree ONCE for the whole batch (installed hashes/version-ids for
+    # version resolution + modelId->paths for retention), instead of re-walking it
+    # per model in _resolve_versions_to_download and find_installed_file_by_model_id.
+    _batch_index = _file.build_installed_index()
+    _batch_scan = (_batch_index['hashes'], _batch_index['ver_ids'])
     for model_string in model_list:
         model_name, model_id = _api.extract_model_info(model_string)
         item_found = None
@@ -397,7 +422,8 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
             versions_to_download = [v for v in versions_list if v.get('id') in selected_ids]
         else:
             # Auto-resolve: one per installed family for multi-family models
-            versions_to_download = _resolve_versions_to_download(versions_list, model_folder)
+            versions_to_download = _resolve_versions_to_download(
+                versions_list, model_folder, base_filter=base_filter, installed_scan=_batch_scan)
 
         for version in versions_to_download:
             version_name = version.get('name')
@@ -483,7 +509,7 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
                 # locate the currently-installed file for this model on disk so retention can
                 # still remove/trash the old version when the new filename differs.
                 if not old_file_path:
-                    old_file_path = _file.find_installed_file_by_model_id(model_id, model_filename) or None
+                    old_file_path = _file.find_installed_file_by_model_id(model_id, model_filename, index=_batch_index) or None
 
             model_item = create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch, old_file_path=old_file_path, version_id=version_id, origin=origin)
             if model_item:
