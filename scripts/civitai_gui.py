@@ -606,6 +606,13 @@ def on_ui_tabs():
             # is no key or the account feature is disabled — no button, no interaction.
             account_badge_html = gr.HTML(value='', elem_id='civitai_account_badge')
 
+            with gr.Accordion(label='\U0001f514 Following — new versions', open=False, elem_id='civitai_following_box'):
+                gr.Markdown('New-version notifications from the models/creators you follow on CivitAI '
+                            '(needs account features + API key). Complements the local update scan.')
+                with gr.Row():
+                    following_refresh_btn = gr.Button(value='\U0001f504 Check notifications', scale=0)
+                following_feed_html = gr.HTML(value='', elem_id='civitai_following_feed')
+
             gr.Markdown('## 📊 Model Collection Statistics', elem_id='dashboard_header')
             gr.Markdown('View disk usage statistics for your model collection organized by type.')
 
@@ -2089,6 +2096,40 @@ def on_ui_tabs():
         civitai_interface.load(
             fn=build_account_badge_html,
             outputs=[account_badge_html]
+        )
+
+        def refresh_following_feed():
+            """Dashboard 'Following — new versions': pull the account's notifications
+            via the MCP (list_notifications) and render them. Renders the MCP's
+            human-readable text (robust to the exact item shape); a structured count
+            header is added when available. Filtering to the new-version category will
+            be tightened once the live payload's category value is confirmed."""
+            from html import escape
+            if not (getattr(opts, 'account_features_mcp', True)
+                    and (getattr(opts, 'custom_api_key', '') or '').strip()):
+                return ('<div style="opacity:0.7;font-size:13px;">Account features are off or no '
+                        'API key is set — enable them in Settings to use this.</div>')
+            res = _mcp.list_notifications(limit=50)
+            if not res.get('ok'):
+                return ('<div style="padding:10px;border-radius:6px;background:rgba(229,115,115,0.15);'
+                        f'border:1px solid #e57373;">❌ {escape(str(res.get("error", "")))}</div>')
+            text = (res.get('text') or '').strip()
+            count = None
+            data = res.get('data')
+            if isinstance(data, dict):
+                count = data.get('count')
+            if not text:
+                return '<div style="opacity:0.7;font-size:13px;">No notifications.</div>'
+            header = f'<div style="margin-bottom:6px;font-weight:600;">🔔 {escape(str(count))} notification(s)</div>' if count is not None else ''
+            return (f'{header}<pre style="white-space:pre-wrap;word-break:break-word;font-size:12px;'
+                    'background:var(--block-background-fill);border:1px solid var(--border-color-primary);'
+                    f'border-radius:6px;padding:10px;margin:0;">{escape(text)}</pre>')
+
+        following_refresh_btn.click(
+            fn=refresh_following_feed,
+            inputs=[],
+            outputs=[following_feed_html],
+            show_progress='full'
         )
 
     tab_name = 'CivitAI Browser Neo'
