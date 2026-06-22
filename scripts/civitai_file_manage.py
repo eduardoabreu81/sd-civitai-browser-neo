@@ -1406,7 +1406,7 @@ def sync_checkpoint_sha256_cache(progress=gr.Progress() if queue else None):
     return gr.update(value=summary)
 
 def convert_local_images(html):
-    soup = BeautifulSoup(html)
+    soup = BeautifulSoup(html, 'html.parser')
     for simg in soup.find_all('img', attrs={'data-sampleimg': 'true'}):
         url = urlparse(simg['src'])
         path = url.path
