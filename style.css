@@ -1513,6 +1513,10 @@
     font-size: 14px;
     line-height: 1.4;
 }
+:is(#civitai_preview_html,#local_preview_html) .civitai-meta-retry {
+    margin-top: 16px;
+    cursor: pointer;
+}
 
 /* More details accordion */
 :is(#civitai_preview_html,#local_preview_html) .tabs {

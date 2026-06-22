@@ -1686,6 +1686,18 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                                     '<path d="M12 10h.01"></path>'
                                     '</svg>'
                                 )
+                            # Best-effort workaround: the API returned no meta for this
+                            # image, but the image FILE may still carry embedded PNG-info.
+                            # Offer to try reading it (images only — video has no PNG-info).
+                            # CivitAI often strips embedded data, so this is "Try", not a promise.
+                            retry_btn = ''
+                            if not is_video:
+                                retry_btn = (
+                                    f'<label onclick="sendImgUrl(\'{escape(image_url)}\')" '
+                                    'class="civitai-txt2img-btn civitai-meta-retry" '
+                                    'title="The card has no metadata; attempt to read parameters embedded in the image file">'
+                                    '&#128269; Try reading params from image file</label>'
+                                )
                             img_html += (
                                 '<div class="image-metadata-empty">'
                                 '<div class="empty-state-icon">'
@@ -1694,6 +1706,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                                 '<div class="empty-state-text">'
                                 f'<h4>No metadata available</h4>'
                                 f'<p>No generation settings are available for this {no_meta_type}.</p>'
+                                f'{retry_btn}'
                                 '</div>'
                                 '</div>'
                             )
