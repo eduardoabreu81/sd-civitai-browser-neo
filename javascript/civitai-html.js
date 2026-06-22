@@ -1437,13 +1437,17 @@ function sendTagsToPrompt(tags) {
 function genInfo_to_txt2img(genInfo, do_slice = true) {
     let insert = gradioApp().querySelector('#txt2img_prompt textarea');
     let pasteButton = gradioApp().querySelector('#paste');
-    if (genInfo) {
+    if (genInfo && insert && pasteButton) {
         insert.value = do_slice ? genInfo.slice(5) : genInfo;
-        // updateInput notifies Gradio 4's React layer that the value changed
+        // updateInput notifies Gradio's frontend store that the value changed.
         updateInput(insert);
-        // Must use .click() or MouseEvent — generic Event('click') is silently
-        // ignored by Gradio 4's button handler in some browser/focus states
-        pasteButton.click();
+        // Defer the #paste click until Gradio has committed the new prompt value.
+        // Clicking in the SAME tick intermittently makes #paste read a stale/empty
+        // prompt, so it parses nothing and clears the field — the "giant infotext
+        // appears, then the field empties" bug. Two animation frames reliably land
+        // after the input->state sync. (.click() — not Event('click') — is required;
+        // Gradio 4 ignores synthetic click events in some focus states.)
+        requestAnimationFrame(() => requestAnimationFrame(() => pasteButton.click()));
     }
 }
 
