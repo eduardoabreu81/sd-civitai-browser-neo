@@ -2318,6 +2318,52 @@ def get_headers(referer=None, no_api=None):
 
     return headers
 
+_favorited_ids_cache = {}
+
+def get_favorited_model_ids(force=False):
+    """Set of model IDs the authenticated user has favorited on CivitAI.
+
+    Uses the same /models?favorites=true endpoint as the Browser's 'only liked'
+    filter (needs the API key). Cached per key for the session so the detail panel
+    can seed the Favorite toggle without a call per model click; pass force=True to
+    refetch, or keep it in sync after a toggle via set_favorited_cache().
+    """
+    key = (getattr(opts, 'custom_api_key', '') or '').strip()
+    if not key:
+        return set()
+    if not force and key in _favorited_ids_cache:
+        return _favorited_ids_cache[key]
+    ids = set()
+    url = f"https://{get_civitai_domain()}/api/v1/models?favorites=true&limit=100&nsfw=true"
+    for _ in range(50):  # cap ~5000 favorites
+        data = request_civit_api(url)
+        if not isinstance(data, dict):
+            break
+        for it in data.get('items', []):
+            try:
+                ids.add(int(it['id']))
+            except (KeyError, TypeError, ValueError):
+                pass
+        url = (data.get('metadata') or {}).get('nextPage')
+        if not url:
+            break
+    _favorited_ids_cache[key] = ids
+    return ids
+
+def set_favorited_cache(model_id, favorited):
+    """Keep the session favorites cache in sync after a toggle (avoids a refetch)."""
+    key = (getattr(opts, 'custom_api_key', '') or '').strip()
+    if not key or key not in _favorited_ids_cache:
+        return
+    try:
+        mid = int(model_id)
+    except (TypeError, ValueError):
+        return
+    if favorited:
+        _favorited_ids_cache[key].add(mid)
+    else:
+        _favorited_ids_cache[key].discard(mid)
+
 def request_civit_api(api_url=None, skip_error_check=False):
     headers = get_headers()
     proxies, ssl = get_proxies()

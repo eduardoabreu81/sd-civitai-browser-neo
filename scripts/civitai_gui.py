@@ -934,6 +934,52 @@ def on_ui_tabs():
                 gr.update()                                       # Model list HTML
             )
 
+        # ── CivitAI account actions (favorite / notify) — MCP, Browser detail panel only ──
+        def _account_ready():
+            return (bool(getattr(opts, 'account_features_mcp', True))
+                    and bool((getattr(opts, 'custom_api_key', '') or '').strip()))
+
+        def seed_account_buttons(model_id_value):
+            """On model change: show the toggles (when account features are on + a key is
+            set) and SEED the Favorite state from the user's CivitAI favorites (same
+            /models?favorites=true the Browser 'only liked' filter uses, cached per
+            session). Notify can't be seeded (no read endpoint) — it starts off and
+            reflects after the first click."""
+            ready = _account_ready()
+            fav = False
+            if ready and model_id_value:
+                try:
+                    fav = int(model_id_value) in _api.get_favorited_model_ids()
+                except (TypeError, ValueError):
+                    fav = False
+            return (
+                gr.update(value=('⭐ Favorited' if fav else '☆ Favorite'), interactive=ready, visible=ready),
+                gr.update(value='\U0001f514 Notify new versions', interactive=ready, visible=ready),
+                fav,
+                False,
+            )
+
+        def toggle_favorite_click(model_id_value, is_fav):
+            if not model_id_value or not _account_ready():
+                return gr.update(), is_fav
+            new_state = not is_fav
+            res = _mcp.set_model_favorite(model_id_value, new_state)  # explicit setTo — safe/idempotent
+            if not res.get('ok'):
+                print(f"[Account] favorite failed: {res.get('error')}")
+                return gr.update(value='☆ Favorite (failed)'), is_fav
+            _api.set_favorited_cache(model_id_value, new_state)
+            return gr.update(value=('⭐ Favorited' if new_state else '☆ Favorite')), new_state
+
+        def toggle_notify_click(model_id_value, is_notif):
+            if not model_id_value or not _account_ready():
+                return gr.update(), is_notif
+            res = _mcp.toggle_notify_model(model_id_value)  # server-side toggle
+            if not res.get('ok'):
+                print(f"[Account] notify failed: {res.get('error')}")
+                return gr.update(value='\U0001f514 Notify (failed)'), is_notif
+            new_state = not is_notif
+            return gr.update(value=('\U0001f514 Notifying ✓' if new_state else '\U0001f514 Notify new versions')), new_state
+
         model_select.change(
             fn=update_models_dropdown,
             inputs=[model_select, base_filter],
@@ -956,48 +1002,15 @@ def on_ui_tabs():
                 save_info,
                 list_html_input
             ]
+        ).then(
+            fn=seed_account_buttons,
+            inputs=[model_id],
+            outputs=[fav_btn, notify_btn, fav_state, notify_state],
+            show_progress='hidden'
         )
-
-        # ── CivitAI account actions (favorite / notify) — MCP, Browser detail panel only ──
-        def _account_ready():
-            return (bool(getattr(opts, 'account_features_mcp', True))
-                    and bool((getattr(opts, 'custom_api_key', '') or '').strip()))
-
-        def reset_account_buttons():
-            """On model change: reset the toggles and show them only when account
-            features are enabled and an API key is set. Initial state can't be seeded
-            (MCP get_model doesn't expose isFavorite/isNotified), so both start off."""
-            ready = _account_ready()
-            return (
-                gr.update(value='☆ Favorite', interactive=ready, visible=ready),
-                gr.update(value='\U0001f514 Notify new versions', interactive=ready, visible=ready),
-                False,
-                False,
-            )
-
-        def toggle_favorite_click(model_id_value, is_fav):
-            if not model_id_value or not _account_ready():
-                return gr.update(), is_fav
-            new_state = not is_fav
-            res = _mcp.set_model_favorite(model_id_value, new_state)  # explicit setTo — safe/idempotent
-            if not res.get('ok'):
-                print(f"[Account] favorite failed: {res.get('error')}")
-                return gr.update(value='☆ Favorite (failed)'), is_fav
-            return gr.update(value=('⭐ Favorited' if new_state else '☆ Favorite')), new_state
-
-        def toggle_notify_click(model_id_value, is_notif):
-            if not model_id_value or not _account_ready():
-                return gr.update(), is_notif
-            res = _mcp.toggle_notify_model(model_id_value)  # server-side toggle
-            if not res.get('ok'):
-                print(f"[Account] notify failed: {res.get('error')}")
-                return gr.update(value='\U0001f514 Notify (failed)'), is_notif
-            new_state = not is_notif
-            return gr.update(value=('\U0001f514 Notifying ✓' if new_state else '\U0001f514 Notify new versions')), new_state
 
         fav_btn.click(fn=toggle_favorite_click, inputs=[model_id, fav_state], outputs=[fav_btn, fav_state], show_progress='hidden')
         notify_btn.click(fn=toggle_notify_click, inputs=[model_id, notify_state], outputs=[notify_btn, notify_state], show_progress='hidden')
-        model_select.change(fn=reset_account_buttons, inputs=[], outputs=[fav_btn, notify_btn, fav_state, notify_state], show_progress='hidden')
 
         # ── Local Models Browser bindings ──
         _local_empty = (
