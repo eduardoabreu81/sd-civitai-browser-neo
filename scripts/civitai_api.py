@@ -1624,7 +1624,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                         if meta_button:
                             img_html += (
                                 '<div class="civitai_txt2img">'
-                                f'<label onclick="sendImgUrl(\'{escape(image_url)}\')" class="civitai-txt2img-btn">Send to txt2img</label>'
+                                f'<label onclick="sendToTxt2img(this, \'{escape(image_url)}\')" class="civitai-txt2img-btn">Send to txt2img</label>'
                                 '</div>'
                             )
                         img_html += '</div>'  # close .civitai-image-container

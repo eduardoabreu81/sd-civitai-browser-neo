@@ -1370,6 +1370,51 @@ function sendImgUrl(image_url) {
     sendClick(genButton);
 }
 
+// "Send to txt2img" — build the infotext from the meta ALREADY rendered on the
+// card (the same API meta shown to the user), instead of re-downloading the image
+// and reading its embedded PNG-info (which CivitAI may strip/re-encode, so it can
+// differ from what's shown). Falls back to the embedded-info path (sendImgUrl) only
+// when this image has no meta rows on the card.
+function sendToTxt2img(btn, image_url) {
+    const block = btn.closest('.image-block');
+    const rows = block ? block.querySelectorAll('[data-key]') : [];
+    if (!rows || rows.length === 0) {
+        sendImgUrl(image_url);
+        return;
+    }
+    // CivitAI meta key -> A1111 infotext parameter label. Remaining keys (e.g.
+    // "Denoising strength", "Hires upscale") are already A1111-style → passed as-is.
+    const LABELS = {
+        sampler: 'Sampler', steps: 'Steps', cfgScale: 'CFG scale',
+        clipSkip: 'Clip skip', 'Clip skip': 'Clip skip', seed: 'Seed',
+        Size: 'Size', Model: 'Model',
+    };
+    let positive = '';
+    let negative = '';
+    const params = [];
+    rows.forEach(row => {
+        const key = row.getAttribute('data-key');
+        const dd = row.querySelector('dd');
+        if (!key || !dd) return;
+        const value = dd.textContent.trim();
+        if (value === '') return;
+        if (key === 'prompt') { positive = value; return; }
+        if (key === 'negativePrompt') { negative = value; return; }
+        params.push(`${LABELS[key] || key}: ${value}`);
+    });
+    if (!positive && !negative && params.length === 0) {
+        sendImgUrl(image_url);
+        return;
+    }
+    let final = positive;
+    if (negative) final += `\nNegative prompt: ${negative}`;
+    if (params.length) final += `\n${params.join(', ')}`;
+    const genButton = gradioApp().querySelector('#txt2img_extra_tabs > div > button');
+    genInfo_to_txt2img(final, false);
+    hideCivitaiOverlay();
+    sendClick(genButton);
+}
+
 // Triggers a browser download for text content using a temporary Blob URL.
 // Called by the export_csv_output / export_json_output change events.
 function downloadBlobFile(content, filename, mimeType) {
