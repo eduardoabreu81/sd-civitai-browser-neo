@@ -1368,6 +1368,61 @@ def cleaned_name(file_name):
 
     return f"{clean_name}{extension}"
 
+def _swarmui_to_a1111(geninfo):
+    """Convert SwarmUI-embedded JSON params to an A1111 infotext string.
+
+    SwarmUI (StableSwarmUI) stores generation params as JSON under
+    'sui_image_params'. The WebUI '#paste' parser only understands the A1111
+    text format, so left as-is the whole JSON gets dumped into the prompt (the
+    "giant text" symptom). Returns an A1111-format string, or None when the
+    input isn't SwarmUI JSON (so callers fall back to the original geninfo).
+    """
+    try:
+        data = json.loads(geninfo)
+    except (ValueError, TypeError):
+        return None
+    params = data.get('sui_image_params') if isinstance(data, dict) else None
+    if not isinstance(params, dict):
+        return None
+
+    positive = str(params.get('prompt') or '').strip()
+    negative = str(params.get('negativeprompt') or '').strip()
+
+    # SwarmUI keeps LoRAs as parallel name/weight lists → A1111 inline tags.
+    loras = params.get('loras') or []
+    weights = params.get('loraweights') or []
+    if isinstance(loras, list):
+        tags = []
+        for i, name in enumerate(loras):
+            w = weights[i] if isinstance(weights, list) and i < len(weights) else '1'
+            tags.append(f"<lora:{name}:{w}>")
+        if tags:
+            positive = (positive + ' ' + ' '.join(tags)).strip()
+
+    parts = []
+    for label, key in (('Steps', 'steps'), ('Sampler', 'sampler'),
+                       ('CFG scale', 'cfgscale'), ('Seed', 'seed')):
+        val = params.get(key)
+        if val is not None and str(val) != '':
+            parts.append(f"{label}: {val}")
+    width, height = params.get('width'), params.get('height')
+    if width and height:
+        try:
+            parts.append(f"Size: {int(float(width))}x{int(float(height))}")
+        except (ValueError, TypeError):
+            pass
+    model = params.get('model')
+    if model:
+        parts.append(f"Model: {model}")
+
+    lines = [positive]
+    if negative:
+        lines.append(f"Negative prompt: {negative}")
+    if parts:
+        lines.append(', '.join(parts))
+    return '\n'.join(lines)
+
+
 def fetch_and_process_image(image_url):
     proxies, ssl = get_proxies()
     try:
@@ -1377,11 +1432,11 @@ def fetch_and_process_image(image_url):
             if response.status_code == 200:
                 image = Image.open(BytesIO(response.content))
                 geninfo, _ = read_info_from_image(image)
-                return geninfo
+                return (_swarmui_to_a1111(geninfo) or geninfo) if geninfo else geninfo
         else:
             image = Image.open(image_url)
             geninfo, _ = read_info_from_image(image)
-            return geninfo
+            return (_swarmui_to_a1111(geninfo) or geninfo) if geninfo else geninfo
     except:
         return None
 
