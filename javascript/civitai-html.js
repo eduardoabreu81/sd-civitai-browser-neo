@@ -1406,8 +1406,10 @@ function sendToTxt2img(btn, image_url) {
         sendImgUrl(image_url);
         return;
     }
-    let final = positive;
-    if (negative) final += `\nNegative prompt: ${negative}`;
+    // Always emit the "Negative prompt:" line (even when empty): the WebUI's #paste
+    // parser needs that structure to apply the prompt — a bare single-line positive
+    // prompt is otherwise ignored (so a card with only a prompt sent nothing).
+    let final = `${positive}\nNegative prompt: ${negative}`;
     if (params.length) final += `\n${params.join(', ')}`;
     const genButton = gradioApp().querySelector('#txt2img_extra_tabs > div > button');
     genInfo_to_txt2img(final, false);
