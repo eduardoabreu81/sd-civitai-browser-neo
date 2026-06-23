@@ -606,7 +606,7 @@ def on_ui_tabs():
             # is no key or the account feature is disabled — no button, no interaction.
             account_badge_html = gr.HTML(value='', elem_id='civitai_account_badge')
 
-            with gr.Accordion(label='\U0001f514 Following — new versions', open=False, elem_id='civitai_following_box'):
+            with gr.Accordion(label='\U0001f514 Following — new versions', open=True, elem_id='civitai_following_box'):
                 gr.Markdown('New-version notifications from the models/creators you follow on CivitAI '
                             '(needs account features + API key). Complements the local update scan.')
                 with gr.Row():
@@ -2121,9 +2121,14 @@ def on_ui_tabs():
             if not text:
                 return '<div style="opacity:0.7;font-size:13px;">No notifications.</div>'
             header = f'<div style="margin-bottom:6px;font-weight:600;">🔔 {escape(str(count))} notification(s)</div>' if count is not None else ''
-            return (f'{header}<pre style="white-space:pre-wrap;word-break:break-word;font-size:12px;'
+            # Make model links actionable: turn any civitai URL in the report into a
+            # clickable link (the MCP text includes model URLs, like search_models does).
+            body = escape(text)
+            body = re.sub(r'(https?://[^\s<]+)',
+                          r'<a href="\1" target="_blank" rel="noopener">\1</a>', body)
+            return (f'{header}<div style="white-space:pre-wrap;word-break:break-word;font-size:12px;'
                     'background:var(--block-background-fill);border:1px solid var(--border-color-primary);'
-                    f'border-radius:6px;padding:10px;margin:0;">{escape(text)}</pre>')
+                    f'border-radius:6px;padding:10px;margin:0;">{body}</div>')
 
         following_refresh_btn.click(
             fn=refresh_following_feed,
