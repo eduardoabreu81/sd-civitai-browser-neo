@@ -1468,14 +1468,33 @@ def model_from_sent(model_name, content_type):
     elif 'detection' in content_type:
         content_type = ['Detection']
 
-    extensions = ['.pt', '.ckpt', '.pth', '.safetensors', '.th', '.zip', '.vae']
+    extensions = ('.pt', '.ckpt', '.pth', '.safetensors', '.th', '.zip', '.vae')
 
+    # A card's name is the filename stem, so prefer an EXACT stem match
+    # (model_name == file without extension). Only fall back to a prefix match when
+    # nothing matches exactly — otherwise models sharing a prefix (e.g. "Char" vs
+    # "Char - Outfit" vs "Char v2") would resolve to the wrong file (the old code
+    # used startswith and kept the LAST match).
+    target_stem = os.path.basename(model_name)
+    exact_file = None
+    prefix_file = None
     for content_type_item in content_type:
         folder = _api.contenttype_folder(content_type_item)
         for folder_path, _, files in os.walk(folder, followlinks=True):
             for file in files:
-                if file.startswith(model_name) and file.endswith(tuple(extensions)):
-                    model_file = os.path.join(folder_path, file)
+                if not file.endswith(extensions):
+                    continue
+                full_path = os.path.join(folder_path, file)
+                if os.path.splitext(file)[0] == target_stem:
+                    exact_file = full_path
+                    break
+                if prefix_file is None and file.startswith(model_name):
+                    prefix_file = full_path
+            if exact_file:
+                break
+        if exact_file:
+            break
+    model_file = exact_file or prefix_file
 
     if not model_file:
         output_html = _api.api_error_msg('path_not_found')
@@ -1573,14 +1592,33 @@ def send_to_browser(model_name, content_type, click_first_item):
         content_type = ['Checkpoint']
     elif 'lora' in content_type:
         content_type = ['LORA']
-    extensions = ['.pt', '.ckpt', '.pth', '.safetensors', '.th', '.zip', '.vae']
+    extensions = ('.pt', '.ckpt', '.pth', '.safetensors', '.th', '.zip', '.vae')
 
+    # A card's name is the filename stem, so prefer an EXACT stem match
+    # (model_name == file without extension). Only fall back to a prefix match when
+    # nothing matches exactly — otherwise models sharing a prefix (e.g. "Char" vs
+    # "Char - Outfit" vs "Char v2") would resolve to the wrong file (the old code
+    # used startswith and kept the LAST match).
+    target_stem = os.path.basename(model_name)
+    exact_file = None
+    prefix_file = None
     for content_type_item in content_type:
         folder = _api.contenttype_folder(content_type_item)
         for folder_path, _, files in os.walk(folder, followlinks=True):
             for file in files:
-                if file.startswith(model_name) and file.endswith(tuple(extensions)):
-                    model_file = os.path.join(folder_path, file)
+                if not file.endswith(extensions):
+                    continue
+                full_path = os.path.join(folder_path, file)
+                if os.path.splitext(file)[0] == target_stem:
+                    exact_file = full_path
+                    break
+                if prefix_file is None and file.startswith(model_name):
+                    prefix_file = full_path
+            if exact_file:
+                break
+        if exact_file:
+            break
+    model_file = exact_file or prefix_file
 
     if not model_file:
         output_html = _api.api_error_msg('path_not_found')
