@@ -2109,26 +2109,64 @@ def on_ui_tabs():
                     and (getattr(opts, 'custom_api_key', '') or '').strip()):
                 return ('<div style="opacity:0.7;font-size:13px;">Account features are off or no '
                         'API key is set — enable them in Settings to use this.</div>')
-            res = _mcp.list_notifications(limit=50)
+            res = _mcp.list_notifications(limit=100)
             if not res.get('ok'):
                 return ('<div style="padding:10px;border-radius:6px;background:rgba(229,115,115,0.15);'
                         f'border:1px solid #e57373;">❌ {escape(str(res.get("error", "")))}</div>')
-            text = (res.get('text') or '').strip()
-            count = None
+
+            box = ('white-space:pre-wrap;word-break:break-word;font-size:12px;'
+                   'background:var(--block-background-fill);border:1px solid var(--border-color-primary);'
+                   'border-radius:6px;padding:10px;margin:0;')
+
+            def _text_fallback(note=''):
+                # Show only the new-model-version lines from the human text (drops the
+                # reaction/thread/article/follow noise) when structured details aren't usable.
+                lines = [ln for ln in (res.get('text') or '').splitlines() if 'new-model-version' in ln]
+                body = escape('\n'.join(lines) or 'No new-version notifications.')
+                return f'{note}<div style="{box}">{body}</div>'
+
             data = res.get('data')
+            notifs = None
             if isinstance(data, dict):
-                count = data.get('count')
-            if not text:
-                return '<div style="opacity:0.7;font-size:13px;">No notifications.</div>'
-            header = f'<div style="margin-bottom:6px;font-weight:600;">🔔 {escape(str(count))} notification(s)</div>' if count is not None else ''
-            # Make model links actionable: turn any civitai URL in the report into a
-            # clickable link (the MCP text includes model URLs, like search_models does).
-            body = escape(text)
-            body = re.sub(r'(https?://[^\s<]+)',
-                          r'<a href="\1" target="_blank" rel="noopener">\1</a>', body)
-            return (f'{header}<div style="white-space:pre-wrap;word-break:break-word;font-size:12px;'
-                    'background:var(--block-background-fill);border:1px solid var(--border-color-primary);'
-                    f'border-radius:6px;padding:10px;margin:0;">{body}</div>')
+                notifs = data.get('notifications') or data.get('items') or data.get('results')
+            if not isinstance(notifs, list):
+                return _text_fallback()
+
+            # Diagnostic (one line) so the structured shape can be confirmed/refined.
+            try:
+                if notifs:
+                    print(f"[Following feed] sample notification: {json.dumps(notifs[0])[:500]}")
+            except Exception:
+                pass
+
+            rows = []
+            for n in notifs:
+                if not isinstance(n, dict) or (n.get('type') or '') != 'new-model-version':
+                    continue
+                det = n.get('details') if isinstance(n.get('details'), dict) else {}
+                model_id = det.get('modelId') or det.get('id') or n.get('modelId')
+                version_id = det.get('modelVersionId') or det.get('versionId') or n.get('modelVersionId')
+                name = det.get('modelName') or det.get('name') or det.get('model') or ''
+                version = det.get('version') or det.get('versionName') or ''
+                unread = (n.get('read') is False) or (n.get('viewed') is False)
+                dot = '🔵 ' if unread else ''
+                ver_txt = f" <span style=\"opacity:0.7;\">{escape(str(version))}</span>" if version else ''
+                if model_id:
+                    url = f"https://civitai.com/models/{model_id}" + (f"?modelVersionId={version_id}" if version_id else '')
+                    label = escape(str(name)) if name else f"Model {escape(str(model_id))}"
+                    rows.append(f'<div style="padding:3px 0;">{dot}🆕 '
+                                f'<a href="{url}" target="_blank" rel="noopener">{label}</a>{ver_txt}</div>')
+                elif name:
+                    rows.append(f'<div style="padding:3px 0;">{dot}🆕 {escape(str(name))}{ver_txt}</div>')
+
+            if not rows:
+                note = ('<div style="opacity:0.7;font-size:12px;margin-bottom:6px;">Model details aren\'t '
+                        'exposed by the notifications API — showing raw new-version entries.</div>')
+                return _text_fallback(note)
+
+            header = (f'<div style="margin-bottom:6px;font-weight:600;">🆕 {len(rows)} new '
+                      'model version(s) from models you follow</div>')
+            return header + ''.join(rows)
 
         following_refresh_btn.click(
             fn=refresh_following_feed,
