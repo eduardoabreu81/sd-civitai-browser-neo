@@ -489,9 +489,14 @@ def model_list_html(json_data, target=''):
         return versions
 
     def collect_existing_files(model_folders):
-        """Collect existing file names and SHA256 hashes from model folders"""
+        """Collect installed file names, SHA256 hashes AND cached modelVersionIds from
+        the model folders. The version id is a second identity signal (aligned with
+        version_match / _resolve_versions_to_download): when a sidecar lacks a sha256
+        (or the file was renamed), matching by the cached modelVersionId still detects
+        the installed version so the card border isn't lost."""
         files_set = set()
         sha256_set = set()
+        version_ids_set = set()
         for folder in model_folders:
             if folder is None:
                 continue
@@ -505,10 +510,16 @@ def model_list_html(json_data, target=''):
                             sha256 = normalize_sha256(json_data.get('sha256'))
                             if sha256:
                                 sha256_set.add(sha256)
-        return files_set, sha256_set
+                            vid = json_data.get('modelVersionId')
+                            if vid is not None:
+                                try:
+                                    version_ids_set.add(int(vid))
+                                except (ValueError, TypeError):
+                                    pass
+        return files_set, sha256_set, version_ids_set
 
     ## === ANXETY EDITs ===
-    def get_model_card(item, existing_files, existing_files_sha256, playback, favorite_creators):
+    def get_model_card(item, existing_files, existing_files_sha256, existing_version_ids, playback, favorite_creators):
         """Build HTML for a single model card (civmodelcard - Browser Card)"""
         model_id = item.get('id')
         model_name = item.get('name', '')
@@ -523,6 +534,9 @@ def model_list_html(json_data, target=''):
         # Find the first installed version or fallback to the first version
         display_version = None
         for version in item.get('modelVersions', []):
+            if version.get('id') in existing_version_ids:
+                display_version = version
+                break
             for file in version.get('files', []):
                 file_name = file['name']
                 file_sha256 = normalize_sha256(file.get('hashes', {}).get('SHA256', ''))
@@ -618,15 +632,18 @@ def model_list_html(json_data, target=''):
             for idx, version in enumerate(model_versions):
                 version_name = version.get('name', '')
                 version_installed = False
+                by_id = version.get('id') in existing_version_ids
                 for file in version.get('files', []):
                     file_name = file['name'].lower()
                     file_sha256 = normalize_sha256(file.get('hashes', {}).get('SHA256', ''))
-                    if (file_sha256 and file_sha256 in existing_files_sha256) or (file_name in existing_files):
+                    if by_id or (file_sha256 and file_sha256 in existing_files_sha256) or (file_name in existing_files):
                         # Store SHA256 of first installed file found (for delete button)
                         if not installed_file_sha256:
                             installed_file_sha256 = file_sha256
                         version_installed = True
                         break
+                if by_id and not version_installed:
+                    version_installed = True  # cached version id matched even with no/odd file list
                 if version_installed:
                     bm = (version.get('baseModel') or '').strip()
                     installed_entries.append((idx, bm, version_name))
@@ -837,7 +854,7 @@ def model_list_html(json_data, target=''):
         folder = contenttype_folder(item['type'], item['description'])
         if folder is not None:
             model_folders.add(str(folder))
-    existing_files, existing_files_sha256 = collect_existing_files(model_folders)
+    existing_files, existing_files_sha256, existing_version_ids = collect_existing_files(model_folders)
 
     # Build HTML
     HTML = '<div class="column civmodellist">'
@@ -849,7 +866,7 @@ def model_list_html(json_data, target=''):
     favorite_creators = set(_file.FavoriteCreators.get_as_list())
 
     for item in json_data['items']:
-        model_card, date = get_model_card(item, existing_files, existing_files_sha256, playback, favorite_creators)
+        model_card, date = get_model_card(item, existing_files, existing_files_sha256, existing_version_ids, playback, favorite_creators)
         if group_by_date:
             if date not in sorted_models:
                 sorted_models[date] = []
