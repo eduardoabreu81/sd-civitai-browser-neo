@@ -4973,17 +4973,80 @@ def _sort_local_items(items, sort_order):
     return items
 
 
+def _build_local_pagination_bar(page, pages, total):
+    """Prev / 'Page X / Y (N models)' / Next bar for the Local grid. Buttons call
+    localGoToPage(n), which writes #local_page_trigger to re-render that page."""
+    prev_dis = 'disabled' if page <= 0 else ''
+    next_dis = 'disabled' if page >= pages - 1 else ''
+    return (
+        '<div class="local-pagination">'
+        f'<button class="lg-page-btn" {prev_dis} onclick="localGoToPage({page - 1})">◀ Prev</button>'
+        f'<span class="lg-page-label">Page {page + 1} / {pages} '
+        f'<span style="opacity:0.6;">({total} models)</span></span>'
+        f'<button class="lg-page-btn" {next_dis} onclick="localGoToPage({page + 1})">Next ▶</button>'
+        '</div>'
+    )
+
+
+def _render_local_slice(page):
+    """Render ONE page of the already-sorted, cached Local grid by slicing
+    gl.local_json_data in memory (no rescan/refetch) — so the sort order is kept and
+    only N cards reach the DOM. Page size = gl.local_page_size (default 50)."""
+    data = getattr(gl, 'local_json_data', None)
+    items = data.get('items', []) if isinstance(data, dict) else []
+    if not items:
+        return gr.update(value='<div style="font-size: 24px; text-align: center; margin: 50px;">'
+                               'No local models found for the selected filters.</div>')
+    try:
+        size = max(1, int(getattr(gl, 'local_page_size', 50) or 50))
+    except (TypeError, ValueError):
+        size = 50
+    total = len(items)
+    pages = max(1, (total + size - 1) // size)
+    try:
+        page = int(page)
+    except (TypeError, ValueError):
+        page = 0
+    page = max(0, min(page, pages - 1))
+    gl.local_page = page
+    start = page * size
+    page_items = items[start:start + size]
+    bar = _build_local_pagination_bar(page, pages, total)
+    grid = _api.model_list_html({'items': page_items, 'metadata': data.get('metadata', {})}, target='local')
+    return gr.update(value=bar + grid + bar)
+
+
+def render_local_page(page_value):
+    """Hidden-trigger handler (from localGoToPage): re-render the requested page.
+    The trigger carries 'page.<rand>' so the change event always fires; take the
+    integer part before the dot."""
+    try:
+        page = int(str(page_value).split('.')[0])
+    except (TypeError, ValueError):
+        page = 0
+    return _render_local_slice(page)
+
+
+def change_local_page_size(size_value):
+    """'Per page' dropdown change: set the page size and jump back to page 1."""
+    try:
+        gl.local_page_size = int(size_value)
+    except (TypeError, ValueError):
+        gl.local_page_size = 50
+    return _render_local_slice(0)
+
+
 def resort_local_browser(sort_order):
     """Re-order the already-loaded Local grid WITHOUT re-scanning folders or hitting
     the API. Operates on the cached gl.local_json_data (stamped with '_local_mtime'
-    during render_local_browser), so changing 'Sort by:' is instant."""
+    during render_local_browser), so changing 'Sort by:' is instant. Returns page 1."""
     data = getattr(gl, 'local_json_data', None)
     items = data.get('items', []) if isinstance(data, dict) else []
     if not items:
         return gr.update()  # nothing loaded yet — leave the grid as-is
     _sort_local_items(items, sort_order)
     gl.local_json_data = {'items': items, 'metadata': data.get('metadata', {})}
-    return gr.update(value=_api.model_list_html(gl.local_json_data, target='local'))
+    return _render_local_slice(0)
 
 
 def render_local_browser(content_type, base_filter, use_search_term, search_term, tile_count, nsfw, sort_order='Name (A-Z)'):
@@ -5204,8 +5267,7 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
     if not items:
         return gr.update(value=empty_msg)
 
-    html = _api.model_list_html(gl.local_json_data, target='local')
-    return gr.update(value=html)
+    return _render_local_slice(0)
 
 
 def cancel_scan():

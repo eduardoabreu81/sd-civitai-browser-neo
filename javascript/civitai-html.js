@@ -1498,6 +1498,16 @@ function genInfo_to_txt2img(genInfo, do_slice = true) {
     }
 }
 
+// Local Models pagination: write the target page to the hidden trigger so Python
+// re-renders that slice of the (already sorted, in-memory) grid. The '.<rand>'
+// suffix guarantees the Gradio change event fires even for a repeated page number.
+function localGoToPage(page) {
+    const trigger = gradioApp().querySelector('#local_page_trigger textarea');
+    if (!trigger) return;
+    trigger.value = String(page) + '.' + Math.floor(Math.random() * 1000);
+    updateInput(trigger);
+}
+
 // Hide installed models
 function hideInstalled(toggleValue) {
     const modelList = document.querySelectorAll('.column.civmodellist > .civmodelcardinstalled');

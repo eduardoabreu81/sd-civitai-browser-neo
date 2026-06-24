@@ -487,6 +487,7 @@ def on_ui_tabs():
             local_nsfw = gr.State(value=True)
             local_model_select = gr.Textbox(elem_id='local_model_select', visible=False)
             local_list_html_input = gr.Textbox(elem_id='local_list_html_input', visible=False)
+            local_page_trigger = gr.Textbox(elem_id='local_page_trigger', visible=False)
             local_sha256 = gr.Textbox(visible=False)
             local_model_id = gr.Textbox(visible=False)
             local_model_string = gr.Textbox(visible=False)
@@ -498,6 +499,7 @@ def on_ui_tabs():
                 local_content_type = gr.Dropdown(label='Content type:', choices=content_choices, value=['Checkpoint', 'LORA'], type='value', multiselect=True, elem_id='localContentType')
                 local_base_filter = gr.Dropdown(label='Base model:', choices=get_base_models(), value=None, type='value', multiselect=True, elem_id='localBaseFilter')
                 local_sort = gr.Dropdown(label='Sort by:', choices=['Name (A-Z)', 'Name (Z-A)', 'Recently downloaded', 'Oldest downloaded'], value='Name (A-Z)', type='value', elem_id='localSortBy')
+                local_page_size = gr.Dropdown(label='Per page:', choices=['25', '50', '100'], value='50', type='value', min_width=90, elem_id='localPerPage')
                 local_search = gr.Textbox(label='', placeholder='Filter local models by name', elem_id='localSearchBox')
                 local_load_btn = gr.Button(value='📋 Load local models', elem_id='localLoadBtn', variant='primary')
                 local_clear_btn = gr.Button(value='🧹 Clear', elem_id='localClearBtn', scale=0, min_width=90)
@@ -1227,6 +1229,24 @@ def on_ui_tabs():
         local_sort.change(
             fn=_file.resort_local_browser,
             inputs=[local_sort],
+            outputs=[local_list_html],
+            show_progress='hidden'
+        ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)'
+        ).then(fn=None, _js='() => filterLocalOutdated()')
+
+        # Pagination: "Per page" dropdown resets to page 1; the Prev/Next buttons in the
+        # grid's pagination bar write #local_page_trigger via localGoToPage(n).
+        local_page_size.change(
+            fn=_file.change_local_page_size,
+            inputs=[local_page_size],
+            outputs=[local_list_html],
+            show_progress='hidden'
+        ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)'
+        ).then(fn=None, _js='() => filterLocalOutdated()')
+
+        local_page_trigger.change(
+            fn=_file.render_local_page,
+            inputs=[local_page_trigger],
             outputs=[local_list_html],
             show_progress='hidden'
         ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)'

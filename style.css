@@ -1518,6 +1518,36 @@
     cursor: pointer;
 }
 
+/* Local Models pagination bar */
+#local_list_html .local-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin: 10px 0;
+    flex-wrap: wrap;
+}
+#local_list_html .lg-page-btn {
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color-primary);
+    background: var(--button-secondary-background-fill);
+    color: var(--button-secondary-text-color);
+    cursor: pointer;
+    font-size: 13px;
+}
+#local_list_html .lg-page-btn:hover:not([disabled]) {
+    background: var(--button-secondary-background-fill-hover);
+}
+#local_list_html .lg-page-btn[disabled] {
+    opacity: 0.4;
+    cursor: default;
+}
+#local_list_html .lg-page-label {
+    font-size: 13px;
+    font-weight: 500;
+}
+
 /* More details accordion */
 :is(#civitai_preview_html,#local_preview_html) .tabs {
     margin-top: 12px;
