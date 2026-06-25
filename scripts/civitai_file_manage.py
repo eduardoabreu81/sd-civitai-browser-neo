@@ -1427,6 +1427,28 @@ def convert_local_images(html):
         simg['src'] = f"data:image/{imgtype};base64,{b64img}"
     return str(soup)
 
+# Saved .html sidecars generated before commit c57089f wired the primary
+# "Send to txt2img" button to sendImgUrl(url) — which re-downloads the image and
+# reads its embedded PNG params. CivitAI re-encodes/strips that metadata (and
+# ComfyUI images have none A1111 can read), so the button fails or pastes a giant
+# blob. The card meta is already in the cached HTML (the data-key rows), so rewire
+# the button to sendToTxt2img(this, url), which builds the infotext from that meta.
+# The no-meta retry button (class civitai-meta-retry) intentionally keeps sendImgUrl.
+_OLD_SEND_BTN_RE = re.compile(
+    r'''onclick="sendImgUrl\(('[^']*')\)"\s+class="civitai-txt2img-btn">Send to txt2img<'''
+)
+
+
+def _upgrade_cached_send_button(html: str | None) -> str | None:
+    """Rewrite the stale 'Send to txt2img' button in cached HTML to use card meta."""
+    if not html:
+        return html
+    return _OLD_SEND_BTN_RE.sub(
+        r'onclick="sendToTxt2img(this, \1)" class="civitai-txt2img-btn">Send to txt2img<',
+        html,
+    )
+
+
 def _get_cached_html_stripped(model_file) -> str | None:
     """Return stripped (no <head> section) content from the local .html cache, or None if absent."""
     if not model_file:
@@ -1439,7 +1461,7 @@ def _get_cached_html_stripped(model_file) -> str | None:
     index = html.find('</head>')
     if index != -1:
         html = html[index + len('</head>'):]
-    return html
+    return _upgrade_cached_send_button(html)
 
 
 def _wrap_html_with_css(body: str) -> str:
@@ -1511,6 +1533,7 @@ def model_from_sent(model_name, content_type):
                 index = output_html.find('</head>')
                 if index != -1:
                     output_html = output_html[index + len('</head>'):]
+                output_html = _upgrade_cached_send_button(output_html)
                 if local_path_in_html:
                     output_html = convert_local_images(output_html)
 
