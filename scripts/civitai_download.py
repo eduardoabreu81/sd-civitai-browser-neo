@@ -345,7 +345,23 @@ def _resolve_versions_to_download(versions_list, model_folder, base_filter=None,
                 base_result.append(ver)
                 seen_ids.add(vid)
 
-    return base_result if base_result else [_pick_filtered_or_first(versions_list, base_filter)]
+    # Mirror Phase 1: only return the base-resolved versions when at least one is NEW.
+    # Without this, an already-installed up-to-date model (Phase 1 found nothing new)
+    # falls through here and re-downloads its newest version (which is the installed
+    # one) — the "Download all selected re-downloads an installed model" bug.
+    base_updates_anything = any(
+        ver.get('id') not in installed_ver_ids for ver in base_result
+    )
+    if base_updates_anything:
+        return base_result
+
+    # Installed but already up to date across every detected family/base → nothing to do.
+    # (Only reachable when some version of THIS model is on disk.)
+    if installed_families or installed_bases:
+        return []
+
+    # Not installed at all → fresh download of the newest (filtered) version.
+    return [_pick_filtered_or_first(versions_list, base_filter)]
 
 
 def _all_known_items():
