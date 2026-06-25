@@ -1039,12 +1039,15 @@ def on_ui_tabs():
             gr.update(interactive=False),                           # local_download_version_btn
         )
 
-        def _build_local_panel(model_string, model_version=None, set_version=True):
+        def _build_local_panel(model_string, model_version=None, set_version=True, force_disk_scan=False):
             """Build the Local detail-panel updates for a model/version.
             Reuses _api.update_model_info and routes its outputs to local_* components.
             Resolves against gl.local_json_data (json_input) so the panel keeps working
             no matter what the Browser tab loaded meanwhile.
-            set_version=False keeps the version dropdown as-is (used on version switch)."""
+            set_version=False keeps the version dropdown as-is (used on version switch).
+            force_disk_scan=True ignores the cached _local_paths stamp and walks the
+            content-type tree fresh — used after an update download so the panel reflects
+            the version actually on disk now (the stamp points at the pre-update file)."""
             if not model_string or not gl.local_json_data:
                 return _local_empty
 
@@ -1056,6 +1059,8 @@ def on_ui_tabs():
             _panel_items = gl.local_json_data.get('items', []) if isinstance(gl.local_json_data, dict) else []
             _panel_item = next((it for it in _panel_items if str(it.get('id')) == str(model_id)), None)
             _installed_paths = (_panel_item.get('_local_paths') or []) if _panel_item else []
+            if force_disk_scan:
+                _installed_paths = []  # force the full walk below (stamp is stale post-update)
             model_versions = _api.update_model_versions(
                 model_id, json_input=gl.local_json_data,
                 installed_file_paths=_installed_paths or None)
@@ -1167,6 +1172,18 @@ def on_ui_tabs():
                 debug_print(f"Download selected version: could not resolve '{version_display}' for model {model_id_value}")
                 return gr.update()
             return gr.update(value=f"{model_id_value}||[{ver['id']}]")
+
+        def refresh_local_after_download(model_string):
+            """After a download finishes, re-render the open Local detail panel so the
+            version dropdown's [Installed] marker, the Update button and the
+            Download-version button reflect the version now on disk (mirrors how the
+            Browser refreshes list_versions on download_finish). force_disk_scan=True
+            because the cached _local_paths stamp still points at the pre-update file.
+            No-op when no Local model is open (e.g. a Browser-tab download)."""
+            print(f"[local refresh] download_finish → model_string={model_string!r}")
+            if not model_string:
+                return tuple(gr.update() for _ in local_detail_outputs)
+            return _build_local_panel(model_string, None, set_version=True, force_disk_scan=True)
 
         local_detail_outputs = [
             local_preview_html, local_version, local_base_model, local_filename,
@@ -1705,6 +1722,16 @@ def on_ui_tabs():
             fn=_post_download_page_refresh,
             inputs=refresh_inputs,
             outputs=page_outputs
+        )
+
+        # After any download completes, refresh the open Local detail panel so its
+        # [Installed] version marker / Update button match what is now on disk
+        # (the Browser panel already refreshes via download_finish → list_versions).
+        _download_finish_event.then(
+            fn=refresh_local_after_download,
+            inputs=[local_model_string],
+            outputs=local_detail_outputs,
+            show_progress='hidden'
         )
 
         file_scan_inputs = [
