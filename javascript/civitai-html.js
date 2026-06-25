@@ -942,30 +942,55 @@ function metaToTxt2Img(event, type, element) {
     sendClick(genButton);
 }
 
-// Creates a list of the selected models
+// Creates a list of the selected models.
+// The Browser and Local Models grids both render .model-checkbox cards, so the
+// selection is scoped per grid: checkboxes inside #local_list_html feed the Local
+// arrays (read by updateSelectedLocalModels), everything else feeds the Browser
+// arrays (read by "Download all selected" via #selected_model_list). Without this
+// split, a card checked in Local Models leaked into the Browser's download.
 var selectedModels = [];
 var selectedTypes = [];
-function multi_model_select(modelName, modelType, isChecked) {
+var selectedModelsLocal = [];
+var selectedTypesLocal = [];
+
+// True when the toggled checkbox element lives in the Local Models grid.
+function _isLocalCheckbox(el) {
+    return !!(el && el.closest && el.closest('#local_list_html'));
+}
+
+function multi_model_select(modelName, modelType, isChecked, el) {
     if (arguments.length === 0) {
         selectedModels = [];
         selectedTypes = [];
+        selectedModelsLocal = [];
+        selectedTypesLocal = [];
         return;
     }
+    const isLocal = _isLocalCheckbox(el);
+    const models = isLocal ? selectedModelsLocal : selectedModels;
+    const types  = isLocal ? selectedTypesLocal  : selectedTypes;
+
     if (isChecked) {
-        if (!selectedModels.includes(modelName)) {
-            selectedModels.push(modelName);
+        if (!models.includes(modelName)) {
+            models.push(modelName);
         }
-        selectedTypes.push(modelType);
+        types.push(modelType);
     } else {
-        var modelIndex = selectedModels.indexOf(modelName);
+        var modelIndex = models.indexOf(modelName);
         if (modelIndex > -1) {
-            selectedModels.splice(modelIndex, 1);
+            models.splice(modelIndex, 1);
         }
-        var typesIndex = selectedTypes.indexOf(modelType);
+        var typesIndex = types.indexOf(modelType);
         if (typesIndex > -1) {
-            selectedTypes.splice(typesIndex, 1);
+            types.splice(typesIndex, 1);
         }
     }
+
+    // Local selection is read straight off selectedModelsLocal — no Gradio textbox sync.
+    if (isLocal) {
+        return;
+    }
+
     const selected_model_list = gradioApp().querySelector('#selected_model_list textarea');
     selected_model_list.value = JSON.stringify(selectedModels);
 
@@ -981,13 +1006,13 @@ function multi_model_select(modelName, modelType, isChecked) {
 // selectedModels list (populated by the card checkboxes via multi_model_select)
 // and the existing update_selected_trigger → update_selected_models pipeline.
 function updateSelectedLocalModels() {
-    if (!selectedModels || selectedModels.length === 0) {
+    if (!selectedModelsLocal || selectedModelsLocal.length === 0) {
         alert('Select one or more outdated models (checkbox on the cards) to update.');
         return;
     }
     const trigger = gradioApp().querySelector('#update_selected_trigger textarea');
     if (!trigger) return;
-    trigger.value = JSON.stringify(selectedModels);
+    trigger.value = JSON.stringify(selectedModelsLocal);
     updateInput(trigger);
 }
 
@@ -1339,8 +1364,15 @@ function removeDlItem(dl_id, element) {
 }
 
 // Selects all models
+// Browser-only checkboxes (exclude the Local Models grid so its selection is
+// never toggled by the Browser's Select All / Download all selected actions).
+function _browserCheckboxes() {
+    return Array.from(document.querySelectorAll('.model-checkbox'))
+        .filter((cb) => !cb.closest('#local_list_html'));
+}
+
 function selectAllModels() {
-    const checkboxes = Array.from(document.querySelectorAll('.model-checkbox'));
+    const checkboxes = _browserCheckboxes();
     const allChecked = checkboxes.every((checkbox) => checkbox.checked);
     const allUnchecked = checkboxes.every((checkbox) => !checkbox.checked);
     if (allChecked || allUnchecked) {
@@ -1350,10 +1382,10 @@ function selectAllModels() {
     }
 }
 
-// Deselects all models
+// Deselects all models (Browser grid only)
 function deselectAllModels() {
     setTimeout(() => {
-        const checkboxes = Array.from(document.querySelectorAll('.model-checkbox'));
+        const checkboxes = _browserCheckboxes();
         checkboxes.filter((checkbox) => checkbox.checked).forEach(sendClick);
     }, 1000);
 }
@@ -2221,7 +2253,7 @@ function syncUpdateBtn() {
     const btn = gradioApp().querySelector('#civupdate-update-btn');
     if (!btn) return;
     const n     = selectedModels.length;
-    const total = gradioApp().querySelectorAll('.model-checkbox').length;
+    const total = _browserCheckboxes().length;
     btn.textContent = n > 0
         ? `\u2b06\ufe0f Update Selected (${n})`
         : `\u2b06\ufe0f Update All (${total})`;

@@ -459,7 +459,7 @@ def update_mode_page_html(content_type_filter, base_filter, tile_count, current_
         )
 
         cards_html.append(f'''<figure class="civmodelcard update-mode-card" data-model-id="{model_id}" data-family="{fam_up}">
-  <input type="checkbox" class="model-checkbox" id="{chk_id}" onchange="multi_model_select('{model_str}', '{model_type}', this.checked); syncUpdateBtn()">
+  <input type="checkbox" class="model-checkbox" id="{chk_id}" onchange="multi_model_select('{model_str}', '{model_type}', this.checked, this); syncUpdateBtn()">
   <label for="{chk_id}" class="custom-checkbox"><span class="checkbox-checkmark"></span></label>
   <div class="civmodelcard-img-wrapper update-card-thumb">{thumb_html}</div>
   <figcaption class="update-card-caption">
@@ -806,7 +806,7 @@ def model_list_html(json_data, target=''):
                 f'</button>'
                 f'<div class="checkbox-container">'
                 f'<input type="checkbox" class="model-checkbox" id="checkbox-{model_string}" '
-                f'onchange="multi_model_select(\'{model_string}\', \'{item["type"]}\', this.checked)">'
+                f'onchange="multi_model_select(\'{model_string}\', \'{item["type"]}\', this.checked, this)">'
                 f'<label for="checkbox-{model_string}" class="custom-checkbox">'
                 f'<span class="checkbox-checkmark"></span>'
                 f'</label>'
@@ -818,7 +818,7 @@ def model_list_html(json_data, target=''):
             card_html += (
                 f'<div class="checkbox-container">'
                 f'<input type="checkbox" class="model-checkbox" id="checkbox-{model_string}" '
-                f'onchange="multi_model_select(\'{model_string}\', \'{item["type"]}\', this.checked)">'
+                f'onchange="multi_model_select(\'{model_string}\', \'{item["type"]}\', this.checked, this)">'
                 f'<label for="checkbox-{model_string}" class="custom-checkbox">'
                 f'<span class="checkbox-checkmark"></span>'
                 f'</label>'
