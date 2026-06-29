@@ -1194,6 +1194,17 @@ function setLocalDownloadProgressBar(attempt) {
 
 function setDownloadProgressBar() {
     const gradio_html = gradioApp().querySelector('#queue_html_input textarea');
+
+    // Sync the per-tab origin from the active queue item UP FRONT — before waiting for the
+    // native bar to render. A previous Local download leaves body.civ-dl-origin-local set,
+    // and the CSS hides #DownloadProgress while that class is present. If we waited for the
+    // (hidden) bar first, we'd deadlock: the bar stays hidden because the origin is still
+    // 'local', and the origin never flips to 'browser' because we never get past the wait.
+    // Flipping it here re-shows the Browser bar the moment a Browser download starts.
+    if (document.querySelector('#civitai_dl_list .civitai_dl_item')) {
+        setCivDownloadOrigin(_currentDlOrigin());
+    }
+
     let browserContainer = document.querySelector('#DownloadProgress');
     let browserProgress = browserContainer.querySelector('.progress-bar');
     if (!browserProgress || !browserProgress.style.width) {
