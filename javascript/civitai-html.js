@@ -1659,6 +1659,33 @@ function initDescriptionToggle(prefix = '') {
         content.style.maxHeight = '400px';
         button.textContent = 'Show More';
     }
+
+    // Descriptions often embed <img> tags whose natural size isn't known yet
+    // at this point, so scrollHeight above can be measured before the images
+    // finish loading. Re-measure once each image settles so the toggle button
+    // reflects the true content height instead of only working when images
+    // happen to load from cache in time.
+    const images = content.querySelectorAll('img');
+    images.forEach(img => {
+        if (img.complete) return;
+        const recheck = () => {
+            // Only relevant while still in the initial collapsed/hidden state -
+            // don't fight the user if they've already expanded/collapsed it.
+            if (content.classList.contains('expanded')) return;
+            const newScrollHeight = content.scrollHeight;
+            if (newScrollHeight <= 400) {
+                overlay.classList.add('hidden');
+                button.classList.add('hidden');
+                content.style.maxHeight = 'none';
+            } else {
+                overlay.classList.remove('hidden');
+                button.classList.remove('hidden');
+                content.style.maxHeight = '400px';
+            }
+        };
+        img.addEventListener('load', recheck, { once: true });
+        img.addEventListener('error', recheck, { once: true });
+    });
 }
 
 function submitNewSubfolder(subfolderId, subfolderValue) {
