@@ -1411,7 +1411,7 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
                     print(f"Failed to extract {item['model_filename']} with error: {e}")
             if not gl.cancel_status:
                 if item['create_json']:
-                    _file.save_model_info(effective_install_path, item['model_filename'], item['sub_folder'], item['model_sha256'], item['preview_html'], api_response=item['model_json'])
+                    _file.save_model_info(effective_install_path, item['model_filename'], item['sub_folder'], item['model_sha256'], item['preview_html'], overwrite_toggle=True, api_response=item['model_json'])
                 info_to_json(path_to_new_file, item['model_id'], item['model_sha256'], unpackList)
 
                 if _item_content_type == 'Checkpoint' and os.path.exists(path_to_new_file):
