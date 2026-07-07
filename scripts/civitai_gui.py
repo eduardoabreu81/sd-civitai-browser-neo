@@ -2383,6 +2383,30 @@ def on_ui_settings():
     )
 
     shared.opts.add_option(
+        'preview_format',
+        shared.OptionInfo(
+            default='PNG',
+            label='Saved preview image format',
+            component=gr.Dropdown,
+            component_args=lambda: {'choices': ['PNG', 'JPEG']},
+            section=browser,
+            category_id=cat_id
+        ).info('PNG preserves transparency; JPEG is smaller and faster to load')
+    )
+
+    shared.opts.add_option(
+        'preview_jpeg_quality',
+        shared.OptionInfo(
+            default=90,
+            label='JPEG preview quality',
+            component=gr.Slider,
+            component_args=lambda: {'minimum': 50, 'maximum': 100, 'step': 5},
+            section=browser,
+            category_id=cat_id
+        ).info('Only used when Saved preview image format is JPEG')
+    )
+
+    shared.opts.add_option(
         'model_desc_to_json',
         shared.OptionInfo(
             default=False,

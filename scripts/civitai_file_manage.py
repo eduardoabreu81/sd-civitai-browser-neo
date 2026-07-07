@@ -843,20 +843,35 @@ def _trash_associated_files(directory, base_name, trash_dir):
                 print(f'[Retention] Moved adjacent image to _Trash: {dest}')
 
 
-def _resize_image_bytes(image_bytes, target_size=512):
-    """Resize image bytes to target_size on the longer side, keeping aspect ratio"""
+def _resize_image_bytes(image_bytes, target_size=512, fmt='PNG', quality=90):
+    """Resize image bytes to target_size on the longer side, keeping aspect ratio.
+    If target_size is None, only encode/re-encode without resizing."""
     image = Image.open(io.BytesIO(image_bytes))
-    width, height = image.size
 
-    if width > height:
-        new_size = (target_size, int(height * target_size / width))
+    if target_size is not None:
+        width, height = image.size
+        if width > height:
+            new_size = (target_size, int(height * target_size / width))
+        else:
+            new_size = (int(width * target_size / height), target_size)
+        resized_image = image.resize(new_size, Image.LANCZOS)
     else:
-        new_size = (int(width * target_size / height), target_size)
+        resized_image = image
 
-    resized_image = image.resize(new_size, Image.LANCZOS)
+    # JPEG cannot encode alpha; flatten transparency onto white background
+    if fmt.upper() == 'JPEG':
+        if resized_image.mode in ('RGBA', 'LA') or (resized_image.mode == 'P' and 'transparency' in resized_image.info):
+            background = Image.new('RGB', resized_image.size, (255, 255, 255))
+            background.paste(resized_image, mask=resized_image.split()[3] if resized_image.mode == 'RGBA' else None)
+            resized_image = background
+        elif resized_image.mode != 'RGB':
+            resized_image = resized_image.convert('RGB')
 
     output = io.BytesIO()
-    resized_image.save(output, format="PNG")
+    save_kwargs = {'format': fmt.upper()}
+    if fmt.upper() == 'JPEG':
+        save_kwargs['quality'] = quality
+    resized_image.save(output, **save_kwargs)
     output.seek(0)
     return output.getvalue()  # Return bytes, not BytesIO object
 
@@ -866,9 +881,15 @@ def save_preview(file_path, api_response, overwrite_toggle=False, sha256=None):
     install_path = file_path.parent
     name = file_path.stem
     json_file = file_path.with_suffix('.json')
-    image_path = install_path / f"{name}.preview.png"
 
-    if not overwrite_toggle and image_path.exists():
+    preview_fmt = getattr(opts, 'preview_format', 'PNG')
+    jpeg_quality = getattr(opts, 'preview_jpeg_quality', 90)
+    ext = '.preview.jpg' if preview_fmt == 'JPEG' else '.preview.png'
+    image_path = install_path / f"{name}{ext}"
+    alt_ext = '.preview.png' if preview_fmt == 'JPEG' else '.preview.jpg'
+    alt_image_path = install_path / f"{name}{alt_ext}"
+
+    if not overwrite_toggle and (image_path.exists() or alt_image_path.exists()):
         return
 
     if not sha256 and json_file.exists():
@@ -890,11 +911,19 @@ def save_preview(file_path, api_response, overwrite_toggle=False, sha256=None):
                             if response.status_code == 200:
                                 # Check if resize is enabled for saved previews
                                 resize_saved = getattr(opts, 'resize_preview_on_save', True)
-                                if resize_saved:
-                                    resize_size = getattr(opts, 'resize_preview_size', 512)
+                                resize_size = getattr(opts, 'resize_preview_size', 512)
+
+                                if preview_fmt == 'JPEG':
+                                    # Always re-encode via PIL to ensure RGB + correct format
+                                    image_data = _resize_image_bytes(
+                                        response.content,
+                                        resize_size if resize_saved else None,
+                                        fmt='JPEG',
+                                        quality=jpeg_quality
+                                    )
+                                elif resize_saved:
                                     image_data = _resize_image_bytes(response.content, resize_size)
                                 else:
-                                    # Save original size
                                     image_data = response.content
 
                                 if IS_KAGGLE:
@@ -960,6 +989,10 @@ def save_images(preview_html, model_filename, install_path, sub_folder, api_resp
 
     name = os.path.splitext(model_filename)[0]
 
+    preview_fmt = getattr(opts, 'preview_format', 'PNG')
+    jpeg_quality = getattr(opts, 'preview_jpeg_quality', 90)
+    img_ext = '.jpg' if preview_fmt == 'JPEG' else '.png'
+
     # Setup download
     opener = urllib.request.build_opener()
     opener.addheaders = [('User-agent', 'Mozilla/5.0')]
@@ -968,7 +1001,7 @@ def save_images(preview_html, model_filename, install_path, sub_folder, api_resp
     # Download images
     downloaded_count = 0
     for i, img_url in enumerate(img_urls):
-        filename = f"{name}_{i}.png"
+        filename = f"{name}_{i}{img_ext}"
         img_url = urllib.parse.quote(img_url, safe=':/=')
         try:
             with urllib.request.urlopen(img_url) as url:
@@ -976,16 +1009,15 @@ def save_images(preview_html, model_filename, install_path, sub_folder, api_resp
 
                 # Check if resize is enabled for saved images
                 resize_saved = getattr(opts, 'resize_preview_on_save', True)
-                if resize_saved:
-                    resize_size = getattr(opts, 'resize_preview_size', 512)
-                    image_data = _resize_image_bytes(image_data, resize_size)
+                if resize_saved or preview_fmt == 'JPEG':
+                    resize_size = getattr(opts, 'resize_preview_size', 512) if resize_saved else None
+                    image_data = _resize_image_bytes(
+                        image_data, resize_size,
+                        fmt='JPEG' if preview_fmt == 'JPEG' else 'PNG',
+                        quality=jpeg_quality
+                    )
 
                 img = Image.open(io.BytesIO(image_data))
-
-                if img.mode in ('RGBA', 'LA', 'P'):
-                    pass  # Keep transparency
-                elif img.mode != 'RGB':
-                    img = img.convert('RGB')
 
                 save_path = os.path.join(image_path, filename)
 
@@ -995,9 +1027,15 @@ def save_images(preview_html, model_filename, install_path, sub_folder, api_resp
                     if not all(key in imginfo for key in ['Encrypt', 'EncryptPwdSha']):
                         sd_image_encryption.EncryptedImage.from_image(img).save(save_path)
                     else:
-                        img.save(save_path, 'PNG')
+                        if preview_fmt == 'JPEG':
+                            img.save(save_path, 'JPEG', quality=jpeg_quality)
+                        else:
+                            img.save(save_path, 'PNG')
                 else:
-                    img.save(save_path, 'PNG')
+                    if preview_fmt == 'JPEG':
+                        img.save(save_path, 'JPEG', quality=jpeg_quality)
+                    else:
+                        img.save(save_path, 'PNG')
 
                 print(f"Downloaded image: {filename}")
                 downloaded_count += 1

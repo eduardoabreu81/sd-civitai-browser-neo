@@ -910,23 +910,28 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
             'out': file_name
         }
 
-        payload = json.dumps({
-            'jsonrpc': '2.0',
-            'id': '1',
-            'method': 'aria2.addUri',
-            'params': ['token:' + rpc_secret, [download_link], options]
-        })
-
-        try:
+        def _aria2_add_uri(uri):
+            payload = json.dumps({
+                'jsonrpc': '2.0',
+                'id': '1',
+                'method': 'aria2.addUri',
+                'params': ['token:' + rpc_secret, [uri], options]
+            })
             response = requests.post(aria2_rpc_url, data=payload)
             data = json.loads(response.text)
             if 'result' not in data:
                 raise ValueError(f"Failed to start download: {data}")
-            gid = data['result']
+            return data['result']
+
+        try:
+            gid = _aria2_add_uri(download_link)
         except Exception as e:
             print(f"Failed to start download: {e}")
             gl.download_fail = True
             return
+
+        # Rate-limit handling: Aria2 errorCode 29 with HTTP 429 in errorMessage
+        rate_limit_retries = 5
 
         while True:
             if gl.cancel_status:
@@ -976,6 +981,41 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
                     return
 
                 if status_info['status'] == 'error':
+                    error_code = str(status_info.get('errorCode', ''))
+                    error_message = str(status_info.get('errorMessage', '')).lower()
+                    is_rate_limited = error_code == '29' and ('429' in error_message or 'too many requests' in error_message)
+
+                    if is_rate_limited and rate_limit_retries > 0:
+                        rate_limit_retries -= 1
+                        backoff = min(2 ** (5 - rate_limit_retries), 60)
+                        print(f"Rate limited by CivitAI ({file_name}), retrying in {backoff}s... ({rate_limit_retries} retries left)")
+                        if progress != None:
+                            progress(0, desc=f"Rate limited by CivitAI, retrying in {backoff}s... ({rate_limit_retries} retries left)")
+
+                        # Remove failed download from Aria2
+                        try:
+                            requests.post(aria2_rpc_url, data=json.dumps({
+                                'jsonrpc': '2.0', 'id': '1', 'method': 'aria2.remove',
+                                'params': ['token:' + rpc_secret, gid]
+                            }))
+                        except Exception:
+                            pass
+
+                        time.sleep(backoff)
+
+                        # Refresh signed download link and re-add
+                        try:
+                            download_link = get_download_link(url, model_id)
+                            if not download_link or download_link == 'NO_API':
+                                raise ValueError("Could not refresh download link")
+                            gid = _aria2_add_uri(download_link)
+                            print(f"Retrying download of '{file_name}' with fresh link.")
+                            continue
+                        except Exception as e:
+                            print(f"Failed to retry download: {e}")
+                            gl.download_fail = True
+                            return
+
                     if progress != None:
                         progress(0, desc=f"Encountered an error during download of: '{file_name}' Please try again.")
                     gl.download_fail = True
@@ -996,14 +1036,8 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
                 start_aria2_rpc()
                 time.sleep(3)
                 try:
-                    _reconnect_resp = requests.post(aria2_rpc_url, timeout=5, data=json.dumps({
-                        'jsonrpc': '2.0', 'id': '1', 'method': 'aria2.addUri',
-                        'params': ['token:' + rpc_secret, [download_link], options]
-                    }))
-                    _reconnect_data = json.loads(_reconnect_resp.text)
-                    if 'result' in _reconnect_data:
-                        gid = _reconnect_data['result']
-                        print(f"Aria2 reconnected, resumed download of '{file_name}'.")
+                    gid = _aria2_add_uri(download_link)
+                    print(f"Aria2 reconnected, resumed download of '{file_name}'.")
                 except Exception:
                     pass
                 time.sleep(2)
