@@ -935,6 +935,18 @@ def save_preview(file_path, api_response, overwrite_toggle=False, sha256=None):
                                 else:
                                     image_path.write_bytes(image_data)
 
+                                # Remove preview in the alternate extension to avoid duplicates
+                                if alt_image_path.exists():
+                                    try:
+                                        send2trash(str(alt_image_path))
+                                        print(f"Removed old preview: {alt_image_path}")
+                                    except Exception:
+                                        try:
+                                            os.remove(alt_image_path)
+                                            print(f"Removed old preview: {alt_image_path}")
+                                        except Exception as _e:
+                                            print(f"Could not remove old preview {alt_image_path}: {_e}")
+
                                 print(f"Preview saved at: {image_path}")
                             else:
                                 print(f"Failed to save preview. Status code: {response.status_code}")
@@ -1036,6 +1048,20 @@ def save_images(preview_html, model_filename, install_path, sub_folder, api_resp
                         img.save(save_path, 'JPEG', quality=jpeg_quality)
                     else:
                         img.save(save_path, 'PNG')
+
+                # Remove gallery image in the alternate extension to avoid duplicates
+                alt_img_ext = '.png' if preview_fmt == 'JPEG' else '.jpg'
+                alt_img_path = os.path.join(image_path, f"{name}_{i}{alt_img_ext}")
+                if os.path.exists(alt_img_path):
+                    try:
+                        send2trash(alt_img_path)
+                        print(f"Removed old gallery image: {os.path.basename(alt_img_path)}")
+                    except Exception:
+                        try:
+                            os.remove(alt_img_path)
+                            print(f"Removed old gallery image: {os.path.basename(alt_img_path)}")
+                        except Exception as _e:
+                            print(f"Could not remove old gallery image {alt_img_path}: {_e}")
 
                 print(f"Downloaded image: {filename}")
                 downloaded_count += 1
