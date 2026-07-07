@@ -749,9 +749,9 @@ def download_finish(model_filename, version, model_id):
         version_choices = model_versions.get('choices', [])
     else:
         version_choices = []
-    prev_version = gl.last_version + " [Installed]"
+    prev_version = f"{gl.last_version} [Installed]" if gl.last_version else None
 
-    if prev_version in version_choices:
+    if prev_version and prev_version in version_choices:
         version = prev_version
         Del = True
         Down = False
