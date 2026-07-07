@@ -45,6 +45,30 @@ no_update = False
 last_update_scan = None  # Stores last update scan results for Dashboard summary
 last_dashboard_data = None  # Stores last dashboard scan raw data (categories, top files, orphans)
 
+# LoRA category mapping based on model tags (heuristic, same idea as models-info)
+LORA_CATEGORIES = {
+    "Character":  {"character", "celebrity", "person", "people"},
+    "Style":      {"style", "art style", "aesthetic"},
+    "Clothing":   {"clothing", "fashion", "outfit", "costume", "dress", "shirt"},
+    "Concept":    {"concept", "theme", "object", "item", "weapon", "vehicle"},
+    "Pose":       {"pose", "action", "stance", "position", "standing", "sitting"},
+    "Background": {"background", "environment", "scenery", "landscape", "indoor", "outdoor"},
+    "Utility":    {"utility", "tool", "helper", "noise", "offset", "detail"},
+}
+
+
+def categorize_lora_by_tags(tags):
+    """Return a category folder name for a LoRA based on its tags, or None."""
+    if not tags:
+        return None
+    for tag in tags:
+        tag_lower = str(tag).strip().lower()
+        for category, keywords in LORA_CATEGORIES.items():
+            for keyword in keywords:
+                if keyword in tag_lower:
+                    return category
+    return None
+
 
 def _format_size(size_bytes: int) -> str:
     """Format bytes to human-readable string."""
@@ -3384,8 +3408,8 @@ def get_model_info_for_organization(file_path):
     field may contain stale/normalised values (e.g. "Other") written by older
     extension versions, which would cause correctly-placed files to be flagged.
 
-    Returns tuple: (base_model_type, model_name)
-    Returns (None, model_name) when metadata is unavailable even after API call.
+    Returns tuple: (base_model_type, model_name, tags)
+    Returns (None, model_name, []) when metadata is unavailable even after API call.
     """
     model_name = os.path.basename(file_path)
     base_name = os.path.splitext(file_path)[0]
@@ -3403,7 +3427,7 @@ def get_model_info_for_organization(file_path):
                 base_model = _extract_base_model_from_api_data(data, file_path)
                 if base_model:
                     _debug_log(f"SUCCESS! Final baseModel: '{base_model}' from existing .api_info.json")
-                    return base_model, model_name
+                    return base_model, model_name, data.get('tags', [])
                 _debug_log(f"No baseModel in existing .api_info.json — will fetch from API")
         except Exception as e:
             _debug_log(f"Error reading {api_info_file}: {e}")
@@ -3415,7 +3439,7 @@ def get_model_info_for_organization(file_path):
         base_model = _extract_base_model_from_api_data(data, file_path)
         if base_model:
             _debug_log(f"SUCCESS! Final baseModel: '{base_model}' from API (by hash)")
-            return base_model, model_name
+            return base_model, model_name, data.get('tags', [])
 
     # --- Step 3: offline fallback — .json sidecar "sd version" field ---
     # Used only when API is unreachable or the model was deleted from CivitAI.
@@ -3429,12 +3453,12 @@ def get_model_info_for_organization(file_path):
             if sd_version and sd_version.upper() != 'OTHER':
                 _debug_log(f"Offline fallback: using 'sd version'='{sd_version}' from .json")
                 print(f"[CivitAI Browser Neo] ⚠️ Using offline .json fallback for: {model_name} (API unavailable)")
-                return sd_version, model_name
+                return sd_version, model_name, []
         except Exception as e:
             _debug_log(f"Error reading .json fallback for {model_name}: {e}")
 
-    print(f"[CivitAI Browser Neo] ⚠️ Could not determine baseModel for: {model_name}")
-    return None, model_name
+    print(f"[Civitai Browser Neo] ⚠️ Could not determine baseModel for: {model_name}")
+    return None, model_name, []
 
 def analyze_organization_plan(folders, progress=None):
     """
@@ -3469,13 +3493,15 @@ def analyze_organization_plan(folders, progress=None):
     files_processed = 0
     total_files = len(files)
     
+    lora_category_sort = getattr(opts, 'civitai_neo_lora_category_sort', False)
+
     for file_path in files:
         files_processed += 1
         if progress is not None:
             file_name = os.path.basename(file_path)
             progress(files_processed / total_files, desc=f"Analyzing: {file_name}")
         
-        base_model_raw, model_name = get_model_info_for_organization(file_path)
+        base_model_raw, model_name, tags = get_model_info_for_organization(file_path)
         
         if not base_model_raw:
             organization_plan['files_without_info'] += 1
@@ -3490,20 +3516,8 @@ def analyze_organization_plan(folders, progress=None):
         if not base_model_folder:
             continue
         
-        # Get current directory
+        # Get current directory and determine root model-type folder
         current_dir = os.path.dirname(file_path)
-        
-        # Check if already in correct subfolder
-        # Normalize both sides to handle multi-level folders like 'Wan/I2V'
-        norm_current = os.path.normpath(current_dir)
-        norm_target_suffix = os.path.normpath(base_model_folder)
-        if norm_current.endswith(os.sep + norm_target_suffix) or norm_current == norm_target_suffix:
-            # Already organized
-            continue
-        
-        # Create target path
-        # Determine root folder from current file location
-        # Go up levels until we find a models folder or we're at root model type folder
         root_folder = current_dir
         while os.path.basename(root_folder) not in ['Lora', 'Stable-diffusion', 'embeddings', 'VAE', 'ControlNet']:
             parent = os.path.dirname(root_folder)
@@ -3511,6 +3525,21 @@ def analyze_organization_plan(folders, progress=None):
                 root_folder = current_dir
                 break
             root_folder = parent
+        
+        category = None
+        # Apply LoRA category subfolder when enabled
+        if lora_category_sort and os.path.basename(root_folder) == 'Lora':
+            category = categorize_lora_by_tags(tags)
+            if category:
+                base_model_folder = os.path.join(base_model_folder, category)
+        
+        # Check if already in correct subfolder
+        # Normalize both sides to handle multi-level folders like 'Wan/I2V' or 'SDXL/Style'
+        norm_current = os.path.normpath(current_dir)
+        norm_target_suffix = os.path.normpath(base_model_folder)
+        if norm_current.endswith(os.sep + norm_target_suffix) or norm_current == norm_target_suffix:
+            # Already organized
+            continue
         
         target_folder = os.path.join(root_folder, base_model_folder)
         target_path = os.path.join(target_folder, os.path.basename(file_path))
@@ -3520,6 +3549,7 @@ def analyze_organization_plan(folders, progress=None):
             'from': file_path,
             'to': target_path,
             'base_model': base_model_folder,
+            'category': category or '',
             'model_name': model_name,
             'size': os.path.getsize(file_path) if os.path.exists(file_path) else 0
         })

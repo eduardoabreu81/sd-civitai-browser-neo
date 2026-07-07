@@ -2707,6 +2707,16 @@ def on_ui_settings():
             category_id=cat_id
         ).info('When enabled, new downloads will automatically go into subfolders based on baseModel (e.g., SDXL/, Pony/, FLUX/)')
     )
+
+    shared.opts.add_option(
+        'civitai_neo_lora_category_sort',
+        shared.OptionInfo(
+            default=False,
+            label='Sort LoRAs into category subfolders (Character, Style, etc.)',
+            section=organization,
+            category_id=cat_id
+        ).info('When enabled, LoRAs are further sorted into subfolders by usage category based on model tags. Requires Auto-organize and tags in .api_info.json.')
+    )
     
     shared.opts.add_option(
         'civitai_neo_create_other_folder',

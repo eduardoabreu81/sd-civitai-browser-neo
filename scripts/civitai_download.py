@@ -470,9 +470,16 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
 
             if auto_organize and output_basemodel and (not is_wildcard or wildcard_by_base):
                 # Use auto-organization: determine folder from baseModel
-                from scripts.civitai_file_manage import normalize_base_model
+                from scripts.civitai_file_manage import normalize_base_model, categorize_lora_by_tags
                 base_folder = normalize_base_model(output_basemodel)
                 if base_folder:
+                    # Optional LoRA category subfolder based on tags
+                    lora_category_sort = getattr(opts, 'civitai_neo_lora_category_sort', False)
+                    if lora_category_sort and content_type == 'LORA':
+                        tags = version.get('tags', []) or []
+                        category = categorize_lora_by_tags(tags)
+                        if category:
+                            base_folder = os.path.join(base_folder, category)
                     if not base_folder.startswith(os.sep):
                         base_folder = os.sep + base_folder
                     install_path = str(model_folder) + base_folder
