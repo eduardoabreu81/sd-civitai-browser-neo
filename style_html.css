@@ -775,3 +775,166 @@ a:hover::after {
 .companion-link a:hover {
     text-decoration: underline;
 }
+
+/* == LoraDex == */
+.loradex-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.loradex-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 8px 0;
+}
+
+.loradex-page-info {
+    font-size: 13px;
+    color: var(--body-text-color-subdued);
+    white-space: nowrap;
+}
+
+.loradex-table {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border-color-primary);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.loradex-header,
+.loradex-row {
+    display: grid;
+    grid-template-columns: 56px 2fr 1fr 1fr 140px 100px;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    min-height: 48px;
+}
+
+.loradex-header {
+    background: var(--background-fill-secondary);
+    font-weight: 600;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border-color-primary);
+}
+
+.loradex-row {
+    border-bottom: 1px solid var(--border-color-primary);
+    transition: background-color 0.15s ease;
+}
+
+.loradex-row:last-child {
+    border-bottom: none;
+}
+
+.loradex-row:hover {
+    background: var(--background-fill-secondary);
+}
+
+.loradex-row.loradex-pending {
+    background: rgba(255, 193, 7, 0.12);
+}
+
+.loradex-row.loradex-pending:hover {
+    background: rgba(255, 193, 7, 0.18);
+}
+
+.loradex-thumb-wrap {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 6px;
+    background: var(--background-fill-secondary);
+}
+
+.loradex-thumb {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    cursor: zoom-in;
+}
+
+.loradex-thumb-empty {
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.loradex-name {
+    font-size: 13px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.loradex-base,
+.loradex-version {
+    font-size: 12px;
+    color: var(--body-text-color-subdued);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.loradex-category select {
+    width: 100%;
+    font-size: 12px;
+    padding: 4px 6px;
+    border-radius: 5px;
+    border: 1px solid var(--border-color-primary);
+    background: var(--background-fill-primary);
+    color: var(--body-text-color);
+}
+
+.loradex-row.loradex-pending .loradex-category select {
+    border-color: #ffc107;
+    background: rgba(255, 193, 7, 0.08);
+}
+
+.loradex-actions {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+.loradex-actions button {
+    min-width: 36px;
+    padding: 4px 8px !important;
+    font-size: 14px !important;
+}
+
+.loradex-zoom-preview {
+    position: fixed;
+    z-index: 9999;
+    width: 320px;
+    height: 320px;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-color: var(--background-fill-secondary);
+    border: 1px solid var(--border-color-primary);
+    border-radius: 8px;
+    pointer-events: none;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+@media (max-width: 900px) {
+    .loradex-header,
+    .loradex-row {
+        grid-template-columns: 48px 2fr 120px 100px;
+    }
+
+    .loradex-base,
+    .loradex-version {
+        display: none;
+    }
+}

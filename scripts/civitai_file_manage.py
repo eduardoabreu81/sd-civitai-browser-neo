@@ -10,6 +10,7 @@ import re
 import os
 import io
 import shutil
+import html
 import gradio as gr
 from urllib.parse import urlparse
 from pathlib import Path
@@ -57,8 +58,19 @@ LORA_CATEGORIES = {
 }
 
 
-def categorize_lora_by_tags(tags):
-    """Return a category folder name for a LoRA based on its tags, or None."""
+def categorize_lora_by_tags(tags, manual_category=None):
+    """Return a category folder name for a LoRA based on its tags, or None.
+
+    Args:
+        tags: list of tags from the model/API.
+        manual_category: optional category saved in the .json sidecar
+            (loraCategory). Takes precedence over tag heuristics. 'Auto'
+            means "fall back to heuristic"; None disables auto-detection.
+    """
+    if manual_category and str(manual_category).strip().lower() not in ('', 'auto'):
+        return manual_category
+    if manual_category is None:
+        return None
     if not tags:
         return None
     for tag in tags:
@@ -3394,6 +3406,25 @@ def _extract_base_model_from_api_data(data, file_path=None):
     return ''
 
 
+def get_lora_category_from_sidecar(file_path):
+    """Read the manual LoRA category from the .json sidecar if present.
+
+    Returns the stored string (including 'Auto'/'None') or None if unset.
+    """
+    json_file = os.path.splitext(file_path)[0] + '.json'
+    if not os.path.exists(json_file):
+        return None
+    try:
+        content = _api.safe_json_load(json_file) or {}
+        category = content.get('loraCategory')
+        if category is None:
+            return None
+        return str(category).strip()
+    except Exception as e:
+        _debug_log(f"Error reading loraCategory for {file_path}: {e}")
+        return None
+
+
 def get_model_info_for_organization(file_path):
     """
     Get model info for organization purposes.
@@ -3408,11 +3439,13 @@ def get_model_info_for_organization(file_path):
     field may contain stale/normalised values (e.g. "Other") written by older
     extension versions, which would cause correctly-placed files to be flagged.
 
-    Returns tuple: (base_model_type, model_name, tags)
-    Returns (None, model_name, []) when metadata is unavailable even after API call.
+    Returns tuple: (base_model_type, model_name, tags, manual_category)
+    Returns (None, model_name, [], manual_category) when metadata is unavailable
+    even after API call.
     """
     model_name = os.path.basename(file_path)
     base_name = os.path.splitext(file_path)[0]
+    manual_category = get_lora_category_from_sidecar(file_path)
 
     _debug_log(f"Checking metadata for: {model_name}")
 
@@ -3427,7 +3460,7 @@ def get_model_info_for_organization(file_path):
                 base_model = _extract_base_model_from_api_data(data, file_path)
                 if base_model:
                     _debug_log(f"SUCCESS! Final baseModel: '{base_model}' from existing .api_info.json")
-                    return base_model, model_name, data.get('tags', [])
+                    return base_model, model_name, data.get('tags', []), manual_category
                 _debug_log(f"No baseModel in existing .api_info.json — will fetch from API")
         except Exception as e:
             _debug_log(f"Error reading {api_info_file}: {e}")
@@ -3439,7 +3472,7 @@ def get_model_info_for_organization(file_path):
         base_model = _extract_base_model_from_api_data(data, file_path)
         if base_model:
             _debug_log(f"SUCCESS! Final baseModel: '{base_model}' from API (by hash)")
-            return base_model, model_name, data.get('tags', [])
+            return base_model, model_name, data.get('tags', []), manual_category
 
     # --- Step 3: offline fallback — .json sidecar "sd version" field ---
     # Used only when API is unreachable or the model was deleted from CivitAI.
@@ -3453,12 +3486,12 @@ def get_model_info_for_organization(file_path):
             if sd_version and sd_version.upper() != 'OTHER':
                 _debug_log(f"Offline fallback: using 'sd version'='{sd_version}' from .json")
                 print(f"[CivitAI Browser Neo] ⚠️ Using offline .json fallback for: {model_name} (API unavailable)")
-                return sd_version, model_name, []
+                return sd_version, model_name, [], manual_category
         except Exception as e:
             _debug_log(f"Error reading .json fallback for {model_name}: {e}")
 
     print(f"[Civitai Browser Neo] ⚠️ Could not determine baseModel for: {model_name}")
-    return None, model_name, []
+    return None, model_name, [], manual_category
 
 def analyze_organization_plan(folders, progress=None):
     """
@@ -3501,7 +3534,7 @@ def analyze_organization_plan(folders, progress=None):
             file_name = os.path.basename(file_path)
             progress(files_processed / total_files, desc=f"Analyzing: {file_name}")
         
-        base_model_raw, model_name, tags = get_model_info_for_organization(file_path)
+        base_model_raw, model_name, tags, manual_category = get_model_info_for_organization(file_path)
         
         if not base_model_raw:
             organization_plan['files_without_info'] += 1
@@ -3529,7 +3562,7 @@ def analyze_organization_plan(folders, progress=None):
         category = None
         # Apply LoRA category subfolder when enabled
         if lora_category_sort and os.path.basename(root_folder) == 'Lora':
-            category = categorize_lora_by_tags(tags)
+            category = categorize_lora_by_tags(tags, manual_category=manual_category)
             if category:
                 base_model_folder = os.path.join(base_model_folder, category)
         
@@ -5397,3 +5430,398 @@ def cancel_scan():
         else:
             time.sleep(0.5)
             continue
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LoraDex — LoRA category manager
+# ─────────────────────────────────────────────────────────────────────────────
+
+LORA_DEX_CATEGORIES = ['Auto', 'Character', 'Style', 'Clothing', 'Concept', 'Pose', 'Background', 'Utility', 'None']
+
+
+def _lora_dex_preview_path(file_path):
+    """Return the first available preview image for a LoRA file."""
+    base = os.path.splitext(file_path)[0]
+    for ext in ['.preview.png', '.preview.jpeg', '.preview.jpg', '.png', '.jpg', '.jpeg']:
+        candidate = base + ext
+        if os.path.exists(candidate):
+            return candidate
+    return ''
+
+
+def _lora_dex_version_name(file_path):
+    """Try to read the installed version name from the .json sidecar."""
+    json_file = os.path.splitext(file_path)[0] + '.json'
+    if os.path.exists(json_file):
+        try:
+            data = _api.safe_json_load(json_file) or {}
+            return data.get('version', '') or ''
+        except Exception:
+            pass
+    return ''
+
+
+def _lora_dex_base_model(file_path):
+    """Read baseModel from .api_info.json or .json sidecar."""
+    api_file = os.path.splitext(file_path)[0] + '.api_info.json'
+    if os.path.exists(api_file):
+        try:
+            data = _api.safe_json_load(api_file) or {}
+            base = _extract_base_model_from_api_data(data, file_path)
+            if base:
+                return base
+        except Exception:
+            pass
+    json_file = os.path.splitext(file_path)[0] + '.json'
+    if os.path.exists(json_file):
+        try:
+            data = _api.safe_json_load(json_file) or {}
+            return data.get('baseModel', '') or data.get('sd version', '') or ''
+        except Exception:
+            pass
+    return ''
+
+
+def _lora_dex_tags(file_path):
+    """Read tags from .api_info.json sidecar."""
+    api_file = os.path.splitext(file_path)[0] + '.api_info.json'
+    if os.path.exists(api_file):
+        try:
+            data = _api.safe_json_load(api_file) or {}
+            return data.get('tags', []) or []
+        except Exception:
+            pass
+    return []
+
+
+def _save_lora_category(file_path, category):
+    """Persist the manual LoRA category in the .json sidecar.
+
+    Rules:
+      - 'Auto'  → remove the loraCategory key (fall back to heuristic).
+      - 'None'  → store null.
+      - other   → store the string.
+    Returns True on success.
+    """
+    json_file = os.path.splitext(file_path)[0] + '.json'
+    data = _api.safe_json_load(json_file) or {}
+
+    cat = (category or '').strip()
+    if cat.lower() == 'auto':
+        data.pop('loraCategory', None)
+    elif cat.lower() == 'none':
+        data['loraCategory'] = None
+    elif cat:
+        data['loraCategory'] = cat
+    else:
+        data.pop('loraCategory', None)
+
+    return _api.safe_json_save(json_file, data)
+
+
+def scan_lora_dex_data(base_filter=None, category_filter='All', pending_only=False, search_term=''):
+    """Scan the Lora folder and build the LoraDex dataset.
+
+    Returns the filtered list of LoRA dicts and stores the full unfiltered list
+    in gl.lora_dex_data so pagination can work without rescanning.
+    """
+    folder = _api.contenttype_folder('LORA')
+    if not folder or not os.path.exists(folder):
+        gl.lora_dex_data = []
+        return []
+
+    files = list_files([folder])
+    data = []
+    for file_path in files:
+        saved_category = get_lora_category_from_sidecar(file_path)
+        if saved_category is None:
+            saved_category = 'Auto'
+        name = os.path.splitext(os.path.basename(file_path))[0]
+        data.append({
+            'file_path': file_path,
+            'name': name,
+            'base_model': _lora_dex_base_model(file_path) or 'Unknown',
+            'version': _lora_dex_version_name(file_path),
+            'tags': _lora_dex_tags(file_path),
+            'preview_path': _lora_dex_preview_path(file_path),
+            'saved_category': saved_category,
+            'current_category': saved_category,
+        })
+
+    gl.lora_dex_data = data
+    gl.lora_dex_filters = {
+        'base_filter': base_filter,
+        'category_filter': category_filter,
+        'pending_only': pending_only,
+        'search_term': search_term,
+    }
+    return _filter_lora_dex_data(data, base_filter, category_filter, pending_only, search_term)
+
+
+def _filter_lora_dex_data(data, base_filter, category_filter, pending_only, search_term):
+    """Apply filters to the LoraDex dataset."""
+    result = list(data)
+
+    term = (search_term or '').strip().lower()
+    if term:
+        result = [d for d in result if term in d['name'].lower()]
+
+    if base_filter:
+        if isinstance(base_filter, str):
+            base_filter = [base_filter]
+        base_filter = [b for b in base_filter if b]
+        if base_filter:
+            bf_lower = {b.lower() for b in base_filter}
+            result = [d for d in result if d.get('base_model', '').lower() in bf_lower]
+
+    if category_filter and str(category_filter).lower() != 'all':
+        cat = str(category_filter).strip()
+        result = [d for d in result if d.get('saved_category', 'Auto') == cat]
+
+    if pending_only:
+        result = [d for d in result if d.get('file_path') in gl.lora_dex_pending]
+
+    return result
+
+
+def _build_lora_dex_pagination_bar(page, pages, total, page_size):
+    """HTML pagination bar for LoraDex."""
+    if pages <= 1:
+        return ''
+    prev_disabled = 'disabled' if page <= 0 else ''
+    next_disabled = 'disabled' if page >= pages - 1 else ''
+    return f'''
+    <div class="loradex-pagination">
+        <button class="lg secondary svelte-cmf5ev" onclick="loradexGoToPage({page - 1})" {prev_disabled}>← Prev</button>
+        <span class="loradex-page-info">Page {page + 1} of {pages} ({total} items)</span>
+        <button class="lg secondary svelte-cmf5ev" onclick="loradexGoToPage({page + 1})" {next_disabled}>Next →</button>
+    </div>
+    '''
+
+
+def _build_lora_dex_table(items, page, page_size):
+    """Build the LoraDex list HTML for one page."""
+    if not items:
+        return '<div style="padding: 40px; text-align: center;">No LoRAs match the current filters.</div>'
+
+    rows_html = []
+    for item in items:
+        fp = item['file_path']
+        fp_escaped = html.escape(fp, quote=True)
+        saved = item['saved_category']
+        saved_escaped = html.escape(saved, quote=True)
+        current = item.get('current_category', saved)
+        is_pending = current != saved
+        if is_pending:
+            gl.lora_dex_pending[fp] = current
+        else:
+            gl.lora_dex_pending.pop(fp, None)
+        pending_class = ' loradex-pending' if is_pending else ''
+        preview = item.get('preview_path', '')
+        # Gradio serves local files via ./file=<path>; normalize separators to forward slashes.
+        preview_url = './file=' + preview.replace('\\', '/') if preview else ''
+        preview_html = (
+            f'<img class="loradex-thumb" src="{preview_url}" '
+            f'onmouseenter="loradexHoverZoom(event, this.src)" onmouseleave="loradexHideZoom()">'
+        ) if preview_url else '<div class="loradex-thumb loradex-thumb-empty">🖼️</div>'
+        base = item.get('base_model', 'Unknown')
+        version = item.get('version', '')
+        name_escaped = html.escape(item['name'], quote=True)
+        options_html = ''.join(
+            f'<option value="{cat}"{" selected" if cat == current else ""}>{cat}</option>'
+            for cat in LORA_DEX_CATEGORIES
+        )
+        rows_html.append(f'''
+        <div class="loradex-row{pending_class}" data-filepath="{fp_escaped}">
+            <div class="loradex-thumb-wrap">{preview_html}</div>
+            <div class="loradex-name" title="{name_escaped}">{item['name']}</div>
+            <div class="loradex-base">{base}</div>
+            <div class="loradex-version">{version}</div>
+            <div class="loradex-category">
+                <select class="loradex-cat" data-filepath="{fp_escaped}" data-saved="{saved_escaped}"
+                        onchange="loradexMarkPending(this)">
+                    {options_html}
+                </select>
+            </div>
+            <div class="loradex-actions">
+                <button class="lg secondary svelte-cmf5ev loradex-apply" title="Apply"
+                        onclick="loradexApplyLine(this)">✅</button>
+                <button class="lg secondary svelte-cmf5ev loradex-reset" title="Reset"
+                        onclick="loradexResetLine(this)">↺</button>
+            </div>
+        </div>
+        ''')
+
+    return f'''
+    <div class="loradex-table">
+        <div class="loradex-header">
+            <div class="loradex-thumb-wrap"></div>
+            <div class="loradex-name">LoRA name</div>
+            <div class="loradex-base">Base model</div>
+            <div class="loradex-version">Version</div>
+            <div class="loradex-category">Category</div>
+            <div class="loradex-actions"></div>
+        </div>
+        {''.join(rows_html)}
+    </div>
+    '''
+
+
+def _render_lora_dex_slice(page, page_size=None, pending_only=False):
+    """Render one page of the cached LoraDex list."""
+    raw_data = getattr(gl, 'lora_dex_data', [])
+    filters = getattr(gl, 'lora_dex_filters', {})
+    data = _filter_lora_dex_data(
+        raw_data,
+        filters.get('base_filter'),
+        filters.get('category_filter', 'All'),
+        filters.get('pending_only', False) if not pending_only else pending_only,
+        filters.get('search_term', ''),
+    )
+    if not data:
+        return gr.update(value='<div style="padding: 40px; text-align: center;">No LoRAs match the current filters.</div>')
+
+    if page_size is None:
+        page_size = getattr(gl, 'lora_dex_page_size', 25)
+    try:
+        page_size = max(1, int(page_size))
+    except (TypeError, ValueError):
+        page_size = 25
+
+    total = len(data)
+    pages = max(1, (total + page_size - 1) // page_size)
+    try:
+        page = int(page)
+    except (TypeError, ValueError):
+        page = 0
+    page = max(0, min(page, pages - 1))
+    gl.lora_dex_page = page
+
+    start = page * page_size
+    page_items = data[start:start + page_size]
+
+    bar_top = _build_lora_dex_pagination_bar(page, pages, total, page_size)
+    table = _build_lora_dex_table(page_items, page, page_size)
+    bar_bottom = _build_lora_dex_pagination_bar(page, pages, total, page_size)
+
+    html = f'<div class="loradex-container">{bar_top}{table}{bar_bottom}</div>'
+    return gr.update(value=html)
+
+
+def render_lora_dex_page(base_filter=None, category_filter='All', pending_only=False, search_term='', page_size=25):
+    """Public entry: scan and render page 1 of LoraDex."""
+    scan_lora_dex_data(base_filter, category_filter, pending_only, search_term)
+    try:
+        gl.lora_dex_page_size = max(1, int(page_size))
+    except (TypeError, ValueError):
+        gl.lora_dex_page_size = 25
+    gl.lora_dex_pending = {}
+    return _render_lora_dex_slice(0)
+
+
+def render_lora_dex_page_trigger(page_value):
+    """Hidden-trigger handler for LoraDex pagination."""
+    try:
+        page = int(str(page_value).split('.')[0])
+    except (TypeError, ValueError):
+        page = 0
+    return _render_lora_dex_slice(page)
+
+
+def change_lora_dex_page_size(size_value):
+    """'Per page' dropdown change for LoraDex: reset to page 1."""
+    try:
+        gl.lora_dex_page_size = max(1, int(size_value))
+    except (TypeError, ValueError):
+        gl.lora_dex_page_size = 25
+    return _render_lora_dex_slice(0)
+
+
+def apply_lora_dex_change(file_path, category):
+    """Apply a single LoRA category change and persist it."""
+    if not file_path or not os.path.exists(file_path):
+        return False
+    if _save_lora_category(file_path, category):
+        # Update cached dataset so the row is no longer pending
+        for item in getattr(gl, 'lora_dex_data', []):
+            if item.get('file_path') == file_path:
+                item['saved_category'] = category
+                item['current_category'] = category
+                break
+        gl.lora_dex_pending.pop(file_path, None)
+        return True
+    return False
+
+
+def apply_all_lora_dex_changes(pending_items):
+    """Apply all pending category changes.
+
+    pending_items is a list of {file_path, category} dicts.
+    Returns (status_html, rendered_list_update).
+    """
+    if not pending_items:
+        return '<div style="padding:8px;">No pending changes.</div>', gr.update()
+
+    ok = 0
+    failed = 0
+    for entry in pending_items:
+        fp = entry.get('file_path')
+        cat = entry.get('category')
+        if apply_lora_dex_change(fp, cat):
+            ok += 1
+        else:
+            failed += 1
+
+    status = f'<div style="padding:8px;">✅ Applied {ok} change(s)'
+    if failed:
+        status += f' • ⚠️ {failed} failed'
+    status += '</div>'
+    return status, _render_lora_dex_slice(getattr(gl, 'lora_dex_page', 0))
+
+
+def handle_lora_dex_command(command_json):
+    """Dispatch a LoraDex command sent from the JS frontend.
+
+    command_json is a JSON object: {command, data}
+      command: 'apply' | 'apply-all' | 'reset' | 'reset-all'
+      data: for apply -> {file_path, category}; for apply-all/reset-all -> list of entries
+    Returns (status_html, rendered_list_update).
+    """
+    import json as _json
+    try:
+        payload = _json.loads(command_json) if command_json else {}
+    except Exception as e:
+        return f'<div style="padding:8px;color:#e57373;">Invalid command: {e}</div>', gr.update()
+
+    command = payload.get('command')
+    data = payload.get('data')
+
+    if command == 'apply':
+        fp = data.get('file_path')
+        cat = data.get('category')
+        if apply_lora_dex_change(fp, cat):
+            return '<div style="padding:8px;">✅ Category saved.</div>', _render_lora_dex_slice(getattr(gl, 'lora_dex_page', 0))
+        return '<div style="padding:8px;color:#e57373;">⚠️ Failed to save category.</div>', gr.update()
+
+    if command == 'apply-all':
+        return apply_all_lora_dex_changes(data or [])
+
+    if command == 'reset':
+        fp = data.get('file_path')
+        saved = 'Auto'
+        for item in getattr(gl, 'lora_dex_data', []):
+            if item.get('file_path') == fp:
+                saved = item.get('saved_category', 'Auto')
+                item['current_category'] = saved
+                break
+        gl.lora_dex_pending.pop(fp, None)
+        return '', _render_lora_dex_slice(getattr(gl, 'lora_dex_page', 0))
+
+    if command == 'reset-all':
+        for fp in (data or []):
+            gl.lora_dex_pending.pop(fp, None)
+        for item in getattr(gl, 'lora_dex_data', []):
+            item['current_category'] = item.get('saved_category', 'Auto')
+        return '<div style="padding:8px;">↺ Reset pending changes.</div>', _render_lora_dex_slice(getattr(gl, 'lora_dex_page', 0))
+
+    return '', gr.update()

@@ -2351,3 +2351,127 @@ function markForReviewOverlay(filePath) {
     trigger.value = filePath;
     updateInput(trigger);
 }
+
+// ── LoraDex ──────────────────────────────────────────────────────────────────
+
+function _loradexSetCommand(payload) {
+    const input = gradioApp().querySelector('#loradex_command_state textarea');
+    if (!input) {
+        console.error('[LoraDex] command state input not found');
+        return;
+    }
+    input.value = JSON.stringify(payload);
+    updateInput(input);
+}
+
+function loradexMarkPending(select) {
+    const row = select.closest('.loradex-row');
+    const saved = select.dataset.saved;
+    const current = select.value;
+    if (current !== saved) {
+        row.classList.add('loradex-pending');
+    } else {
+        row.classList.remove('loradex-pending');
+    }
+    loradexSyncActionButtons();
+}
+
+function loradexSyncActionButtons() {
+    const pendingRows = document.querySelectorAll('.loradex-pending');
+    const anyPending = pendingRows.length > 0;
+    const applyBtn = gradioApp().querySelector('#loradex_apply_all_btn');
+    const resetBtn = gradioApp().querySelector('#loradex_reset_all_btn');
+    if (applyBtn) applyBtn.disabled = !anyPending;
+    if (resetBtn) resetBtn.disabled = !anyPending;
+}
+
+function loradexApplyLine(btnOrPath) {
+    const filePath = typeof btnOrPath === 'string' ? btnOrPath : btnOrPath.closest('.loradex-row')?.dataset?.filepath;
+    if (!filePath) return;
+    const row = document.querySelector(`.loradex-row[data-filepath="${CSS.escape(filePath)}"]`);
+    if (!row) return;
+    const select = row.querySelector('.loradex-cat');
+    if (!select) return;
+    _loradexSetCommand({
+        command: 'apply',
+        data: { file_path: filePath, category: select.value }
+    });
+}
+
+function loradexResetLine(btnOrPath) {
+    const filePath = typeof btnOrPath === 'string' ? btnOrPath : btnOrPath.closest('.loradex-row')?.dataset?.filepath;
+    if (!filePath) return;
+    const row = document.querySelector(`.loradex-row[data-filepath="${CSS.escape(filePath)}"]`);
+    if (!row) return;
+    const select = row.querySelector('.loradex-cat');
+    if (!select) return;
+    select.value = select.dataset.saved;
+    row.classList.remove('loradex-pending');
+    _loradexSetCommand({
+        command: 'reset',
+        data: { file_path: filePath }
+    });
+    loradexSyncActionButtons();
+}
+
+function loradexApplyAll() {
+    const rows = document.querySelectorAll('.loradex-pending');
+    const pending = [];
+    rows.forEach(row => {
+        const select = row.querySelector('.loradex-cat');
+        if (select) {
+            pending.push({ file_path: select.dataset.filepath, category: select.value });
+        }
+    });
+    if (!pending.length) return;
+    _loradexSetCommand({ command: 'apply-all', data: pending });
+}
+
+function loradexResetAll() {
+    const rows = document.querySelectorAll('.loradex-pending');
+    const pendingPaths = [];
+    rows.forEach(row => {
+        const select = row.querySelector('.loradex-cat');
+        if (select) {
+            select.value = select.dataset.saved;
+            row.classList.remove('loradex-pending');
+            pendingPaths.push(select.dataset.filepath);
+        }
+    });
+    _loradexSetCommand({ command: 'reset-all', data: pendingPaths });
+    loradexSyncActionButtons();
+}
+
+function loradexGoToPage(n) {
+    const trigger = gradioApp().querySelector('#loradex_page_trigger textarea');
+    if (!trigger) return;
+    trigger.value = String(n) + '.' + String(Date.now()).slice(-3);
+    updateInput(trigger);
+}
+
+let _loradexZoomEl = null;
+function loradexHoverZoom(event, imgSrc) {
+    if (_loradexZoomEl) return;
+    const zoom = document.createElement('div');
+    zoom.className = 'loradex-zoom-preview';
+    zoom.style.backgroundImage = `url("${imgSrc}")`;
+    document.body.appendChild(zoom);
+    _loradexZoomEl = zoom;
+    loradexMoveZoom(event);
+    document.addEventListener('mousemove', loradexMoveZoom);
+}
+
+function loradexMoveZoom(event) {
+    if (!_loradexZoomEl) return;
+    const x = event.clientX + 20;
+    const y = event.clientY + 20;
+    _loradexZoomEl.style.left = x + 'px';
+    _loradexZoomEl.style.top = y + 'px';
+}
+
+function loradexHideZoom() {
+    if (!_loradexZoomEl) return;
+    document.removeEventListener('mousemove', loradexMoveZoom);
+    _loradexZoomEl.remove();
+    _loradexZoomEl = null;
+}

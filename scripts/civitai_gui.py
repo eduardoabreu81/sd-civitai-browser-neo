@@ -478,64 +478,93 @@ def on_ui_tabs():
 
         ## Local Models Tab
         with gr.Tab(label='Local Models', elem_id='localTab'):
-            gr.Markdown('## 📂 Local Models Browser', elem_id='local_models_header')
-            gr.Markdown('Browse, rename, update and delete the models installed on your machine.')
+            with gr.Tabs(elem_id='localSubTabs'):
+                with gr.Tab(label='Local Models Browser', elem_id='localBrowserTab'):
+                    gr.Markdown('## 📂 Local Models Browser', elem_id='local_models_header')
+                    gr.Markdown('Browse, rename, update and delete the models installed on your machine.')
 
-            # Hidden state/triggers for the local browser
-            local_use_search = gr.State(value='Model name')
-            local_tile_count = gr.State(value=100)
-            local_nsfw = gr.State(value=True)
-            local_model_select = gr.Textbox(elem_id='local_model_select', visible=False)
-            local_list_html_input = gr.Textbox(elem_id='local_list_html_input', visible=False)
-            local_page_trigger = gr.Textbox(elem_id='local_page_trigger', visible=False)
-            local_sha256 = gr.Textbox(visible=False)
-            local_model_id = gr.Textbox(visible=False)
-            local_model_string = gr.Textbox(visible=False)
-            local_rename_finish = gr.Textbox(visible=False)
-            local_delete_finish = gr.Textbox(visible=False)
+                    # Hidden state/triggers for the local browser
+                    local_use_search = gr.State(value='Model name')
+                    local_tile_count = gr.State(value=100)
+                    local_nsfw = gr.State(value=True)
+                    local_model_select = gr.Textbox(elem_id='local_model_select', visible=False)
+                    local_list_html_input = gr.Textbox(elem_id='local_list_html_input', visible=False)
+                    local_page_trigger = gr.Textbox(elem_id='local_page_trigger', visible=False)
+                    local_sha256 = gr.Textbox(visible=False)
+                    local_model_id = gr.Textbox(visible=False)
+                    local_model_string = gr.Textbox(visible=False)
+                    local_rename_finish = gr.Textbox(visible=False)
+                    local_delete_finish = gr.Textbox(visible=False)
 
-            # ── Filters + load (mirrors the Browser tab; filters what we touch) ──
-            with gr.Row(elem_id='localSearchRow'):
-                local_content_type = gr.Dropdown(label='Content type:', choices=content_choices, value=['Checkpoint', 'LORA'], type='value', multiselect=True, elem_id='localContentType')
-                local_base_filter = gr.Dropdown(label='Base model:', choices=get_base_models(), value=None, type='value', multiselect=True, elem_id='localBaseFilter')
-                local_sort = gr.Dropdown(label='Sort by:', choices=['Name (A-Z)', 'Name (Z-A)', 'Recently downloaded', 'Oldest downloaded'], value='Name (A-Z)', type='value', elem_id='localSortBy')
-                local_page_size = gr.Dropdown(label='Per page:', choices=['25', '50', '100'], value='50', type='value', min_width=90, elem_id='localPerPage')
-                local_search = gr.Textbox(label='', placeholder='Filter local models by name', elem_id='localSearchBox')
-                local_load_btn = gr.Button(value='📋 Load local models', elem_id='localLoadBtn', variant='primary')
-                local_clear_btn = gr.Button(value='🧹 Clear', elem_id='localClearBtn', scale=0, min_width=90)
-            with gr.Row():
-                local_size_slider = gr.Slider(label='Tile size:', minimum=8, maximum=20, value=12, step=0.25, elem_id='localSizeSlider', scale=4)
-                local_only_updates = gr.Checkbox(label='⬆️ Only models with updates', value=False, elem_id='localOnlyUpdates', scale=1, min_width=220)
+                    # ── Filters + load (mirrors the Browser tab; filters what we touch) ──
+                    with gr.Row(elem_id='localSearchRow'):
+                        local_content_type = gr.Dropdown(label='Content type:', choices=content_choices, value=['Checkpoint', 'LORA'], type='value', multiselect=True, elem_id='localContentType')
+                        local_base_filter = gr.Dropdown(label='Base model:', choices=get_base_models(), value=None, type='value', multiselect=True, elem_id='localBaseFilter')
+                        local_sort = gr.Dropdown(label='Sort by:', choices=['Name (A-Z)', 'Name (Z-A)', 'Recently downloaded', 'Oldest downloaded'], value='Name (A-Z)', type='value', elem_id='localSortBy')
+                        local_page_size = gr.Dropdown(label='Per page:', choices=['25', '50', '100'], value='50', type='value', min_width=90, elem_id='localPerPage')
+                        local_search = gr.Textbox(label='', placeholder='Filter local models by name', elem_id='localSearchBox')
+                        local_load_btn = gr.Button(value='📋 Load local models', elem_id='localLoadBtn', variant='primary')
+                        local_clear_btn = gr.Button(value='🧹 Clear', elem_id='localClearBtn', scale=0, min_width=90)
+                    with gr.Row():
+                        local_size_slider = gr.Slider(label='Tile size:', minimum=8, maximum=20, value=12, step=0.25, elem_id='localSizeSlider', scale=4)
+                        local_only_updates = gr.Checkbox(label='⬆️ Only models with updates', value=False, elem_id='localOnlyUpdates', scale=1, min_width=220)
 
-            # ── Card grid ──
-            with gr.Row():
-                local_list_html = gr.HTML(value='<div style="font-size: 24px; text-align: center; margin: 50px;">Click "Load local models" to list your installed models.</div>', elem_id='local_list_html')
+                    # ── Card grid ──
+                    with gr.Row():
+                        local_list_html = gr.HTML(value='<div style="font-size: 24px; text-align: center; margin: 50px;">Click "Load local models" to list your installed models.</div>', elem_id='local_list_html')
 
-            # Batch action: update the models checked on outdated cards (reuses update_selected pipeline)
-            with gr.Row():
-                local_update_mode = gr.Radio(choices=['Replace installed', 'Keep installed (download alongside)'], value='Replace installed', label='When updating:', elem_id='localUpdateMode', scale=2)
-                local_update_selected_btn = gr.Button(value='⬆️ Update selected', elem_id='localUpdateSelectedBtn', scale=1)
-            # Live download progress mirrored from #DownloadProgress (so updates started here
-            # are visible without leaving the tab). Pure JS target — no Python binding.
-            with gr.Row():
-                local_download_progress = gr.HTML(value='<div style="min-height: 0px;"></div>', elem_id='local_download_progress')
+                    # Batch action: update the models checked on outdated cards (reuses update_selected pipeline)
+                    with gr.Row():
+                        local_update_mode = gr.Radio(choices=['Replace installed', 'Keep installed (download alongside)'], value='Replace installed', label='When updating:', elem_id='localUpdateMode', scale=2)
+                        local_update_selected_btn = gr.Button(value='⬆️ Update selected', elem_id='localUpdateSelectedBtn', scale=1)
+                    # Live download progress mirrored from #DownloadProgress (so updates started here
+                    # are visible without leaving the tab). Pure JS target — no Python binding.
+                    with gr.Row():
+                        local_download_progress = gr.HTML(value='<div style="min-height: 0px;"></div>', elem_id='local_download_progress')
 
-            # ── Detail panel for the selected card ──
-            with gr.Row():
-                local_base_model = gr.Textbox(label='Base model:', interactive=False, lines=1)
-                local_version = gr.Dropdown(label='Version:', choices=[], interactive=False, value=None)
-                local_filename = gr.Textbox(label='Model filename:', interactive=False)
-            with gr.Row():
-                local_trained_tags = gr.Textbox(label='Trained tags (if any):', value=None, interactive=False, lines=1, scale=6)
-                local_send_tags_btn = gr.Button(value='➕ Add to prompt', scale=1, min_width=120, interactive=False, visible=False)
-            with gr.Row():
-                local_new_name = gr.Textbox(label='New name (rename):', interactive=False, max_lines=1, scale=4)
-                local_rename_btn = gr.Button(value='✏️ Rename', interactive=False, scale=1)
-                local_download_version_btn = gr.Button(value='⬇️ Download selected version', interactive=False, scale=1)
-                local_update_btn = gr.Button(value='⬆️ Update to latest', interactive=False, scale=1)
-                local_delete_btn = gr.Button(value='🗑️ Delete', interactive=False, variant='stop', scale=1)
-            with gr.Row():
-                local_preview_html = gr.HTML(elem_id='local_preview_html')
+                    # ── Detail panel for the selected card ──
+                    with gr.Row():
+                        local_base_model = gr.Textbox(label='Base model:', interactive=False, lines=1)
+                        local_version = gr.Dropdown(label='Version:', choices=[], interactive=False, value=None)
+                        local_filename = gr.Textbox(label='Model filename:', interactive=False)
+                    with gr.Row():
+                        local_trained_tags = gr.Textbox(label='Trained tags (if any):', value=None, interactive=False, lines=1, scale=6)
+                        local_send_tags_btn = gr.Button(value='➕ Add to prompt', scale=1, min_width=120, interactive=False, visible=False)
+                    with gr.Row():
+                        local_new_name = gr.Textbox(label='New name (rename):', interactive=False, max_lines=1, scale=4)
+                        local_rename_btn = gr.Button(value='✏️ Rename', interactive=False, scale=1)
+                        local_download_version_btn = gr.Button(value='⬇️ Download selected version', interactive=False, scale=1)
+                        local_update_btn = gr.Button(value='⬆️ Update to latest', interactive=False, scale=1)
+                        local_delete_btn = gr.Button(value='🗑️ Delete', interactive=False, variant='stop', scale=1)
+                    with gr.Row():
+                        local_preview_html = gr.HTML(elem_id='local_preview_html')
+
+                with gr.Tab(label='LoraDex', elem_id='loraDexTab'):
+                    gr.Markdown('## 🏷️ LoraDex — LoRA Category Manager')
+                    gr.Markdown('Manage LoRA categories. Each row has its own Apply/Reset. Use the bar below to apply or reset all pending changes at once.')
+
+                    # Hidden states
+                    loradex_page_trigger = gr.Textbox(visible=False, elem_id='loradex_page_trigger')
+                    loradex_command_state = gr.Textbox(visible=False, elem_id='loradex_command_state')
+
+                    # ── Filters + load ──
+                    with gr.Row(elem_id='loradexFilterRow'):
+                        loradex_base_filter = gr.Dropdown(label='Base model:', choices=get_base_models(), value=None, type='value', multiselect=True)
+                        loradex_cat_filter = gr.Dropdown(label='Category:', choices=['All'] + _file.LORA_DEX_CATEGORIES, value='All')
+                        loradex_pending_only = gr.Checkbox(label='Pending only', value=False)
+                        loradex_search = gr.Textbox(label='Search:', placeholder='Filter by LoRA name')
+                        loradex_page_size = gr.Dropdown(label='Per page:', choices=['10', '25', '50', '100'], value='25', type='value', min_width=90)
+                        loradex_load_btn = gr.Button(value='🔄 Load', variant='primary')
+
+                    # ── List ──
+                    with gr.Row():
+                        loradex_html = gr.HTML(value='<div style="font-size: 20px; text-align: center; margin: 50px;">Click "🔄 Load" to list your LoRAs.</div>', elem_id='loradex_list')
+
+                    # ── Pagination + bulk actions ──
+                    with gr.Row():
+                        loradex_apply_all_btn = gr.Button(value='✅ Apply all pending', variant='primary')
+                        loradex_reset_all_btn = gr.Button(value='↺ Reset all pending')
+                        loradex_status = gr.HTML()
 
         ## Organization Tab
         with gr.Tab(label='Organization', elem_id='organizationTab'):
@@ -1348,6 +1377,40 @@ def on_ui_tabs():
 
         # Trained tags → txt2img prompt (reuses the Browser's sendTagsToPrompt)
         local_send_tags_btn.click(fn=None, inputs=[local_trained_tags], _js='(tags) => sendTagsToPrompt(tags)')
+
+        # ── LoraDex bindings ──
+        loradex_load_btn.click(
+            fn=_file.render_lora_dex_page,
+            inputs=[loradex_base_filter, loradex_cat_filter, loradex_pending_only, loradex_search, loradex_page_size],
+            outputs=[loradex_html],
+            show_progress='full'
+        )
+        loradex_search.submit(
+            fn=_file.render_lora_dex_page,
+            inputs=[loradex_base_filter, loradex_cat_filter, loradex_pending_only, loradex_search, loradex_page_size],
+            outputs=[loradex_html],
+            show_progress='full'
+        )
+        loradex_page_size.change(
+            fn=_file.change_lora_dex_page_size,
+            inputs=[loradex_page_size],
+            outputs=[loradex_html],
+            show_progress='hidden'
+        )
+        loradex_page_trigger.change(
+            fn=_file.render_lora_dex_page_trigger,
+            inputs=[loradex_page_trigger],
+            outputs=[loradex_html],
+            show_progress='hidden'
+        )
+        loradex_command_state.change(
+            fn=_file.handle_lora_dex_command,
+            inputs=[loradex_command_state],
+            outputs=[loradex_status, loradex_html],
+            show_progress='hidden'
+        )
+        loradex_apply_all_btn.click(fn=None, _js='() => loradexApplyAll()')
+        loradex_reset_all_btn.click(fn=None, _js='() => loradexResetAll()')
 
         model_sent.change(
             fn=_file.model_from_sent,
