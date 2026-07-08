@@ -5220,7 +5220,7 @@ def load_to_browser(content_type, sort_type, period_type, use_search_term, searc
         nsfw,
         exact_search,
         tile_count,
-        True
+        from_update_tab=True
     )
     from_ver, from_installed =  False, False
     return (

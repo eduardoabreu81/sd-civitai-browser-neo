@@ -5,6 +5,7 @@ import platform
 import json
 import os
 import re
+import traceback
 import gradio as gr
 from datetime import datetime, timezone
 from collections import defaultdict
@@ -46,6 +47,27 @@ def _source_display_to_name(display_name):
         return "civitai"
     name = _browser_sources.source_name_from_display(display_name)
     return name or "civitai"
+
+
+def _call_browser_source(source_adapter, operation, **kwargs):
+    """Run an adapter operation with source-aware debug diagnostics."""
+    source_name = getattr(source_adapter, "name", "unknown")
+    debug_print(
+        f"[Browser:{source_name}] {operation} started "
+        f"(page={kwargs.get('page', 1)}, search_type={kwargs.get('search_type')!r})"
+    )
+    try:
+        result = getattr(source_adapter, operation)(**kwargs)
+    except Exception as exc:
+        debug_print(
+            f"[Browser:{source_name}] {operation} failed with "
+            f"{type(exc).__name__}: {exc}"
+        )
+        debug_print(traceback.format_exc())
+        return "error"
+
+    debug_print(f"[Browser:{source_name}] {operation} returned {type(result).__name__}")
+    return result
 
 
 ## === ANXETY EDITs ===
@@ -1154,9 +1176,14 @@ def create_api_url(content_type=None, sort_type=None, period_type=None, use_sear
 
 
 ## === ANXETY EDITs ===
-def initial_model_page(content_type=None, sort_type=None, period_type=None, use_search_term=None, search_term=None, current_page=None, base_filter=None, only_liked=None, nsfw=None, exact_search=None, tile_count=None, from_update_tab=False, target='', source='CivitAI'):
+def initial_model_page(content_type=None, sort_type=None, period_type=None, use_search_term=None, search_term=None, current_page=None, base_filter=None, only_liked=None, nsfw=None, exact_search=None, tile_count=None, source='CivitAI', *, from_update_tab=False, target=''):
     source_name = _source_display_to_name(source)
     source_adapter = _get_browser_source(source_name)
+
+    debug_print(
+        f"[Browser:{source_name}] initial_model_page "
+        f"(page={current_page!r}, from_update_tab={from_update_tab}, target={target!r})"
+    )
 
     current_inputs = (content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, nsfw, exact_search, source_name)
     if current_inputs != gl.previous_inputs and gl.previous_inputs != None or not current_page:
@@ -1200,12 +1227,18 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
             # Handle SHA256 search specially
             if use_search_term == 'SHA256' and search_term:
                 debug_print(f"Performing SHA256 search for hash: {search_term}")
-                gl.json_data = source_adapter.get_version_by_hash(search_term)
+                gl.json_data = _call_browser_source(
+                    source_adapter,
+                    'get_version_by_hash',
+                    sha256=search_term,
+                )
                 if gl.json_data is None:
                     gl.json_data = 'sha256_not_found'
                 gl.url_list = {1: f"sha256_search_{search_term.strip().upper()}" if isinstance(gl.json_data, dict) else 'error'}
             else:
-                gl.json_data = source_adapter.search(
+                gl.json_data = _call_browser_source(
+                    source_adapter,
+                    'search',
                     query=search_term or '',
                     search_type=use_search_term,
                     content_type=content_type,
@@ -1224,7 +1257,9 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
         else:
             api_url = gl.url_list.get(current_page)
             if api_url and api_url.startswith('browser_source://'):
-                gl.json_data = source_adapter.search(
+                gl.json_data = _call_browser_source(
+                    source_adapter,
+                    'search',
                     query=search_term or '',
                     search_type=use_search_term,
                     content_type=content_type,
@@ -1313,7 +1348,7 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
 def prev_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, source='CivitAI'):
     return next_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, isNext=False, source=source)
 
-def next_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, isNext=True, source='CivitAI'):
+def next_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, source='CivitAI', *, isNext=True):
     source_name = _source_display_to_name(source)
     source_adapter = _get_browser_source(source_name)
 
@@ -1333,7 +1368,9 @@ def next_model_page(content_type, sort_type, period_type, use_search_term, searc
     # will validate any cached page_url and either reuse it or rebuild from the
     # search parameters when it doesn't match the requested target_page.
     if source_name != 'civitai' or (api_url and api_url.startswith('browser_source://')):
-        gl.json_data = source_adapter.search(
+        gl.json_data = _call_browser_source(
+            source_adapter,
+            'search',
             query=search_term or '',
             search_type=use_search_term,
             content_type=content_type,
@@ -2744,4 +2781,4 @@ def api_error_msg(input_string):
     elif input_string == 'dns_error':
         return div + 'Temporary DNS resolution failure while contacting CivitAI.<br>Please check your network/DNS and try again in a few seconds.</div>'
     else:
-        return div + 'The CivitAI-API failed to respond due to an error.<br>Check the logs for more details.</div>'
+        return div + 'The selected browser source failed to respond due to an error.<br>Check the logs for more details.</div>'
