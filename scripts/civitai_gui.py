@@ -558,7 +558,20 @@ def on_ui_tabs():
                 preview_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
                 sync_sha256_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
 
-            gr.Markdown('**📁 Organize & validate** — sort models into base-model subfolders (SDXL, Pony, FLUX…) and check placement.')
+            gr.Markdown('**⚙️ Organization mode** — choose how models are sorted into subfolders.')
+            with gr.Row():
+                org_by_base = gr.Checkbox(
+                    label='Organize by base model',
+                    value=lambda: getattr(opts, 'civitai_neo_auto_organize', False),
+                    elem_id='civitai_org_by_base'
+                )
+                org_by_category = gr.Checkbox(
+                    label='Organize LoRAs by category',
+                    value=lambda: getattr(opts, 'civitai_neo_lora_category_sort', False),
+                    elem_id='civitai_org_by_category'
+                )
+
+            gr.Markdown('**📁 Organize & validate** — sort models into subfolders and check placement.')
             with gr.Row():
                 organize_models = gr.Button(value='📁 Organize into subfolders', interactive=True, variant='primary')
                 cancel_organize = gr.Button(value='✖ Cancel', interactive=False, visible=False, variant='stop')
@@ -1785,7 +1798,9 @@ def on_ui_tabs():
             overwrite_toggle_local,
             tile_count_slider,
             skip_hash_toggle_local,
-            do_html_gen_local
+            do_html_gen_local,
+            org_by_base,
+            org_by_category
         ]
 
         load_to_browser_inputs = [
@@ -2028,7 +2043,7 @@ def on_ui_tabs():
 
         validate_org_btn.click(
             fn=_file.validate_organization,
-            inputs=[selected_tags_local],
+            inputs=[selected_tags_local, org_by_base, org_by_category],
             outputs=[
                 validate_org_progress,
                 fix_misplaced_btn,
@@ -2039,7 +2054,7 @@ def on_ui_tabs():
 
         fix_misplaced_btn.click(
             fn=_file.fix_misplaced_files,
-            inputs=[validate_plan_state],
+            inputs=[validate_plan_state, org_by_base, org_by_category],
             outputs=[
                 fix_misplaced_progress,
                 fix_misplaced_btn,

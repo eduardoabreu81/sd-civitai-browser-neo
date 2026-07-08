@@ -2726,7 +2726,7 @@ def get_save_path_and_name(install_path, file_name, api_response, sub_folder=Non
     return save_path, name
 
 ## === ANXETY EDITs ===
-def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish, organize_finish, overwrite_toggle, tile_count, gen_hash, create_html, progress=gr.Progress() if queue else None):
+def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish, organize_finish, overwrite_toggle, tile_count, gen_hash, create_html, progress=gr.Progress() if queue else None, organize_by_base=True, organize_by_category=False):
     global no_update
     proxies, ssl = _api.get_proxies()
     gl.scan_files = True
@@ -3091,11 +3091,11 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
         if progress != None:
             progress(0, desc='Analyzing models for organization...')
         
-        organization_plan = analyze_organization_plan(folders, progress)
-        
+        organization_plan = analyze_organization_plan(folders, progress, organize_by_base, organize_by_category)
+
         # Always show preview first with statistics
         preview_html = generate_organization_preview_html(organization_plan)
-        
+
         if not organization_plan['moves']:
             # No files need organization
             gl.scan_files = False
@@ -3576,16 +3576,24 @@ def get_model_info_for_organization(file_path):
     print(f"[Civitai Browser Neo] ⚠️ Could not determine baseModel for: {model_name}")
     return None, model_name, sidecar_tags, manual_category
 
-def analyze_organization_plan(folders, progress=None):
+def analyze_organization_plan(folders, progress=None, organize_by_base=True, organize_by_category=False):
     """
-    Analyze current model files and create an organization plan
-    Returns organization plan with moves grouped by base model
+    Analyze current model files and create an organization plan.
+
+    Args:
+        folders: list of content types to scan.
+        progress: optional Gradio progress callback.
+        organize_by_base: when True, place files under base-model subfolders.
+        organize_by_category: when True, place LoRAs under category subfolders.
+            Hierarchy is always Base > Category (e.g. Lora/Anima/Character).
+
+    Returns organization plan dict with moves grouped by target folder.
     """
     folders_to_check = []
-    
+
     if 'All' in folders:
         folders = _file.get_content_choices()
-    
+
     for item in folders:
         if item == 'LORA':
             folder = _api.contenttype_folder('LORA')
@@ -3595,9 +3603,9 @@ def analyze_organization_plan(folders, progress=None):
             folder = _api.contenttype_folder(item)
             if folder:
                 folders_to_check.append(folder)
-    
+
     files = list_files(folders_to_check)
-    
+
     organization_plan = {
         'moves': [],
         'summary': {},
@@ -3605,33 +3613,25 @@ def analyze_organization_plan(folders, progress=None):
         'files_with_info': 0,
         'files_without_info': 0
     }
-    
+
     files_processed = 0
     total_files = len(files)
-    
-    lora_category_sort = getattr(opts, 'civitai_neo_lora_category_sort', False)
+
+    # Nothing to do if both modes are disabled
+    if not organize_by_base and not organize_by_category:
+        organization_plan['total_files'] = total_files
+        return organization_plan
 
     for file_path in files:
         files_processed += 1
         if progress is not None:
             file_name = os.path.basename(file_path)
             progress(files_processed / total_files, desc=f"Analyzing: {file_name}")
-        
+
         base_model_raw, model_name, tags, manual_category = get_model_info_for_organization(file_path)
-        
-        if not base_model_raw:
-            organization_plan['files_without_info'] += 1
-            continue
-        
-        organization_plan['files_with_info'] += 1
-        
-        # Normalize base model to folder name
-        base_model_folder = normalize_base_model(base_model_raw)
-        
-        # If normalize returns None, skip this file (leave in root)
-        if not base_model_folder:
-            continue
-        
+        file_stem = os.path.splitext(os.path.basename(file_path))[0]
+        description = _lora_dex_description(file_path)
+
         # Get current directory and determine root model-type folder
         current_dir = os.path.dirname(file_path)
         root_folder = current_dir
@@ -3641,47 +3641,76 @@ def analyze_organization_plan(folders, progress=None):
                 root_folder = current_dir
                 break
             root_folder = parent
-        
+
+        is_lora = os.path.basename(root_folder) == 'Lora'
+
+        # Determine base-model folder segment (may be empty if organize_by_base is False)
+        base_model_folder = ''
+        if organize_by_base:
+            if not base_model_raw:
+                organization_plan['files_without_info'] += 1
+                continue
+            base_model_folder = normalize_base_model(base_model_raw)
+            if not base_model_folder:
+                continue
+            organization_plan['files_with_info'] += 1
+        elif base_model_raw:
+            # Count as with-info even if base model is not being used for sorting
+            organization_plan['files_with_info'] += 1
+
+        # Determine LoRA category segment (only for LoRA files)
         category = None
-        # Apply LoRA category subfolder when enabled
-        if lora_category_sort and os.path.basename(root_folder) == 'Lora':
-            category = categorize_lora_by_tags(tags, manual_category=manual_category)
-            if category:
-                base_model_folder = os.path.join(base_model_folder, category)
-        
-        # Check if already in correct subfolder
-        # Normalize both sides to handle multi-level folders like 'Wan/I2V' or 'SDXL/Style'
-        norm_current = os.path.normpath(current_dir)
-        norm_target_suffix = os.path.normpath(base_model_folder)
-        if norm_current.endswith(os.sep + norm_target_suffix) or norm_current == norm_target_suffix:
-            # Already organized
+        if organize_by_category and is_lora:
+            category = categorize_lora_by_tags(
+                tags,
+                manual_category=manual_category,
+                description=description,
+                name_hints=[model_name, file_stem],
+            )
+
+        # Build target suffix in Base > Category order
+        target_parts = []
+        if base_model_folder:
+            target_parts.append(base_model_folder)
+        if category:
+            target_parts.append(category)
+
+        if not target_parts:
+            # Nothing to organize for this file
             continue
-        
-        target_folder = os.path.join(root_folder, base_model_folder)
+
+        target_suffix = os.path.normpath(os.path.join(*target_parts))
+
+        # Check if already in the correct subfolder
+        norm_current = os.path.normpath(current_dir)
+        if norm_current.endswith(os.sep + target_suffix) or norm_current == target_suffix:
+            continue
+
+        target_folder = os.path.join(root_folder, target_suffix)
         target_path = os.path.join(target_folder, os.path.basename(file_path))
-        
+
         # Add to plan
         organization_plan['moves'].append({
             'from': file_path,
             'to': target_path,
-            'base_model': base_model_folder,
+            'base_model': target_suffix,
             'category': category or '',
             'model_name': model_name,
             'size': os.path.getsize(file_path) if os.path.exists(file_path) else 0
         })
-        
+
         # Update summary
-        if base_model_folder not in organization_plan['summary']:
-            organization_plan['summary'][base_model_folder] = {
+        if target_suffix not in organization_plan['summary']:
+            organization_plan['summary'][target_suffix] = {
                 'count': 0,
                 'size': 0
             }
-        
-        organization_plan['summary'][base_model_folder]['count'] += 1
-        organization_plan['summary'][base_model_folder]['size'] += organization_plan['moves'][-1]['size']
-    
+
+        organization_plan['summary'][target_suffix]['count'] += 1
+        organization_plan['summary'][target_suffix]['size'] += organization_plan['moves'][-1]['size']
+
     organization_plan['total_files'] = total_files
-    
+
     return organization_plan
 
 def format_size(size_bytes):
@@ -4090,7 +4119,7 @@ def organize_start(organize_start):
     number = _download.random_number(organize_start)
     return start_returns(number)
 
-def validate_organization(folders, progress=gr.Progress() if queue else None):
+def validate_organization(folders, organize_by_base=True, organize_by_category=False, progress=gr.Progress() if queue else None):
     """
     Validate that models are in their correct subfolders based on .json metadata.
     Read-only: does NOT move any files.
@@ -4107,6 +4136,14 @@ def validate_organization(folders, progress=gr.Progress() if queue else None):
         yield gr.update(value=html), gr.update(visible=False), '{}'
         return
 
+    if not organize_by_base and not organize_by_category:
+        html = '''<div style="padding:20px;text-align:center;">
+            <strong>No organization mode selected.</strong><br>
+            <span style="color:var(--body-text-color-subdued);">Enable "Organize by base model" and/or "Organize LoRAs by category" above.</span>
+        </div>'''
+        yield gr.update(value=html), gr.update(visible=False), '{}'
+        return
+
     # ── Show scanning status immediately ─────────────────────────────────────
     yield (
         gr.update(value='<div style="padding:12px 15px;border:1px solid var(--border-color-primary);border-radius:8px;margin:6px 0;">'
@@ -4119,7 +4156,7 @@ def validate_organization(folders, progress=gr.Progress() if queue else None):
     if progress is not None:
         progress(0, desc="Scanning files for validation...")
 
-    plan = analyze_organization_plan(folders, progress)
+    plan = analyze_organization_plan(folders, progress, organize_by_base, organize_by_category)
 
     misplaced  = plan['moves']             # files in wrong folder
     no_meta    = plan['files_without_info']
@@ -4197,13 +4234,21 @@ def validate_organization(folders, progress=gr.Progress() if queue else None):
     yield gr.update(value=html), gr.update(visible=True, interactive=True), plan_json
 
 
-def fix_misplaced_files(plan_json, progress=gr.Progress() if queue else None):
+def fix_misplaced_files(plan_json, organize_by_base=True, organize_by_category=False, progress=gr.Progress() if queue else None):
     """
     Execute the organization plan produced by validate_organization().
     Moves only the misplaced files; creates a backup before moving.
     Generator: yields inline HTML progress updates to the UI.
     """
     import json as _json
+
+    if not organize_by_base and not organize_by_category:
+        html = '''<div style="padding:20px;text-align:center;">
+            <strong>No organization mode selected.</strong><br>
+            <span style="color:var(--body-text-color-subdued);">Enable "Organize by base model" and/or "Organize LoRAs by category" above.</span>
+        </div>'''
+        yield gr.update(value=html), gr.update(visible=False), gr.update(visible=False), '{}'
+        return
 
     try:
         plan = _json.loads(plan_json) if plan_json else {}
