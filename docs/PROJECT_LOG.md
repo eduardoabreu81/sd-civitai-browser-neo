@@ -22,6 +22,21 @@
 
 ## Linha do Tempo
 
+### 2026-07-08 — Filtro CivArchive para modelos deletados do CivitAI
+
+**O que mudou (pt-BR):** Adicionado o checkbox **Deleted from CivitAI** aos filtros do Browser. Ele fica habilitado somente quando a fonte selecionada é `CivArchive`; ao trocar para qualquer outra fonte, o valor é desmarcado e o componente é desabilitado. O estado pode ser salvo nos defaults quando o CivArchive é a fonte padrão. Busca inicial, refresh, paginação Next/Prev e refresh pós-download compartilham o novo input.
+**Integração:** O adapter CivArchive envia `is_deleted=true` para `/api/search`. A API pública foi validada em 2026-07-08: o parâmetro retornou 50/50 resultados com `is_deleted: true`, enquanto a mesma janela sem o parâmetro misturava itens ativos e deletados. O log de busca agora inclui `deleted_only=True|False`.
+**Arquivos alterados:** `scripts/civitai_gui.py`, `scripts/civitai_api.py`, `scripts/browser_sources/civarchive.py`, `tests/test_browser_callback_contract.py`, `tests/test_browser_sources.py`.
+**Decisões:** Este filtro significa exclusivamente “existia no CivitAI e foi removido”, conforme `is_deleted`/`deleted_at` do CivArchive. Ele não significa “modelo exclusivo de outra plataforma”. O futuro filtro **Not found on CivitAI** dependerá do double-check por SHA256 da Fase F e ficará separado para não misturar estados semanticamente diferentes.
+**Roadmap de fontes:** Novas integrações devem priorizar adapters diretos quando a plataforma oferecer API oficial e download estável. Análise futura: TensorArt, SeaArt, PixAI, Shakker, Tungsten, Civision, TensorHub, Yodayo e Moescape. Também avaliar `LykosAI/StabilityMatrix` para identificar padrões reutilizáveis de autenticação, resolução de arquivos, cache e download de CivitAI/Hugging Face.
+**Pontos sensíveis:** O CivArchive continua retornando uma janela fixa e o adapter pagina os IDs únicos client-side. Validação automatizada concluída com **117 passed + 2 subtests passed** e `git diff --check`; smoke test runtime ainda necessário no Forge Neo.
+**Próximos passos / Next steps:**
+- Atualizar a extensão remota e validar: CivArchive → marcar o checkbox → buscar sem termo e com termo → Next/Prev.
+- Trocar para CivitAI, Hugging Face e Arc en Ciel e confirmar que o checkbox é desmarcado/desabilitado.
+- Prosseguir com a validação das demais fontes antes da Fase E (ModelScope).
+
+---
+
 ### 2026-07-08 — Harden preview matching and diagnostics for external downloads
 
 **O que mudou (pt-BR):** `save_preview()` deixou de depender exclusivamente do SHA256 para localizar a versão baixada. O match continua priorizando hash normalizado e agora usa filename exato case-insensitive como fallback, necessário para fontes sem hash ou para diferenças entre o hash resolvido e o payload original. Todos os retornos antes silenciosos ganharam logs `[Preview]`: início, arquivo/target, match por hash ou nome, quantidade de imagens, status HTTP, falha de request/processamento, ausência de item/URL e caminho salvo. O fetch da imagem agora envia headers padrão e usa timeout. Em falha de uma imagem, o fluxo tenta as seguintes antes de desistir.

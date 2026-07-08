@@ -91,6 +91,7 @@ class CivArchiveSource(BrowserSource):
         page: int = 1,
         page_size: int = 20,
         only_liked: bool = False,
+        deleted_from_civitai: bool = False,
         **kwargs: Any,
     ) -> dict:
         """Search CivArchive and return results in canonical format."""
@@ -103,6 +104,7 @@ class CivArchiveSource(BrowserSource):
             base_filter=base_filter,
             page=page,
             page_size=page_size,
+            deleted_from_civitai=deleted_from_civitai,
         )
 
     def get_model(self, source_id: str, **kwargs: Any) -> Optional[dict]:
@@ -203,6 +205,7 @@ class CivArchiveSource(BrowserSource):
         base_filter: Optional[str | list[str]],
         page: int,
         page_size: int,
+        deleted_from_civitai: bool,
     ) -> dict:
         """Search CivArchive by name and normalize to canonical models."""
         page = max(1, int(page or 1))
@@ -214,6 +217,8 @@ class CivArchiveSource(BrowserSource):
             params["q"] = normalized_query
         params["limit"] = page_size
         params["offset"] = (page - 1) * page_size
+        if deleted_from_civitai:
+            params["is_deleted"] = "true"
 
         # CivArchive accepts a single type and a single base_model.
         if content_type:
@@ -232,7 +237,7 @@ class CivArchiveSource(BrowserSource):
         results = data.get("results", []) if isinstance(data, dict) else []
         debug_print(
             f"[CivArchive] search query={normalized_query or '<browse>'!r} page={page} "
-            f"raw_results={len(results)}"
+            f"deleted_only={bool(deleted_from_civitai)} raw_results={len(results)}"
         )
         if not results:
             return paginated_result(

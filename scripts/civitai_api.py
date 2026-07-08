@@ -1184,7 +1184,7 @@ def create_api_url(content_type=None, sort_type=None, period_type=None, use_sear
 
 
 ## === ANXETY EDITs ===
-def initial_model_page(content_type=None, sort_type=None, period_type=None, use_search_term=None, search_term=None, current_page=None, base_filter=None, only_liked=None, nsfw=None, exact_search=None, tile_count=None, source='CivitAI', *, from_update_tab=False, target=''):
+def initial_model_page(content_type=None, sort_type=None, period_type=None, use_search_term=None, search_term=None, current_page=None, base_filter=None, only_liked=None, nsfw=None, exact_search=None, tile_count=None, source='CivitAI', deleted_from_civitai=False, *, from_update_tab=False, target=''):
     source_name = _source_display_to_name(source)
     source_adapter = _get_browser_source(source_name)
 
@@ -1193,7 +1193,7 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
         f"(page={current_page!r}, from_update_tab={from_update_tab}, target={target!r})"
     )
 
-    current_inputs = (content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, nsfw, exact_search, source_name)
+    current_inputs = (content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, nsfw, exact_search, source_name, deleted_from_civitai)
     if current_inputs != gl.previous_inputs and gl.previous_inputs != None or not current_page:
         current_page = 1
     gl.previous_inputs = current_inputs
@@ -1258,6 +1258,7 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
                     page=current_page,
                     page_size=tile_count,
                     only_liked=only_liked,
+                    deleted_from_civitai=deleted_from_civitai,
                 )
                 # CivitAI adapter exposes the underlying API url so legacy pagination works.
                 civitai_page_url = gl.json_data.get('metadata', {}).get('_civitaiPageUrl') if isinstance(gl.json_data, dict) else None
@@ -1279,6 +1280,7 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
                     page=current_page,
                     page_size=tile_count,
                     only_liked=only_liked,
+                    deleted_from_civitai=deleted_from_civitai,
                     page_url=api_url,
                 )
             else:
@@ -1304,6 +1306,7 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
                 page=current_page,
                 page_size=tile_count,
                 only_liked=only_liked,
+                deleted_from_civitai=deleted_from_civitai,
                 page_url=api_url,
             )
         elif api_url and not api_url.startswith('sha256_search_'):
@@ -1370,16 +1373,16 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
         gr.update(value=None)                                           # Model Filename
     )
 
-def prev_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, source='CivitAI'):
-    return next_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, isNext=False, source=source)
+def prev_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, source='CivitAI', deleted_from_civitai=False):
+    return next_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, source=source, deleted_from_civitai=deleted_from_civitai, isNext=False)
 
-def next_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, source='CivitAI', *, isNext=True):
+def next_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, source='CivitAI', deleted_from_civitai=False, *, isNext=True):
     source_name = _source_display_to_name(source)
     source_adapter = _get_browser_source(source_name)
 
-    current_inputs = (content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, nsfw, exact_search, source_name)
+    current_inputs = (content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, nsfw, exact_search, source_name, deleted_from_civitai)
     if current_inputs != gl.previous_inputs and gl.previous_inputs != None:
-        return initial_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, source=source)
+        return initial_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, source=source, deleted_from_civitai=deleted_from_civitai)
 
     next_page = current_page
     model_list = []
@@ -1407,6 +1410,7 @@ def next_model_page(content_type, sort_type, period_type, use_search_term, searc
             page=target_page,
             page_size=tile_count,
             only_liked=only_liked,
+            deleted_from_civitai=deleted_from_civitai,
             page_url=api_url,
         )
     else:

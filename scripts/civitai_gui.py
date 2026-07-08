@@ -47,7 +47,7 @@ def _save_browser_defaults(data):
         json.dump(data, f, indent=4)
 
 
-def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, sn, es, ss, ts, src):
+def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, sn, es, ss, ts, src, deleted):
     config = cmd_opts.ui_config_file
 
     # Create a dictionary to map the settings to their respective variables
@@ -59,6 +59,7 @@ def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, sn, es, ss, ts, src):
         'civitai_interface_neo/Sort by:/value': st,
         'civitai_interface_neo/Base model:/value': bf,
         'civitai_interface_neo/Source:/value': src,
+        'civitai_interface_neo/Deleted from CivitAI/value': deleted,
         'civitai_interface_neo/Save info after download/value': cj,
         'civitai_interface_neo/Divide cards by date/value': False,  # This is a toggle, so its state does not matter here
         'civitai_interface_neo/Liked models only/value': ol,
@@ -89,7 +90,7 @@ def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, sn, es, ss, ts, src):
         print(f"Updated settings to: {config}")
 
     # Persist all browser filter defaults to extension-local file
-    print(f"[CivitAI Browser] Saving filter defaults: tile_size={ss}, tile_count={ts}, search_type={ust}, content_type={ct}, base_model={bf}, source={src}, period={pt}, sort={st}, liked={ol}, hide={hi}, nsfw={sn}, exact={es}, save_json={cj}")
+    print(f"[CivitAI Browser] Saving filter defaults: tile_size={ss}, tile_count={ts}, search_type={ust}, content_type={ct}, base_model={bf}, source={src}, deleted_from_civitai={deleted}, period={pt}, sort={st}, liked={ol}, hide={hi}, nsfw={sn}, exact={es}, save_json={cj}")
     _save_browser_defaults({
         'search_type': ust,
         'content_type': ct,
@@ -97,6 +98,7 @@ def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, sn, es, ss, ts, src):
         'sort_by': st,
         'base_model': bf,
         'browser_source': src,
+        'deleted_from_civitai': deleted,
         'save_info_after_download': cj,
         'liked_models_only': ol,
         'hide_installed_models': hi,
@@ -105,6 +107,13 @@ def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, sn, es, ss, ts, src):
         'tile_size': ss,
         'tile_count': ts,
     })
+
+
+def update_deleted_from_civitai_filter(source):
+    """Enable the deleted-model filter only for the CivArchive source."""
+    if source == 'CivArchive':
+        return gr.update(interactive=True)
+    return gr.update(value=False, interactive=False)
 
 # === ANXETY EDITs ===
 def all_visible(html_check):
@@ -326,13 +335,16 @@ def on_ui_tabs():
             update_mode_banner = gr.HTML(value='', elem_id='update_mode_banner')
             
             _browser_defaults = _load_browser_defaults()
+            _default_source = _browser_defaults.get(
+                'browser_source', _browser_sources.source_choices()[0]
+            )
             with gr.Row(elem_id='searchRow'):
                 with gr.Accordion(label='', open=False, elem_id=filterBox):
                     with gr.Row():
                         source = gr.Dropdown(
                             label='Source:',
                             choices=_browser_sources.source_choices(),
-                            value=_browser_defaults.get('browser_source', _browser_sources.source_choices()[0]),
+                            value=_default_source,
                             type='value',
                             elem_id='browserSource'
                         )
@@ -353,6 +365,17 @@ def on_ui_tabs():
                         only_liked = gr.Checkbox(label='Liked models only', value=_browser_defaults.get('liked_models_only', False), interactive=show_only_liked, elem_id=toggle4)
                         hide_installed = gr.Checkbox(label='Hide installed models', value=_browser_defaults.get('hide_installed_models', False), elem_id=toggle5)
                         hide_banned_creators = gr.Checkbox(label='Hide banned creators', value=False, elem_id='hideBannedCreators')
+                        deleted_from_civitai = gr.Checkbox(
+                            label='Deleted from CivitAI',
+                            info='CivArchive only',
+                            value=(
+                                _browser_defaults.get('deleted_from_civitai', False)
+                                if _default_source == 'CivArchive'
+                                else False
+                            ),
+                            interactive=_default_source == 'CivArchive',
+                            elem_id='deletedFromCivitai',
+                        )
                     with gr.Row():
                         size_slider = gr.Slider(label='Tile size:', minimum=8, maximum=20, value=_browser_defaults.get('tile_size', 12), step=0.25)
                         tile_count_slider = gr.Slider(label='Tile count:', minimum=1, maximum=100, value=_browser_defaults.get('tile_count', 27), step=1)
@@ -880,8 +903,15 @@ def on_ui_tabs():
                 exact_search,
                 size_slider,
                 tile_count_slider,
-                source
+                source,
+                deleted_from_civitai
             ]
+        )
+
+        source.change(
+            fn=update_deleted_from_civitai_filter,
+            inputs=[source],
+            outputs=[deleted_from_civitai],
         )
 
         toggle_date.input(
@@ -1736,7 +1766,8 @@ def on_ui_tabs():
             show_nsfw,
             exact_search,
             tile_count_slider,
-            source
+            source,
+            deleted_from_civitai
         ]
 
         refresh_inputs = [empty if item == page_slider else item for item in page_inputs]

@@ -312,6 +312,22 @@ class TestCivArchiveAdapter(unittest.TestCase):
         self.assertEqual(len(result['items']), 1)
         self.assertEqual(result['items'][0]['name'], 'Default Browse Model')
 
+    def test_deleted_filter_uses_civarchive_api_flag(self):
+        search_response = {'results': [], 'total_hits': 0}
+
+        with patch.object(self.src, '_request_json', return_value=search_response) as mock_request:
+            result = self.src.search(
+                query='',
+                page_size=10,
+                deleted_from_civitai=True,
+            )
+
+        mock_request.assert_called_once_with(
+            '/search',
+            params={'limit': 10, 'offset': 0, 'is_deleted': 'true'},
+        )
+        self.assertEqual(result['items'], [])
+
     def test_normalize_model_from_civarchive_payload(self):
         payload = {
             'id': 1746460,

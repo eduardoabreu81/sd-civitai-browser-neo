@@ -6,6 +6,7 @@ import unittest
 
 
 API_PATH = Path(__file__).resolve().parents[1] / "scripts" / "civitai_api.py"
+GUI_PATH = Path(__file__).resolve().parents[1] / "scripts" / "civitai_gui.py"
 PAGE_INPUT_ARGUMENTS = [
     "content_type",
     "sort_type",
@@ -19,6 +20,23 @@ PAGE_INPUT_ARGUMENTS = [
     "exact_search",
     "tile_count",
     "source",
+    "deleted_from_civitai",
+]
+
+PAGE_INPUT_COMPONENTS = [
+    "content_type",
+    "sort_type",
+    "period_type",
+    "use_search_term",
+    "search_term",
+    "page_slider",
+    "base_filter",
+    "only_liked",
+    "show_nsfw",
+    "exact_search",
+    "tile_count_slider",
+    "source",
+    "deleted_from_civitai",
 ]
 
 
@@ -37,7 +55,7 @@ class TestBrowserCallbackContract(unittest.TestCase):
         positional = [argument.arg for argument in node.args.args]
         keyword_only = [argument.arg for argument in node.args.kwonlyargs]
 
-        self.assertEqual(positional[:12], PAGE_INPUT_ARGUMENTS)
+        self.assertEqual(positional[:13], PAGE_INPUT_ARGUMENTS)
         self.assertEqual(keyword_only, ["from_update_tab", "target"])
 
     def test_pagination_callbacks_share_page_input_order(self):
@@ -45,7 +63,18 @@ class TestBrowserCallbackContract(unittest.TestCase):
             with self.subTest(function=function_name):
                 node = _function_node(function_name)
                 positional = [argument.arg for argument in node.args.args]
-                self.assertEqual(positional[:12], PAGE_INPUT_ARGUMENTS)
+                self.assertEqual(positional[:13], PAGE_INPUT_ARGUMENTS)
+
+    def test_gradio_page_inputs_share_the_callback_order(self):
+        tree = ast.parse(GUI_PATH.read_text(encoding="utf-8"))
+        assignment = next(
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == "page_inputs" for target in node.targets)
+        )
+        components = [item.id for item in assignment.value.elts if isinstance(item, ast.Name)]
+        self.assertEqual(components, PAGE_INPUT_COMPONENTS)
 
 
 if __name__ == "__main__":
