@@ -22,6 +22,19 @@
 
 ## Linha do Tempo
 
+### 2026-07-08 — Harden preview matching and diagnostics for external downloads
+
+**O que mudou (pt-BR):** `save_preview()` deixou de depender exclusivamente do SHA256 para localizar a versão baixada. O match continua priorizando hash normalizado e agora usa filename exato case-insensitive como fallback, necessário para fontes sem hash ou para diferenças entre o hash resolvido e o payload original. Todos os retornos antes silenciosos ganharam logs `[Preview]`: início, arquivo/target, match por hash ou nome, quantidade de imagens, status HTTP, falha de request/processamento, ausência de item/URL e caminho salvo. O fetch da imagem agora envia headers padrão e usa timeout. Em falha de uma imagem, o fluxo tenta as seguintes antes de desistir.
+**Arquivos alterados:** `scripts/civitai_file_manage.py`, `tests/test_preview_matching.py`.
+**Decisões:** Filename só é aceito quando o basename é exatamente igual; prefix matching não é usado para evitar associar previews ao modelo errado. `save_preview()` retorna booleano para tornar o resultado observável sem quebrar callers existentes.
+**Pontos sensíveis:** Validação concluída com **115 passed + 2 subtests passed**, `py_compile` e `git diff --check`. O modelo Kiwimix já foi baixado e seus sidecars foram salvos; somente o preview precisa ser reprocessado no teste remoto.
+**Próximos passos / Next steps:**
+- Atualizar a extensão remota e executar a ação de salvar preview/imagens para o Kiwimix.
+- Confirmar o log `[Preview] saved successfully` e a criação de `.preview.png`/`.preview.jpg`.
+- Se ainda falhar, compartilhar toda a sequência de logs `[Preview]`, que agora identifica o ponto exato.
+
+---
+
 ### 2026-07-08 — Fix canonical image shape for external source previews
 
 **O que mudou (pt-BR):** Corrigido o crash `KeyError: 'type'` no pós-processamento de downloads do CivArchive. O helper compartilhado `canonical_image()` agora entrega o shape legado completo esperado pelo Browser: `type`, `nsfwLevel`, `meta`, `url`, `width`, `height` e `hash`. O tipo de mídia é preservado da origem ou inferido pela extensão; prompts são inseridos em `meta` sem apagar outros campos. `save_preview()` também passou a aceitar imagens antigas sem `type`, ignorar entradas sem URL e evitar substituição de largura quando ela não está disponível. A correção se aplica igualmente a Hugging Face e Arc en Ciel.
