@@ -503,33 +503,51 @@ def model_list_html(json_data, target=''):
         the model folders. The version id is a second identity signal (aligned with
         version_match / _resolve_versions_to_download): when a sidecar lacks a sha256
         (or the file was renamed), matching by the cached modelVersionId still detects
-        the installed version so the card border isn't lost."""
+        the installed version so the card border isn't lost.
+
+        Also returns path lookups so the card renderer can read the on-disk .json
+        sidecar (e.g. for manual LoRA category overrides)."""
         files_set = set()
         sha256_set = set()
         version_ids_set = set()
+        file_to_path = {}
+        sha256_to_path = {}
+        version_id_to_path = {}
+        model_extensions = {'.safetensors', '.ckpt', '.pt', '.pth', '.bin'}
         for folder in model_folders:
             if folder is None:
                 continue
             for root, _, files in os.walk(folder, followlinks=True):
                 for file in files:
-                    files_set.add(file.lower())
+                    file_lower = file.lower()
+                    files_set.add(file_lower)
+                    full_path = os.path.join(root, file)
+                    if os.path.splitext(file_lower)[1] in model_extensions:
+                        file_to_path[file_lower] = full_path
                     if file.endswith('.json'):
-                        json_path = os.path.join(root, file)
-                        json_data = safe_json_load(json_path)
+                        json_data = safe_json_load(full_path)
                         if json_data and isinstance(json_data, dict):
                             sha256 = normalize_sha256(json_data.get('sha256'))
                             if sha256:
                                 sha256_set.add(sha256)
+                                # The .json sidecar belongs to a model file with the same stem.
+                                # Store the model path if it exists; otherwise the json path.
+                                model_path = file_to_path.get(file_lower[:-5] + '.safetensors') \
+                                    or file_to_path.get(file_lower[:-5] + '.ckpt')
+                                sha256_to_path[sha256] = model_path or full_path
                             vid = json_data.get('modelVersionId')
                             if vid is not None:
                                 try:
-                                    version_ids_set.add(int(vid))
+                                    vid_int = int(vid)
+                                    version_ids_set.add(vid_int)
+                                    version_id_to_path[vid_int] = sha256_to_path.get(sha256, full_path) if sha256 else full_path
                                 except (ValueError, TypeError):
                                     pass
-        return files_set, sha256_set, version_ids_set
+        return files_set, sha256_set, version_ids_set, file_to_path, sha256_to_path, version_id_to_path
 
     ## === ANXETY EDITs ===
-    def get_model_card(item, existing_files, existing_files_sha256, existing_version_ids, playback, favorite_creators):
+    def get_model_card(item, existing_files, existing_files_sha256, existing_version_ids, playback, favorite_creators,
+                       file_to_path=None, sha256_to_path=None, version_id_to_path=None):
         """Build HTML for a single model card (civmodelcard - Browser Card)"""
         model_id = item.get('id')
         model_name = item.get('name', '')
@@ -563,6 +581,25 @@ def model_list_html(json_data, target=''):
             display_version = item['modelVersions'][0]
 
         base_model = display_version.get('baseModel', 'Not Found') if display_version else 'Not Found'
+
+        # Find the on-disk path for the installed version so we can read any
+        # manual LoRA category override from its .json sidecar.
+        installed_path = None
+        if display_version:
+            version_id = display_version.get('id')
+            if version_id in (existing_version_ids or set()):
+                installed_path = (version_id_to_path or {}).get(int(version_id))
+            if not installed_path:
+                for file in display_version.get('files', []):
+                    file_sha256 = normalize_sha256(file.get('hashes', {}).get('SHA256', ''))
+                    if file_sha256 and file_sha256 in (existing_files_sha256 or set()):
+                        installed_path = (sha256_to_path or {}).get(file_sha256)
+                        break
+                    file_name = file.get('name', '').lower()
+                    if file_name in (existing_files or set()):
+                        installed_path = (file_to_path or {}).get(file_name)
+                        break
+
         if display_version and 'publishedAt' in display_version:
             published_at = display_version.get('publishedAt')
             if published_at:
@@ -772,10 +809,15 @@ def model_list_html(json_data, target=''):
         else:
             nsfw_badge = ''
 
-        # LoRA category badge (uses model-level tags from CivitAI)
+        # LoRA category badge: manual override from .json sidecar wins, otherwise
+        # fall back to the model-level tags returned by the CivitAI API.
         lora_category_badge = ''
         if item.get('type') in ('LORA', 'LoCon', 'DoRA'):
-            category = _file.categorize_lora_by_tags(item.get('tags', []))
+            category = None
+            if installed_path:
+                category = _file.get_lora_category_from_sidecar(installed_path)
+            if not category or str(category).strip().lower() == 'auto':
+                category = _file.categorize_lora_by_tags(item.get('tags', []))
             if category:
                 lora_category_badge = (
                     f'<div class="lora-category-badge {category.lower()}">{category}</div>'
@@ -878,7 +920,7 @@ def model_list_html(json_data, target=''):
         folder = contenttype_folder(item['type'], item['description'])
         if folder is not None:
             model_folders.add(str(folder))
-    existing_files, existing_files_sha256, existing_version_ids = collect_existing_files(model_folders)
+    existing_files, existing_files_sha256, existing_version_ids, file_to_path, sha256_to_path, version_id_to_path = collect_existing_files(model_folders)
 
     # Build HTML
     HTML = '<div class="column civmodellist">'
@@ -890,7 +932,11 @@ def model_list_html(json_data, target=''):
     favorite_creators = set(_file.FavoriteCreators.get_as_list())
 
     for item in json_data['items']:
-        model_card, date = get_model_card(item, existing_files, existing_files_sha256, existing_version_ids, playback, favorite_creators)
+        model_card, date = get_model_card(
+            item, existing_files, existing_files_sha256, existing_version_ids,
+            playback, favorite_creators,
+            file_to_path=file_to_path, sha256_to_path=sha256_to_path, version_id_to_path=version_id_to_path
+        )
         if group_by_date:
             if date not in sorted_models:
                 sorted_models[date] = []
