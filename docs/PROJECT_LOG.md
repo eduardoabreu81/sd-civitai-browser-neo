@@ -22,6 +22,19 @@
 
 ## Linha do Tempo
 
+### 2026-07-08 — Fix canonical image shape for external source previews
+
+**O que mudou (pt-BR):** Corrigido o crash `KeyError: 'type'` no pós-processamento de downloads do CivArchive. O helper compartilhado `canonical_image()` agora entrega o shape legado completo esperado pelo Browser: `type`, `nsfwLevel`, `meta`, `url`, `width`, `height` e `hash`. O tipo de mídia é preservado da origem ou inferido pela extensão; prompts são inseridos em `meta` sem apagar outros campos. `save_preview()` também passou a aceitar imagens antigas sem `type`, ignorar entradas sem URL e evitar substituição de largura quando ela não está disponível. A correção se aplica igualmente a Hugging Face e Arc en Ciel.
+**Arquivos alterados:** `scripts/browser_sources/normalizer.py`, `scripts/civitai_file_manage.py`, `tests/test_browser_sources.py`.
+**Decisões:** Corrigir o contrato na fronteira canônica e manter defesa no consumidor de filesystem; mídia desconhecida assume `image`, enquanto extensões comuns de vídeo são detectadas explicitamente.
+**Pontos sensíveis:** O modelo e os sidecars já eram salvos antes do crash; a falha ocorria somente ao salvar preview/galeria. Validação concluída com **112 passed + 2 subtests passed**, `py_compile` e `git diff --check`.
+**Próximos passos / Next steps:**
+- Atualizar a extensão remota e validar o salvamento de preview sem baixar novamente um modelo grande, se possível usando a ação de salvar imagens.
+- Confirmar refresh do card instalado após o pós-processamento.
+- Investigar os resultados CivArchive descartados por ausência de arquivos utilizáveis.
+
+---
+
 ### 2026-07-08 — Fix canonical file metadata for external source detail panels
 
 **O que mudou (pt-BR):** Corrigido o crash `KeyError: 'metadata'` ao clicar em cards do CivArchive. O helper compartilhado `canonical_file()` agora sempre produz o objeto legado `metadata`, preserva `size`/`fp` fornecidos pela origem e preenche `format`; quando o formato não vem da API, ele é inferido pela extensão (`.safetensors`, `.ckpt`, `.pt`, `.pth`, `.bin`, `.onnx`). Os dois consumidores legados em `civitai_api.py` também passaram a usar acesso defensivo e fallback para o formato top-level. Como Hugging Face e Arc en Ciel usam o mesmo normalizador, a correção cobre as três fontes externas.
