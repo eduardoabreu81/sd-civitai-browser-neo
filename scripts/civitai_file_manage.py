@@ -5479,8 +5479,31 @@ def _lora_dex_preview_path(file_path):
     return ''
 
 
+def _lora_dex_model_name(file_path):
+    """Read the CivitAI model name from .api_info.json sidecar."""
+    api_file = os.path.splitext(file_path)[0] + '.api_info.json'
+    if os.path.exists(api_file):
+        try:
+            data = _api.safe_json_load(api_file) or {}
+            name = data.get('model', {}).get('name')
+            if name:
+                return str(name)
+        except Exception:
+            pass
+    return ''
+
+
 def _lora_dex_version_name(file_path):
-    """Try to read the installed version name from the .json sidecar."""
+    """Read the installed version name from .api_info.json or .json sidecar."""
+    api_file = os.path.splitext(file_path)[0] + '.api_info.json'
+    if os.path.exists(api_file):
+        try:
+            data = _api.safe_json_load(api_file) or {}
+            name = data.get('name')
+            if name:
+                return str(name)
+        except Exception:
+            pass
     json_file = os.path.splitext(file_path)[0] + '.json'
     if os.path.exists(json_file):
         try:
@@ -5568,10 +5591,12 @@ def scan_lora_dex_data(base_filter=None, category_filter='All', pending_only=Fal
         saved_category = get_lora_category_from_sidecar(file_path)
         if saved_category is None:
             saved_category = 'Auto'
-        name = os.path.splitext(os.path.basename(file_path))[0]
+        civitai_name = _lora_dex_model_name(file_path)
+        file_name = os.path.splitext(os.path.basename(file_path))[0]
         data.append({
             'file_path': file_path,
-            'name': name,
+            'name': civitai_name or file_name,
+            'file_name': file_name,
             'base_model': _lora_dex_base_model(file_path) or 'Unknown',
             'version': _lora_dex_version_name(file_path),
             'tags': _lora_dex_tags(file_path),
