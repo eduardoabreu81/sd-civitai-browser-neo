@@ -66,7 +66,15 @@ def _call_browser_source(source_adapter, operation, **kwargs):
         debug_print(traceback.format_exc())
         return "error"
 
-    debug_print(f"[Browser:{source_name}] {operation} returned {type(result).__name__}")
+    if isinstance(result, dict) and isinstance(result.get("items"), list):
+        metadata = result.get("metadata") or {}
+        debug_print(
+            f"[Browser:{source_name}] {operation} returned dict "
+            f"(items={len(result['items'])}, current_page={metadata.get('currentPage')}, "
+            f"total_pages={metadata.get('totalPages')})"
+        )
+    else:
+        debug_print(f"[Browser:{source_name}] {operation} returned {type(result).__name__}")
     return result
 
 
@@ -1281,6 +1289,23 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
         gl.from_update_tab = True
         if api_url and api_url.startswith('local_only://'):
             gl.json_data = {'items': [], 'metadata': {}}
+        elif api_url and api_url.startswith('browser_source://'):
+            gl.json_data = _call_browser_source(
+                source_adapter,
+                'search',
+                query=search_term or '',
+                search_type=use_search_term,
+                content_type=content_type,
+                base_filter=base_filter,
+                sort=sort_type,
+                period=period_type,
+                nsfw=nsfw,
+                exact=exact_search,
+                page=current_page,
+                page_size=tile_count,
+                only_liked=only_liked,
+                page_url=api_url,
+            )
         elif api_url and not api_url.startswith('sha256_search_'):
             gl.json_data = request_civit_api(api_url)
 

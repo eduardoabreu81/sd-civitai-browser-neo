@@ -172,6 +172,12 @@ class TestCivArchiveAdapter(unittest.TestCase):
         if '.' in sys.path:
             sys.path.remove('.')
 
+    def _make_response(self, json_data, status_code=200):
+        response = unittest.mock.MagicMock()
+        response.status_code = status_code
+        response.json.return_value = json_data
+        return response
+
     def test_supported_search_types(self):
         self.assertEqual(self.src.supported_search_types(), ['Model name', 'SHA256'])
 
@@ -197,6 +203,47 @@ class TestCivArchiveAdapter(unittest.TestCase):
             },
         }
         self.assertEqual(self.src.get_download_url(file_info), 'https://only.example/dl')
+
+    def test_search_fetches_details_and_returns_canonical_items(self):
+        search_response = {
+            'results': [
+                {'kind': 'file', 'id': 'f456'},
+                {'kind': 'version', 'model_id': '123', 'version_id': '456'},
+            ],
+            'total_hits': 2,
+        }
+        detail_response = {
+            'id': 123,
+            'name': 'Archived Model',
+            'type': 'LORA',
+            'version': {
+                'id': 456,
+                'name': 'v1',
+                'baseModel': 'SDXL 1.0',
+                'files': [{
+                    'name': 'archived-model.safetensors',
+                    'sha256': 'abc123',
+                    'downloadUrl': 'https://example.com/model',
+                }],
+                'images': [{'url': 'https://example.com/preview.png'}],
+            },
+            'versions': [{'id': 456, 'name': 'v1'}],
+        }
+
+        def side_effect(url, **kwargs):
+            if url.endswith('/search?q=archived&limit=10&offset=0'):
+                return self._make_response(search_response)
+            return self._make_response(detail_response)
+
+        with patch('scripts.browser_sources.civarchive.requests.get') as mock_get:
+            mock_get.side_effect = side_effect
+            result = self.src.search(query='archived', page=1.0, page_size=10.0)
+
+        self.assertEqual(result['metadata']['source'], 'civarchive')
+        self.assertEqual(result['metadata']['totalItems'], 1)
+        self.assertEqual(len(result['items']), 1)
+        self.assertEqual(result['items'][0]['name'], 'Archived Model')
+        self.assertEqual(result['items'][0]['modelVersions'][0]['files'][0]['name'], 'archived-model.safetensors')
 
     def test_normalize_model_from_civarchive_payload(self):
         payload = {

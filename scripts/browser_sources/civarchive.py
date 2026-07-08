@@ -208,6 +208,9 @@ class CivArchiveSource(BrowserSource):
         if not query or not query.strip():
             return paginated_result([], current_page=page, page_size=page_size, source=self.name)
 
+        page = max(1, int(page or 1))
+        page_size = max(1, int(page_size or 20))
+
         params: dict[str, Any] = {
             "q": query.strip(),
             "limit": page_size,
@@ -229,6 +232,10 @@ class CivArchiveSource(BrowserSource):
             return data
 
         results = data.get("results", []) if isinstance(data, dict) else []
+        debug_print(
+            f"[CivArchive] search query={query.strip()!r} page={page} "
+            f"raw_results={len(results)}"
+        )
         if not results:
             return paginated_result(
                 [],
@@ -241,32 +248,45 @@ class CivArchiveSource(BrowserSource):
 
         # Search returns mixed file/version rows; collect unique model IDs and
         # fetch full model details for each one.
-        model_ids: set[str] = set()
+        model_ids: list[str] = []
+        seen_model_ids: set[str] = set()
         for item in results:
             if not isinstance(item, dict):
                 continue
             model_id = item.get("model_id")
-            if model_id is not None:
-                model_ids.add(str(model_id))
+            normalized_id = str(model_id) if model_id is not None else None
+            if normalized_id and normalized_id not in seen_model_ids:
+                seen_model_ids.add(normalized_id)
+                model_ids.append(normalized_id)
+
+        # CivArchive currently returns a fixed search window and ignores
+        # limit/offset. Paginate the stable unique model IDs client-side so
+        # Next/Prev do not repeat the first result set.
+        start = (page - 1) * page_size
+        page_model_ids = model_ids[start:start + page_size]
+        total_items = len(model_ids)
+        total_pages = max(1, (total_items + page_size - 1) // page_size)
+        debug_print(
+            f"[CivArchive] unique_model_ids={total_items} "
+            f"page_model_ids={len(page_model_ids)}"
+        )
 
         models: list[dict] = []
-        for model_id in model_ids:
+        for model_id in page_model_ids:
             model_data = self._request_json(f"/models/{model_id}")
             if isinstance(model_data, dict):
                 normalized = self._normalize_model(model_data)
                 if normalized:
                     models.append(normalized)
 
-        # CivArchive does not expose totalItems/totalPages in search results,
-        # so we estimate totalPages from whether we got a full page back.
-        has_more = len(results) >= page_size
-        total_pages = page if not has_more else page + 1
+        debug_print(f"[CivArchive] normalized_models={len(models)}")
+        has_more = page < total_pages
 
         return paginated_result(
             models,
             current_page=page,
             page_size=page_size,
-            total_items=len(models),
+            total_items=total_items,
             total_pages=total_pages,
             next_page=f"browser_source://{self.name}/page/{page + 1}" if has_more else None,
             prev_page=f"browser_source://{self.name}/page/{page - 1}" if page > 1 else None,
