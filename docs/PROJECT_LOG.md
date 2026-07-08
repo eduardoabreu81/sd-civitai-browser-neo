@@ -22,6 +22,20 @@
 
 ## Linha do Tempo
 
+### 2026-07-08 — Hugging Face live browse e diagnóstico de resultados vazios
+
+**O que mudou (pt-BR):** O adapter **Hugging Face** deixou de retornar lista vazia silenciosa quando a busca vem sem termo. Agora o modo `<browse>` consulta o endpoint público com `sort=downloads`, `direction=-1`, `full=true` e o filtro HF equivalente ao content type quando aplicável (ex.: `Checkpoint` → `stable-diffusion`). A paginação client-side foi ajustada para buscar uma janela maior (`page * page_size`, com cap) antes do slice, evitando página 2 vazia por falta de offset no endpoint HF.
+**Diagnóstico:** Adicionados logs `[HuggingFace]` com query efetiva, página, `page_size`, `fetch_limit`, filtro HF, quantidade de repositórios brutos, modelos normalizados, descartes por ausência de arquivo baixável e itens da página. Repositórios sem arquivo de modelo compatível deixam de gerar cards não baixáveis.
+**Compatibilidade de arquivos:** A ordenação dos arquivos HF agora prioriza checkpoints/artefatos de modelo reais antes de componentes Diffusers como `text_encoder/`, `safety_checker/`, `scheduler/`, `tokenizer/` e `vae/`. Isso reduz o risco de selecionar um componente auxiliar como arquivo primário em repos com muitos `.safetensors`.
+**Arquivos alterados:** `scripts/browser_sources/huggingface.py`, `tests/test_browser_sources.py`.
+**Validação:** Teste focado do adapter Hugging Face passou com **32 passed**. Suíte completa concluída com **121 passed + 2 subtests passed**, `py_compile` e `git diff --check`. Verificação live isolada com busca vazia (`Checkpoint`, `page_size=5`) retornou 5 itens e logs detalhados.
+**Próximos passos / Next steps:**
+- Atualizar a extensão remota e validar no Forge Neo: Hugging Face → busca vazia, `flux`, `wan`, `lora`, Next/Prev.
+- Se algum termo retornar zero, compartilhar os novos logs `[HuggingFace]` para distinguir resposta bruta vazia de descarte por arquivos incompatíveis.
+- Depois iniciar a fundação do catálogo curado HF (`catalog/huggingface/curated.json` + scripts dev-only).
+
+---
+
 ### 2026-07-08 — Filtro CivArchive para modelos deletados do CivitAI
 
 **O que mudou (pt-BR):** Adicionado o checkbox **Deleted from CivitAI** aos filtros do Browser. Ele fica habilitado somente quando a fonte selecionada é `CivArchive`; ao trocar para qualquer outra fonte, o valor é desmarcado e o componente é desabilitado. O estado pode ser salvo nos defaults quando o CivArchive é a fonte padrão. Busca inicial, refresh, paginação Next/Prev e refresh pós-download compartilham o novo input.

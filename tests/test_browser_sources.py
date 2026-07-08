@@ -438,6 +438,93 @@ class TestHuggingFaceAdapter(unittest.TestCase):
         self.assertEqual(len(version['images']), 1)
         self.assertIn('resolve/main/preview.png', version['images'][0]['url'])
 
+    def test_empty_search_browses_huggingface(self):
+        search_response = [{
+            'id': 'owner/browsable-checkpoint',
+            'modelId': 'owner/browsable-checkpoint',
+            'tags': ['stable-diffusion', 'text-to-image'],
+            'siblings': [
+                {'rfilename': 'browsable-checkpoint.safetensors'},
+            ],
+        }]
+        with patch('scripts.browser_sources.huggingface.requests.get') as mock_get:
+            mock_get.return_value = self._make_response(search_response)
+            result = self.src.search(query='', content_type='Checkpoint', page_size=10)
+
+        requested_url = mock_get.call_args_list[0].args[0]
+        self.assertNotIn('search=', requested_url)
+        self.assertIn('filter=stable-diffusion', requested_url)
+        self.assertIn('sort=downloads', requested_url)
+        self.assertEqual(len(result['items']), 1)
+        self.assertEqual(result['items'][0]['name'], 'owner/browsable-checkpoint')
+
+    def test_search_discards_repos_without_downloadable_files(self):
+        search_response = [
+            {
+                'id': 'owner/readme-only',
+                'modelId': 'owner/readme-only',
+                'tags': ['stable-diffusion'],
+                'siblings': [{'rfilename': 'README.md'}],
+            },
+            {
+                'id': 'owner/has-model-file',
+                'modelId': 'owner/has-model-file',
+                'tags': ['stable-diffusion'],
+                'siblings': [{'rfilename': 'model.safetensors'}],
+            },
+        ]
+        with patch('scripts.browser_sources.huggingface.requests.get') as mock_get:
+            mock_get.return_value = self._make_response(search_response)
+            result = self.src.search(query='model', content_type='Checkpoint', page_size=10)
+
+        self.assertEqual(len(result['items']), 1)
+        self.assertEqual(result['items'][0]['browserSourceId'], 'owner/has-model-file')
+
+    def test_search_fetches_enough_rows_for_client_side_pagination(self):
+        search_response = []
+        for index in range(4):
+            search_response.append({
+                'id': f'owner/model-{index}',
+                'modelId': f'owner/model-{index}',
+                'tags': ['stable-diffusion'],
+                'siblings': [{'rfilename': f'model-{index}.safetensors'}],
+            })
+
+        with patch('scripts.browser_sources.huggingface.requests.get') as mock_get:
+            mock_get.return_value = self._make_response(search_response)
+            result = self.src.search(query='model', content_type='Checkpoint', page=2, page_size=2)
+
+        requested_url = mock_get.call_args_list[0].args[0]
+        self.assertIn('limit=4', requested_url)
+        self.assertEqual([item['browserSourceId'] for item in result['items']], [
+            'owner/model-2',
+            'owner/model-3',
+        ])
+
+    def test_diffusers_repo_prefers_root_checkpoint_over_components(self):
+        search_response = [{
+            'id': 'owner/diffusers-checkpoint',
+            'modelId': 'owner/diffusers-checkpoint',
+            'tags': ['stable-diffusion'],
+            'siblings': [
+                {'rfilename': 'safety_checker/model.safetensors'},
+                {'rfilename': 'text_encoder/model.safetensors'},
+                {'rfilename': 'unet/diffusion_pytorch_model.safetensors'},
+                {'rfilename': 'v1-5-pruned-emaonly.safetensors'},
+            ],
+        }]
+        with patch('scripts.browser_sources.huggingface.requests.get') as mock_get:
+            mock_get.return_value = self._make_response(search_response)
+            result = self.src.search(query='diffusers', content_type='Checkpoint', page_size=10)
+
+        files = result['items'][0]['modelVersions'][0]['files']
+        self.assertEqual(files[0]['name'], 'v1-5-pruned-emaonly.safetensors')
+        self.assertTrue(files[0]['primary'])
+        self.assertIn(
+            'resolve/main/v1-5-pruned-emaonly.safetensors',
+            files[0]['downloadUrl'],
+        )
+
     def test_get_model_fetches_repo_detail_and_files(self):
         repo_detail = {
             'id': 'owner/cool-lora',

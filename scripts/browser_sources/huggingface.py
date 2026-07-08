@@ -133,45 +133,79 @@ class HuggingFaceSource(BrowserSource):
         **kwargs: Any,
     ) -> dict:
         """Search Hugging Face repositories and return canonical models."""
-        if not query or not query.strip():
-            return paginated_result([], current_page=page, page_size=page_size, source=self.name)
+        clean_query = (query or "").strip()
+        normalized_page = max(1, int(page or 1))
+        normalized_page_size = max(1, int(page_size or 20))
+        # HF model search is cursor-based and doesn't expose offset. Fetch enough
+        # rows to slice the requested page client-side, capped to keep runtime sane.
+        fetch_limit = min(max(normalized_page * normalized_page_size, normalized_page_size), 100)
 
         # Map extension content type(s) to HF filters when possible.
         hf_filter = self._content_type_to_hf_filter(content_type)
         params: dict[str, Any] = {
-            "search": query.strip(),
-            "limit": page_size,
+            "limit": fetch_limit,
             "full": "true",
+            "sort": "downloads",
+            "direction": "-1",
         }
+        if clean_query:
+            params["search"] = clean_query
         if hf_filter:
             params["filter"] = hf_filter
+
+        debug_print(
+            f"[HuggingFace] search query='{clean_query or '<browse>'}' "
+            f"page={normalized_page} page_size={normalized_page_size} "
+            f"fetch_limit={fetch_limit} filter={hf_filter or '<none>'}"
+        )
 
         url = f"{self.API_URL}?{self._encode_params(params)}"
         data = self._request_json(url)
         if isinstance(data, str):
+            debug_print(f"[HuggingFace] search returned error string: {data}")
             return data
         if not isinstance(data, list):
-            return paginated_result([], current_page=page, page_size=page_size, source=self.name)
+            debug_print(f"[HuggingFace] unexpected search response type: {type(data)}")
+            return paginated_result(
+                [],
+                current_page=normalized_page,
+                page_size=normalized_page_size,
+                source=self.name,
+            )
 
         # Build canonical models from repo summaries.
         models: list[dict] = []
+        discarded_no_files = 0
         for repo in data:
             if not isinstance(repo, dict):
                 continue
             model = self._normalize_repo_summary(repo)
-            if model:
+            versions = model.get("modelVersions", []) if model else []
+            files = versions[0].get("files", []) if versions else []
+            if model and files:
                 models.append(model)
+            elif model:
+                discarded_no_files += 1
 
         # Apply simple client-side pagination (HF search is cursor-based).
         total_items = len(models)
-        total_pages = max(1, (total_items + page_size - 1) // page_size)
-        start = (page - 1) * page_size
-        page_models = models[start:start + page_size]
+        has_more = len(data) >= fetch_limit and fetch_limit < 100
+        total_pages = max(1, (total_items + normalized_page_size - 1) // normalized_page_size)
+        if has_more:
+            total_pages = max(total_pages, normalized_page + 1)
+        start = (normalized_page - 1) * normalized_page_size
+        page_models = models[start:start + normalized_page_size]
+
+        debug_print(
+            f"[HuggingFace] raw_repos={len(data)} normalized_models={len(models)} "
+            f"discarded_no_files={discarded_no_files} "
+            f"page_items={len(page_models)} current_page={normalized_page} total_pages={total_pages}"
+        )
 
         return paginated_result(
             page_models,
-            current_page=page,
-            page_size=page_size,
+            current_page=normalized_page,
+            page_size=normalized_page_size,
             total_items=total_items,
             total_pages=total_pages,
             source=self.name,
@@ -335,10 +369,9 @@ class HuggingFaceSource(BrowserSource):
             ))
 
         # Prefer .safetensors as primary.
-        result.sort(key=lambda f: (
-            0 if str(f.get("name", "")).lower().endswith(".safetensors") else
-            1 if str(f.get("name", "")).lower().endswith(".ckpt") else
-            2
+        result.sort(key=lambda f: self._file_sort_key(
+            (f.get("browserSourceFileRaw") or {}).get("path") or f.get("name", ""),
+            model_type,
         ))
         for i, f in enumerate(result):
             f["primary"] = i == 0
@@ -377,10 +410,9 @@ class HuggingFaceSource(BrowserSource):
                 primary=False,
                 raw={"repo_id": repo_id, "path": path},
             ))
-        result.sort(key=lambda f: (
-            0 if str(f.get("name", "")).lower().endswith(".safetensors") else
-            1 if str(f.get("name", "")).lower().endswith(".ckpt") else
-            2
+        result.sort(key=lambda f: self._file_sort_key(
+            (f.get("browserSourceFileRaw") or {}).get("path") or f.get("name", ""),
+            model_type,
         ))
         for i, f in enumerate(result):
             f["primary"] = i == 0
@@ -466,6 +498,51 @@ class HuggingFaceSource(BrowserSource):
         if str(model_type).lower() in ("checkpoint", "lora", "locon", "dora"):
             return (".safetensors",)
         return (".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".onnx")
+
+    def _file_sort_key(self, path: str, model_type: str = "Other") -> tuple[int, int, str]:
+        """Sort HF files so downloadable model artifacts appear before components.
+
+        Diffusers repos often contain many ``model.safetensors`` files under
+        ``text_encoder/``, ``vae/`` or ``safety_checker/``. For Forge-style
+        downloads, root-level checkpoints or diffusion model folders are better
+        primary candidates than those auxiliary components.
+        """
+        lower = str(path or "").lower()
+        extension_rank = (
+            0 if lower.endswith(".safetensors") else
+            1 if lower.endswith(".ckpt") else
+            2 if lower.endswith((".pt", ".pth")) else
+            3 if lower.endswith(".bin") else
+            4 if lower.endswith(".onnx") else
+            5
+        )
+
+        segments = [segment for segment in lower.split("/") if segment]
+        component_segments = {
+            "feature_extractor",
+            "safety_checker",
+            "scheduler",
+            "text_encoder",
+            "text_encoder_2",
+            "text_encoder_3",
+            "tokenizer",
+            "tokenizer_2",
+            "tokenizer_3",
+            "vae",
+            "vae_1_0",
+            "vae_decoder",
+            "vae_encoder",
+        }
+        if str(model_type).lower() != "vae" and any(segment in component_segments for segment in segments[:-1]):
+            location_rank = 30
+        elif "/" not in lower:
+            location_rank = 0
+        elif any(segment in {"diffusion_models", "unet", "transformer", "comfyui_checkpoints"} for segment in segments[:-1]):
+            location_rank = 10
+        else:
+            location_rank = 20
+
+        return (location_rank, extension_rank, lower)
 
     def _fetch_readme(self, repo_id: str) -> str:
         """Fetch README.md raw text from a HF repo, if it exists."""
