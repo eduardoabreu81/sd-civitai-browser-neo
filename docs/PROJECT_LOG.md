@@ -147,7 +147,39 @@
 - `python -m py_compile scripts/browser_sources/*.py scripts/civitai_api.py scripts/civitai_gui.py scripts/civitai_file_manage.py` → sem erros.
 - Teste manual de API: search retornou repos, `/tree/main` listou arquivos `.safetensors`, `README.md` retornou texto, e `HEAD` na URL `/resolve/main/` retornou `200` com `Content-Length`.
 
-**Próximo passo:** Fase D — adapter arcenciel.io (metadados públicos + Link Key opcional).
+**Próximo passo:** Fase D — adapter arcenciel.io (metadados públicos + download direto).
+
+---
+
+### 2026-07-08 — Fase D implementada: adapter arcenciel.io
+
+**O que mudou (pt-BR):** Adicionado o quarto browser source, **arcenciel.io**, ao dropdown Source. A plataforma é focada em modelos anime/NoobAI/Anima e já fornece metadados ricos via API pública, incluindo base model, activation tags, SHA256 e imagens.
+
+**Arquivos criados:**
+- `scripts/browser_sources/arcenciel.py` — adapter `ArcencielSource` com:
+  - Busca por nome via `https://arcenciel.io/api/models/search?q=...`.
+  - Detalhe de modelo via `https://arcenciel.io/api/models/{id}`.
+  - Detalhe de versão via `https://arcenciel.io/api/models/{id}/versions/{version_id}`.
+  - Download direto via `https://uploads.arcenciel.io/api/models/{id}/versions/{version_id}/download` (descoberto inspecionando a UI do site).
+  - Previews e galeria via `https://media.arcenciel.io/uploads/{filePath}`, preferindo variants webp (`w1024`, `w512`) quando disponíveis.
+  - Normalização para formato canônico com base model, activation tags como `trainedWords`, SHA256 e estatísticas.
+
+**Arquivos alterados:**
+- `scripts/browser_sources/__init__.py` — registra `arcenciel` após `huggingface`.
+- `tests/test_browser_sources.py` — atualiza expectativa de sources registradas e adiciona testes unitários para `ArcencielSource`.
+
+**Decisões técnicas:**
+- arcenciel.io já entrega `baseModel`, `sha256`, `activationTags` e `fileSizeKb` diretamente na API, então a experiência é mais completa que a do Hugging Face sem precisar de heurísticas extras.
+- O download não precisa de Link Key para repos públicos; a URL `uploads.arcenciel.io/api/models/{id}/versions/{vid}/download` funciona sem autenticação.
+- Imagens usam o CDN `media.arcenciel.io`; o adapter escolhe a variant webp de 1024px (ou 512px) para economizar banda, fallback para o arquivo original.
+- A ordenação das versões respeita `versionOrder` retornado pela API.
+
+**Testes:**
+- `python -m pytest tests/` → 106 passed.
+- `python -m py_compile scripts/browser_sources/*.py ...` → sem erros.
+- Teste manual de API: search retornou modelos, `/models/{id}` retornou detalhes, `HEAD` na URL de download retornou `200 application/octet-stream` com `Content-Length`, e `HEAD` na URL de imagem retornou `200 image/webp`.
+
+**Próximo passo:** Fase E — adapter ModelScope (search + filtro SD/LoRA, download via `/resolve/`).
 
 ---
 

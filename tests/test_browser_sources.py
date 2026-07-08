@@ -54,9 +54,10 @@ class TestCivitaiAdapter(unittest.TestCase):
             sys.path.remove('.')
 
     def test_source_registered(self):
-        self.assertEqual(self.bs.source_choices(), ['CivitAI', 'CivArchive', 'Hugging Face'])
+        self.assertEqual(self.bs.source_choices(), ['CivitAI', 'CivArchive', 'Hugging Face', 'arcenciel.io'])
         self.assertEqual(self.bs.get_browser_source('civitai').display_name, 'CivitAI')
         self.assertEqual(self.bs.get_browser_source('huggingface').display_name, 'Hugging Face')
+        self.assertEqual(self.bs.get_browser_source('arcenciel').display_name, 'arcenciel.io')
 
     def test_create_api_url_matches_original_shape(self):
         url = self.src._create_api_url(
@@ -396,6 +397,84 @@ class TestHuggingFaceAdapter(unittest.TestCase):
         version = model['modelVersions'][0]
         self.assertEqual(model['baseModel'], 'SDXL')
         self.assertEqual(set(version['trainedWords']), {'style_of_mylora', 'mylora'})
+
+
+
+class TestArcencielAdapter(unittest.TestCase):
+    def setUp(self):
+        self._patch = patch.dict(sys.modules, _MODULE_OVERRIDES, clear=False)
+        self._patch.start()
+        sys.path.insert(0, '.')
+
+        from scripts.browser_sources.arcenciel import ArcencielSource
+        self.src = ArcencielSource()
+
+    def tearDown(self):
+        self._patch.stop()
+        if '.' in sys.path:
+            sys.path.remove('.')
+
+    def _make_response(self, json_data, status_code=200):
+        resp = unittest.mock.MagicMock()
+        resp.status_code = status_code
+        resp.json.return_value = json_data
+        return resp
+
+    def test_supported_search_types(self):
+        self.assertEqual(self.src.supported_search_types(), ['Model name'])
+
+    def test_supports_pagination(self):
+        self.assertTrue(self.src.supports_pagination())
+
+    def test_search_normalizes_model(self):
+        search_response = {
+            'page': 1,
+            'limit': 20,
+            'data': [{
+                'id': 123,
+                'title': 'Cool Arcenciel LoRA',
+                'description': 'A cool LoRA',
+                'type': 'LORA',
+                'tags': [{'id': 1, 'name': 'character'}],
+                'uploader': {'id': 1, 'username': 'artist'},
+                'versionOrder': [456],
+                'versions': [{
+                    'id': 456,
+                    'versionName': 'v1',
+                    'fileName': 'cool.safetensors',
+                    'filePath': 'models/Lora/cool.safetensors',
+                    'fileSizeKb': 10240,
+                    'sha256': 'a' * 64,
+                    'baseModel': 'Anima',
+                    'activationTags': ['cooltag'],
+                    'downloadCount': 42,
+                }],
+            }],
+        }
+        with patch('scripts.browser_sources.arcenciel.requests.get') as mock_get:
+            mock_get.return_value = self._make_response(search_response)
+            result = self.src.search(query='cool', page_size=20)
+
+        self.assertEqual(result['metadata']['source'], 'arcenciel')
+        self.assertEqual(len(result['items']), 1)
+        model = result['items'][0]
+        self.assertEqual(model['browserSource'], 'arcenciel')
+        self.assertEqual(model['browserSourceId'], '123')
+        self.assertEqual(model['type'], 'LORA')
+        self.assertEqual(model['creator']['username'], 'artist')
+        version = model['modelVersions'][0]
+        self.assertEqual(version['baseModel'], 'Anima')
+        self.assertEqual(version['trainedWords'], ['cooltag'])
+        self.assertEqual(version['files'][0]['name'], 'cool.safetensors')
+        self.assertIn('uploads.arcenciel.io/api/models/123/versions/456/download', version['files'][0]['downloadUrl'])
+
+    def test_get_download_url_builds_direct_url(self):
+        file_info = {
+            'name': 'cool.safetensors',
+            'browserSourceFileRaw': {'model_id': 123, 'version_id': 456},
+        }
+        url = self.src.get_download_url(file_info)
+        self.assertEqual(url, 'https://uploads.arcenciel.io/api/models/123/versions/456/download')
 
 
 if __name__ == '__main__':

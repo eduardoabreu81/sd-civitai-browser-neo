@@ -21,6 +21,7 @@ from .registry import (
 from . import civitai
 from . import civarchive
 from . import huggingface
+from . import arcenciel
 
 __all__ = [
     "BrowserSource",
