@@ -371,20 +371,20 @@
 }
 
 /* Source provenance inside detail panel */
-.version-info-block .source-badge {
-    margin-right: 8px;
+.browser-source-block .source-badge {
+    margin-right: 0;
 }
-.version-info-block .source-id {
+.browser-source-block .source-id {
     color: rgba(255, 255, 255, 0.6);
     font-size: 0.85em;
     font-family: monospace;
 }
-.version-info-block .source-note {
+.browser-source-block .source-note {
     color: rgba(255, 255, 255, 0.75);
     font-size: 0.88em;
     font-style: italic;
 }
-.version-info-block .mirror-list {
+.browser-source-block .mirror-list {
     list-style: none;
     margin: 0;
     padding: 0;
@@ -392,7 +392,7 @@
     flex-direction: column;
     gap: 6px;
 }
-.version-info-block .mirror-row {
+.browser-source-block .mirror-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -402,24 +402,24 @@
     background: rgba(0, 0, 0, 0.25);
     border: 1px solid rgba(255, 255, 255, 0.08);
 }
-.version-info-block .mirror-row.mirror-active {
+.browser-source-block .mirror-row.mirror-active {
     border-left: 3px solid rgba(34, 197, 94, 0.85);
 }
-.version-info-block .mirror-row.mirror-deleted {
+.browser-source-block .mirror-row.mirror-deleted {
     border-left: 3px solid rgba(239, 68, 68, 0.85);
     opacity: 0.7;
 }
-.version-info-block .mirror-url {
+.browser-source-block .mirror-url {
     color: rgba(96, 165, 250, 0.95);
     font-size: 0.82em;
     word-break: break-all;
     text-decoration: none;
     flex: 1;
 }
-.version-info-block .mirror-url:hover {
+.browser-source-block .mirror-url:hover {
     text-decoration: underline;
 }
-.version-info-block .mirror-status {
+.browser-source-block .mirror-status {
     font-size: 0.72em;
     font-weight: 700;
     text-transform: uppercase;
@@ -429,10 +429,10 @@
     background: rgba(255, 255, 255, 0.1);
     white-space: nowrap;
 }
-.version-info-block .mirror-row.mirror-active .mirror-status {
+.browser-source-block .mirror-row.mirror-active .mirror-status {
     color: rgba(34, 197, 94, 1);
 }
-.version-info-block .mirror-row.mirror-deleted .mirror-status {
+.browser-source-block .mirror-row.mirror-deleted .mirror-status {
     color: rgba(239, 68, 68, 1);
 }
 
@@ -1158,7 +1158,8 @@
 :is(#civitai_preview_html,#local_preview_html) .version-info-block {
     display: flex;
     flex-direction: column;
-    flex: auto;
+    flex: 1 1 0;
+    min-width: 320px;
     padding: 20px;
     background: var(--background-fill-secondary);
     border: 1px solid var(--border-color-primary);
@@ -1189,6 +1190,41 @@
     word-break: break-word;
 }
 
+/* - Browser Source Block - */
+:is(#civitai_preview_html,#local_preview_html) .browser-source-block {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-width: 260px;
+    padding: 20px;
+    background: rgba(124, 58, 237, 0.08);
+    border: 1px solid rgba(124, 58, 237, 0.25);
+    border-radius: 16px;
+    line-height: 1;
+    gap: 16px;
+}
+:is(#civitai_preview_html,#local_preview_html) .browser-source-block dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    margin: 0;
+    align-items: start;
+    gap: 15px 20px;
+}
+:is(#civitai_preview_html,#local_preview_html) .browser-source-block dt {
+    font-size: 14px;
+    font-weight: 600;
+    color: #8b5cf6;
+    margin: 0;
+    letter-spacing: 0.5px;
+}
+:is(#civitai_preview_html,#local_preview_html) .browser-source-block dd {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--body-text-color);
+    margin: 0;
+    word-break: break-word;
+}
+
 /* Tags Container */
 :is(#civitai_preview_html,#local_preview_html) .civitai-tags-container {
     display: flex;
@@ -1211,6 +1247,8 @@
 :is(#civitai_preview_html,#local_preview_html) .permissions-block {
     display: flex;
     flex-direction: column;
+    flex: 1 1 0;
+    min-width: 260px;
     padding: 20px;
     background: rgba(16, 185, 129, 0.1);
     border: 1px solid rgba(16, 185, 129, 0.3);
@@ -1431,6 +1469,7 @@
 }
 
 :is(#civitai_preview_html,#local_preview_html) .version-info-block .block-header,
+:is(#civitai_preview_html,#local_preview_html) .browser-source-block .block-header,
 :is(#civitai_preview_html,#local_preview_html) .permissions-block .block-header,
 :is(#civitai_preview_html,#local_preview_html) .description-block .block-header {
     text-align: center;

@@ -2045,51 +2045,6 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                     f'<dd><span style="font-family:monospace;font-size:11px;word-break:break-all;user-select:all;">{escape(sha256_value)}</span></dd>'
                 ) if sha256_value and sha256_value != 'Unknown' else ''
 
-                # Source / mirrors section for multi-source support
-                browser_source = item.get('browserSource') or 'civitai'
-                browser_source_id = item.get('browserSourceId') or item.get('id', '')
-                source_rows = (
-                    '<dt>Source</dt>'
-                    f'<dd><span class="source-badge source-{escape(browser_source.lower())}">{escape(browser_source)}</span>'
-                    f' <span class="source-id">ID: {escape(str(browser_source_id))}</span></dd>'
-                )
-                if browser_source.lower() == 'civarchive':
-                    source_rows += (
-                        '<dt>Note</dt>'
-                        '<dd class="source-note">Mirrored backup from CivArchive. '
-                        'The original model may no longer be available on CivitAI.</dd>'
-                    )
-
-                mirrors_html = ''
-                if selected_file_info:
-                    raw_file = selected_file_info.get('browserSourceFileRaw') or {}
-                    mirrors = raw_file.get('mirrors') or []
-                    if mirrors:
-                        mirror_rows = []
-                        for mirror in mirrors:
-                            if not isinstance(mirror, dict):
-                                continue
-                            m_url = mirror.get('url', '')
-                            deleted_at = mirror.get('deletedAt')
-                            status = 'deleted' if deleted_at else 'active'
-                            status_label = 'Deleted' if deleted_at else 'Active'
-                            display_url = escape(m_url[:80] + '...' if len(m_url) > 80 else m_url)
-                            mirror_rows.append(
-                                f'<li class="mirror-row mirror-{status}">'
-                                f'<a href="{escape(m_url)}" target="_blank" rel="noopener" class="mirror-url">{display_url}</a>'
-                                f'<span class="mirror-status">{status_label}</span>'
-                                f'</li>'
-                            )
-                        if mirror_rows:
-                            mirrors_html = (
-                                '<dt>Download Mirrors</dt>'
-                                '<dd>'
-                                '<ul class="mirror-list">'
-                                f'{"".join(mirror_rows)}'
-                                '</ul>'
-                                '</dd>'
-                            )
-
                 version_info = (
                     '<div class="version-info-block">'
                         '<h3 class="block-header">Version Information</h3>'
@@ -2111,13 +2066,69 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                                 '</div>'
                             '</dd>'
                             f'{_sha256_row}'
-                            f'{source_rows}'
-                            f'{mirrors_html}'
                             f'{"<dt>Download Link</dt>" if model_url else ""}'
                             f'{f"<dd><a href={model_url} target=_blank>{model_url}</a></dd>" if model_url else ""}'
                         '</dl>'
                     '</div>'
                 )
+
+                # Build browser-source block — only shown for non-CivitAI sources
+                browser_source = item.get('browserSource') or 'civitai'
+                source_info = ''
+                if browser_source.lower() != 'civitai':
+                    browser_source_id = item.get('browserSourceId') or item.get('id', '')
+                    source_dl_rows = []
+                    if selected_file_info:
+                        raw_file = selected_file_info.get('browserSourceFileRaw') or {}
+                        mirrors = raw_file.get('mirrors') or []
+                        if mirrors:
+                            for mirror in mirrors:
+                                if not isinstance(mirror, dict):
+                                    continue
+                                m_url = mirror.get('url', '')
+                                deleted_at = mirror.get('deletedAt')
+                                status = 'deleted' if deleted_at else 'active'
+                                status_label = 'Deleted' if deleted_at else 'Active'
+                                display_url = escape(m_url[:80] + '...' if len(m_url) > 80 else m_url)
+                                source_dl_rows.append(
+                                    f'<li class="mirror-row mirror-{status}">'
+                                    f'<a href="{escape(m_url)}" target="_blank" rel="noopener" class="mirror-url">{display_url}</a>'
+                                    f'<span class="mirror-status">{status_label}</span>'
+                                    f'</li>'
+                                )
+
+                    note_row = ''
+                    if browser_source.lower() == 'civarchive':
+                        note_row = (
+                            '<dt>Note</dt>'
+                            '<dd class="source-note">Mirrored backup from CivArchive. '
+                            'The original model may no longer be available on CivitAI.</dd>'
+                        )
+
+                    mirrors_section = ''
+                    if source_dl_rows:
+                        mirrors_section = (
+                            '<dt>Download Mirrors</dt>'
+                            '<dd>'
+                            '<ul class="mirror-list">'
+                            f'{"".join(source_dl_rows)}'
+                            '</ul>'
+                            '</dd>'
+                        )
+
+                    source_info = (
+                        '<div class="browser-source-block">'
+                            '<h3 class="block-header">Browser Source</h3>'
+                            '<dl>'
+                                '<dt>Source</dt>'
+                                f'<dd><span class="source-badge source-{escape(browser_source.lower())}">{escape(browser_source)}</span></dd>'
+                                '<dt>External ID</dt>'
+                                f'<dd><span class="source-id">{escape(str(browser_source_id))}</span></dd>'
+                                f'{note_row}'
+                                f'{mirrors_section}'
+                            '</dl>'
+                        '</div>'
+                    )
 
                 # Build permissions block
                 version_permissions = (
@@ -2223,6 +2234,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                             '</div>'
                             '<div class="info-permissions-container">'
                                 f'{version_info}'
+                                f'{source_info}'
                                 f'{version_permissions}'
                             '</div>'
                             f'{companion_banner}'
