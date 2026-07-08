@@ -22,6 +22,19 @@
 
 ## Linha do Tempo
 
+### 2026-07-08 — Fix Browser source callback contract and diagnostics
+
+**O que mudou (pt-BR):** Corrigida uma regressão da Fase A que quebrava todas as buscas da aba Browser, inclusive CivitAI. O dropdown `source` era o 12º input do callback Gradio, mas `initial_model_page` interpretava esse valor como `from_update_tab` e `next_model_page` como `isNext`. Como nomes de fonte são strings truthy, a busca inicial desviava para o fluxo de Update Mode sem chamar nenhum adapter, resultando apenas na mensagem genérica de erro e sem logs `[DEBUG]`. As assinaturas de busca inicial/Next/Prev agora compartilham a mesma ordem posicional, e os flags internos passaram a keyword-only. Também foi adicionado um wrapper de execução dos adapters com diagnóstico de início, tipo de retorno, exceção e traceback quando debug está ativo. A mensagem genérica deixou de citar exclusivamente a API CivitAI.
+**Arquivos alterados:** `scripts/civitai_api.py`, `scripts/civitai_file_manage.py`, `tests/test_browser_callback_contract.py`; preservados também os ajustes locais em `scripts/browser_sources/arcenciel.py` e `tests/test_browser_sources.py`.
+**Decisões:** Manter os 12 inputs compartilhados do Browser idênticos em `initial_model_page`, `next_model_page` e `prev_model_page`; usar argumentos keyword-only para controles internos que não vêm do Gradio; capturar exceções no limite comum dos adapters para que falhas futuras indiquem a fonte responsável.
+**Pontos sensíveis:** Validação estática concluída (`py_compile`, `git diff --check`) e suíte completa com **108 passed + 2 subtests passed**. Validação runtime na WebUI ainda necessária para CivitAI, CivArchive, Hugging Face e Arc en Ciel, incluindo Next/Prev.
+**Próximos passos / Next steps:**
+- Reiniciar o Forge Neo e executar smoke test de busca + Next/Prev nas quatro fontes.
+- Finalizar a validação runtime do Arc en Ciel: cards, detail panel, download, SHA256 e sidecars.
+- Só iniciar a Fase E (ModelScope) após fechar a validação do Arc en Ciel.
+
+---
+
 ### 2026-07-08 — Plano aprovado: Multi-Browser Neo (browser_sources)
 
 **O que mudou (pt-BR):** Decidido expandir o Browser para suportar múltiplas fontes de modelos. A nomenclatura interna muda de `civitai_source` para `browser_source`, preparando terreno para um futuro rename do app para `sd-multi-browser-neo`. A prioridade mandatória é **não quebrar o módulo existente**: todas as funções atuais (search, download, update, organize, dashboard, LoraDex) continuam funcionando exatamente como hoje, e as novas origens agregam informações por cima.
@@ -883,4 +896,3 @@ Três mudanças implementadas nos dois repositórios:
 
 - **Estabilidade**  
   Fix de crash em `download_finish` com fila vazia, resolução exata de arquivo por stem e fallback de `modelTags` no sidecar para organização/LoraDex/download.
-
