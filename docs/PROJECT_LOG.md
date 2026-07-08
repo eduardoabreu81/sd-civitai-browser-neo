@@ -114,6 +114,39 @@
 
 ---
 
+### 2026-07-08 — Fase C implementada: adapter Hugging Face
+
+**O que mudou (pt-BR):** Adicionado o terceiro browser source, **Hugging Face**, ao dropdown Source. O adapter permite buscar repositórios públicos do HF por nome e baixar arquivos de modelo diretamente via URLs `/resolve/main/`.
+
+**Arquivos criados:**
+- `scripts/browser_sources/huggingface.py` — adapter `HuggingFaceSource` com:
+  - Busca por nome via `https://huggingface.co/api/models?search=...&full=true`.
+  - Uso de `siblings` do resultado de busca para construir arquivos e previews sem requisições extras.
+  - Detalhe de repositório via `https://huggingface.co/api/models/{repo_id}`.
+  - Listagem de arquivos via `https://huggingface.co/api/models/{repo_id}/tree/main`.
+  - Heurísticas para inferir **content type** (Checkpoint, LORA, TextualInversion, etc.) a partir de tags HF, `pipeline_tag` e nome do repo.
+  - Heurísticas para inferir **base model** a partir de tags `base_model:...`, tags HF e nome do repo (SDXL, SD 1.5, Pony, FLUX, Anima, etc.).
+  - Download URL direto: `https://huggingface.co/{repo_id}/resolve/main/{file}`.
+
+**Arquivos alterados:**
+- `scripts/browser_sources/__init__.py` — registra `huggingface` após `civarchive`.
+- `tests/test_browser_sources.py` — atualiza expectativa de sources registradas e adiciona testes unitários para `HuggingFaceSource`.
+
+**Decisões técnicas:**
+- Hugging Face não fornece SHA256 nos endpoints públicos usados; o hash será calculado localmente após o download, como já acontece hoje.
+- A paginação é feita client-side (slice sobre resultados da busca) porque o endpoint de search do HF é cursor-based e não expõe `offset` de forma confiável.
+- Apenas arquivos com extensões de modelo (`.safetensors`, `.ckpt`, `.pt`, `.pth`, `.bin`, `.onnx`) são listados como arquivos canônicos; imagens nos siblings viram previews.
+- O dropdown Source agora lista `CivitAI`, `CivArchive`, `Hugging Face` automaticamente via registry.
+
+**Testes:**
+- `python -m pytest tests/` → 100 passed.
+- `python -m py_compile scripts/browser_sources/*.py scripts/civitai_api.py scripts/civitai_gui.py scripts/civitai_file_manage.py` → sem erros.
+- Teste manual de API: search retornou repos, `/tree/main` listou arquivos `.safetensors`, e `HEAD` na URL `/resolve/main/` retornou `200` com `Content-Length`.
+
+**Próximo passo:** Fase D — adapter arcenciel.io (metadados públicos + Link Key opcional).
+
+---
+
 ### 2026-07-08 — UI de proveniência: source badge no card e bloco Browser Source no detail panel
 
 **O que mudou (pt-BR):** Adicionada indicação visual de origem do modelo tanto nos cards quanto no painel de detalhes, preparando a UI para o Multi-Browser Neo.

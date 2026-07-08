@@ -54,8 +54,9 @@ class TestCivitaiAdapter(unittest.TestCase):
             sys.path.remove('.')
 
     def test_source_registered(self):
-        self.assertEqual(self.bs.source_choices(), ['CivitAI', 'CivArchive'])
+        self.assertEqual(self.bs.source_choices(), ['CivitAI', 'CivArchive', 'Hugging Face'])
         self.assertEqual(self.bs.get_browser_source('civitai').display_name, 'CivitAI')
+        self.assertEqual(self.bs.get_browser_source('huggingface').display_name, 'Hugging Face')
 
     def test_create_api_url_matches_original_shape(self):
         url = self.src._create_api_url(
@@ -248,6 +249,101 @@ class TestCivArchiveAdapter(unittest.TestCase):
         self.assertEqual(version['baseModel'], 'Illustrious')
         self.assertEqual(version['trainedWords'], ['mxpln'])
         self.assertEqual(version['files'][0]['hashes']['SHA256'], 'E2B7A280D6539556F23F380B3F71E4E22BC4524445C4C96526E117C6005C6AD3')
+
+
+
+class TestHuggingFaceAdapter(unittest.TestCase):
+    def setUp(self):
+        self._patch = patch.dict(sys.modules, _MODULE_OVERRIDES, clear=False)
+        self._patch.start()
+        sys.path.insert(0, '.')
+
+        from scripts.browser_sources.huggingface import HuggingFaceSource
+        self.src = HuggingFaceSource()
+
+    def tearDown(self):
+        self._patch.stop()
+        if '.' in sys.path:
+            sys.path.remove('.')
+
+    def _make_response(self, json_data, status_code=200):
+        resp = unittest.mock.MagicMock()
+        resp.status_code = status_code
+        resp.json.return_value = json_data
+        return resp
+
+    def test_supported_search_types(self):
+        self.assertEqual(self.src.supported_search_types(), ['Model name'])
+
+    def test_supports_pagination(self):
+        self.assertTrue(self.src.supports_pagination())
+
+    def test_search_normalizes_repo_summary(self):
+        search_response = [{
+            'id': 'owner/cool-lora',
+            'modelId': 'owner/cool-lora',
+            'tags': ['lora', 'text-to-image', 'base_model:runwayml/stable-diffusion-v1-5'],
+            'siblings': [
+                {'rfilename': 'README.md'},
+                {'rfilename': 'cool-lora.safetensors'},
+                {'rfilename': 'preview.png'},
+            ],
+        }]
+        with patch('scripts.browser_sources.huggingface.requests.get') as mock_get:
+            mock_get.return_value = self._make_response(search_response)
+            result = self.src.search(query='cool lora', page_size=10)
+
+        self.assertEqual(result['metadata']['source'], 'huggingface')
+        self.assertEqual(len(result['items']), 1)
+        model = result['items'][0]
+        self.assertEqual(model['browserSource'], 'huggingface')
+        self.assertEqual(model['browserSourceId'], 'owner/cool-lora')
+        self.assertEqual(model['type'], 'LORA')
+        self.assertEqual(model['baseModel'], 'SD 1.5')
+        version = model['modelVersions'][0]
+        self.assertEqual(version['files'][0]['name'], 'cool-lora.safetensors')
+        self.assertTrue(version['files'][0]['primary'])
+        self.assertIn('resolve/main/cool-lora.safetensors', version['files'][0]['downloadUrl'])
+        self.assertEqual(len(version['images']), 1)
+        self.assertIn('resolve/main/preview.png', version['images'][0]['url'])
+
+    def test_get_model_fetches_repo_detail_and_files(self):
+        repo_detail = {
+            'id': 'owner/cool-lora',
+            'modelId': 'owner/cool-lora',
+            'tags': ['lora'],
+        }
+        tree = [
+            {'path': 'cool-lora.safetensors', 'size': 1024000},
+            {'path': 'preview.jpg', 'size': 51200},
+        ]
+
+        def side_effect(url, **kwargs):
+            if '/tree/main' in url:
+                return self._make_response(tree)
+            return self._make_response(repo_detail)
+
+        with patch('scripts.browser_sources.huggingface.requests.get') as mock_get:
+            mock_get.side_effect = side_effect
+            model = self.src.get_model('owner/cool-lora')
+
+        self.assertEqual(model['browserSource'], 'huggingface')
+        self.assertEqual(model['browserSourceId'], 'owner/cool-lora')
+        self.assertEqual(model['type'], 'LORA')
+        version = model['modelVersions'][0]
+        self.assertEqual(len(version['files']), 1)
+        self.assertEqual(version['files'][0]['sizeBytes'], 1024000)
+
+    def test_get_download_url_builds_resolve_url(self):
+        file_info = {
+            'name': 'cool-lora.safetensors',
+            'browserSourceFileRaw': {
+                'repo_id': 'owner/cool-lora',
+                'path': 'cool-lora.safetensors',
+            },
+        }
+        url = self.src.get_download_url(file_info)
+        self.assertEqual(url, 'https://huggingface.co/owner/cool-lora/resolve/main/cool-lora.safetensors')
 
 
 if __name__ == '__main__':
