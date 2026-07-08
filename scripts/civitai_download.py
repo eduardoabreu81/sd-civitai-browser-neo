@@ -477,13 +477,16 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
                     lora_category_sort = getattr(opts, 'civitai_neo_lora_category_sort', False)
                     if lora_category_sort and content_type == 'LORA':
                         tags = version.get('tags', []) or []
-                        # Honor any manual category saved on an existing installed file.
+                        # Honor any manual category saved on an existing installed file,
+                        # and fall back to persisted modelTags if the API response has none.
                         manual_category = None
                         installed_paths = _batch_index.get('by_model_id', {}).get(int(model_id), []) if _batch_index else []
                         for installed_path in installed_paths:
                             manual_category = get_lora_category_from_sidecar(installed_path)
                             if manual_category:
                                 break
+                            if not tags:
+                                tags = _file._read_model_tags_from_sidecar(installed_path)
                         category = categorize_lora_by_tags(tags, manual_category=manual_category)
                         if category:
                             base_folder = os.path.join(base_folder, category)

@@ -2140,7 +2140,12 @@ def find_and_save(api_response, sha256=None, file_name=None, json_file=None, no_
                 description = clean_description(description)
 
         base_model = model_version.get('baseModel', '')
-        
+
+        # Model-level tags (e.g. ["character", "style"]) are only present in the
+        # /models response, not in /model-versions/by-hash. Persist them so that
+        # organization and LoraDex can use them even when only .api_info.json exists.
+        model_tags = item.get('tags') if isinstance(item, dict) else None
+
         # Save the RAW CivitAI baseModel value (e.g. "NoobAI", "Pony", "Illustrious")
         # normalize_base_model() is only used for folder placement, never for .json storage
         if not base_model:
@@ -2202,6 +2207,9 @@ def find_and_save(api_response, sha256=None, file_name=None, json_file=None, no_
             if 'modelPageURL' not in content:
                 content['modelPageURL'] = f"https://{_api.get_civitai_domain()}/models/{item.get('id')}?modelVersionId={model_version.get('id')}"
                 changed = True
+            if model_tags and 'modelTags' not in content:
+                content['modelTags'] = model_tags
+                changed = True
         else:
             content['activation text'] = trained_tags
             if api_groups:
@@ -2213,6 +2221,12 @@ def find_and_save(api_response, sha256=None, file_name=None, json_file=None, no_
             content['modelId'] = item.get('id')
             content['modelVersionId'] = model_version.get('id')
             content['modelPageURL'] = f"https://{_api.get_civitai_domain()}/models/{item.get('id')}?modelVersionId={model_version.get('id')}"
+            if model_tags:
+                content['modelTags'] = model_tags
+            elif 'modelTags' in content:
+                # If the API response no longer carries tags (e.g. by-hash fallback),
+                # keep the existing stored tags rather than deleting them.
+                pass
             changed = True
 
         _api.safe_json_save(json_file, content)
@@ -3421,6 +3435,23 @@ def get_lora_category_from_sidecar(file_path):
         return None
 
 
+def _read_model_tags_from_sidecar(file_path):
+    """Read model-level tags persisted in the .json sidecar (modelTags field)."""
+    json_file = os.path.splitext(file_path)[0] + '.json'
+    if not os.path.exists(json_file):
+        return []
+    try:
+        content = _api.safe_json_load(json_file) or {}
+        tags = content.get('modelTags')
+        if isinstance(tags, list):
+            return tags
+        if isinstance(tags, str):
+            return [t.strip() for t in tags.split(',') if t.strip()]
+    except Exception as e:
+        _debug_log(f"Error reading modelTags for {file_path}: {e}")
+    return []
+
+
 def get_model_info_for_organization(file_path):
     """
     Get model info for organization purposes.
@@ -3442,6 +3473,7 @@ def get_model_info_for_organization(file_path):
     model_name = os.path.basename(file_path)
     base_name = os.path.splitext(file_path)[0]
     manual_category = get_lora_category_from_sidecar(file_path)
+    sidecar_tags = _read_model_tags_from_sidecar(file_path)
 
     _debug_log(f"Checking metadata for: {model_name}")
 
@@ -3456,7 +3488,8 @@ def get_model_info_for_organization(file_path):
                 base_model = _extract_base_model_from_api_data(data, file_path)
                 if base_model:
                     _debug_log(f"SUCCESS! Final baseModel: '{base_model}' from existing .api_info.json")
-                    return base_model, model_name, data.get('tags', []), manual_category
+                    tags = data.get('tags') or sidecar_tags
+                    return base_model, model_name, tags, manual_category
                 _debug_log(f"No baseModel in existing .api_info.json — will fetch from API")
         except Exception as e:
             _debug_log(f"Error reading {api_info_file}: {e}")
@@ -3468,7 +3501,8 @@ def get_model_info_for_organization(file_path):
         base_model = _extract_base_model_from_api_data(data, file_path)
         if base_model:
             _debug_log(f"SUCCESS! Final baseModel: '{base_model}' from API (by hash)")
-            return base_model, model_name, data.get('tags', []), manual_category
+            tags = data.get('tags') or sidecar_tags
+            return base_model, model_name, tags, manual_category
 
     # --- Step 3: offline fallback — .json sidecar "sd version" field ---
     # Used only when API is unreachable or the model was deleted from CivitAI.
@@ -3482,12 +3516,12 @@ def get_model_info_for_organization(file_path):
             if sd_version and sd_version.upper() != 'OTHER':
                 _debug_log(f"Offline fallback: using 'sd version'='{sd_version}' from .json")
                 print(f"[CivitAI Browser Neo] ⚠️ Using offline .json fallback for: {model_name} (API unavailable)")
-                return sd_version, model_name, [], manual_category
+                return sd_version, model_name, sidecar_tags, manual_category
         except Exception as e:
             _debug_log(f"Error reading .json fallback for {model_name}: {e}")
 
     print(f"[Civitai Browser Neo] ⚠️ Could not determine baseModel for: {model_name}")
-    return None, model_name, [], manual_category
+    return None, model_name, sidecar_tags, manual_category
 
 def analyze_organization_plan(folders, progress=None):
     """
@@ -5479,15 +5513,17 @@ def _lora_dex_base_model(file_path):
 
 
 def _lora_dex_tags(file_path):
-    """Read tags from .api_info.json sidecar."""
+    """Read tags from .api_info.json sidecar, falling back to modelTags in .json sidecar."""
     api_file = os.path.splitext(file_path)[0] + '.api_info.json'
     if os.path.exists(api_file):
         try:
             data = _api.safe_json_load(api_file) or {}
-            return data.get('tags', []) or []
+            tags = data.get('tags') or []
+            if tags:
+                return tags
         except Exception:
             pass
-    return []
+    return _read_model_tags_from_sidecar(file_path)
 
 
 def _save_lora_category(file_path, category):
