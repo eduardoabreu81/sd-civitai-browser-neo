@@ -205,17 +205,15 @@ class CivArchiveSource(BrowserSource):
         page_size: int,
     ) -> dict:
         """Search CivArchive by name and normalize to canonical models."""
-        if not query or not query.strip():
-            return paginated_result([], current_page=page, page_size=page_size, source=self.name)
-
         page = max(1, int(page or 1))
         page_size = max(1, int(page_size or 20))
+        normalized_query = (query or "").strip()
 
-        params: dict[str, Any] = {
-            "q": query.strip(),
-            "limit": page_size,
-            "offset": (page - 1) * page_size,
-        }
+        params: dict[str, Any] = {}
+        if normalized_query:
+            params["q"] = normalized_query
+        params["limit"] = page_size
+        params["offset"] = (page - 1) * page_size
 
         # CivArchive accepts a single type and a single base_model.
         if content_type:
@@ -233,7 +231,7 @@ class CivArchiveSource(BrowserSource):
 
         results = data.get("results", []) if isinstance(data, dict) else []
         debug_print(
-            f"[CivArchive] search query={query.strip()!r} page={page} "
+            f"[CivArchive] search query={normalized_query or '<browse>'!r} page={page} "
             f"raw_results={len(results)}"
         )
         if not results:

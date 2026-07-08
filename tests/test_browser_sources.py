@@ -245,6 +245,39 @@ class TestCivArchiveAdapter(unittest.TestCase):
         self.assertEqual(result['items'][0]['name'], 'Archived Model')
         self.assertEqual(result['items'][0]['modelVersions'][0]['files'][0]['name'], 'archived-model.safetensors')
 
+    def test_empty_search_browses_default_results(self):
+        search_response = {
+            'results': [{'kind': 'version', 'model_id': '123', 'version_id': '456'}],
+            'total_hits': 1,
+        }
+        detail_response = {
+            'id': 123,
+            'name': 'Default Browse Model',
+            'type': 'Checkpoint',
+            'version': {
+                'id': 456,
+                'name': 'v1',
+                'baseModel': 'SDXL 1.0',
+                'files': [{
+                    'name': 'default-model.safetensors',
+                    'downloadUrl': 'https://example.com/default-model',
+                }],
+            },
+            'versions': [{'id': 456, 'name': 'v1'}],
+        }
+
+        with patch.object(
+            self.src,
+            '_request_json',
+            side_effect=[search_response, detail_response],
+        ) as mock_request:
+            result = self.src.search(query='', page_size=10)
+
+        mock_request.assert_any_call('/search', params={'limit': 10, 'offset': 0})
+        self.assertEqual(result['metadata']['totalItems'], 1)
+        self.assertEqual(len(result['items']), 1)
+        self.assertEqual(result['items'][0]['name'], 'Default Browse Model')
+
     def test_normalize_model_from_civarchive_payload(self):
         payload = {
             'id': 1746460,
