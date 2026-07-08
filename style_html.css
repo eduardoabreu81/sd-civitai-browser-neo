@@ -843,6 +843,29 @@ a:hover::after {
     background: rgba(255, 193, 7, 0.18);
 }
 
+.loradex-row.loradex-suggested {
+    border-left: 3px solid #4af;
+}
+
+.loradex-row.loradex-suggested.loradex-pending {
+    background: rgba(68, 170, 255, 0.10);
+}
+
+.loradex-row.loradex-suggested.loradex-pending:hover {
+    background: rgba(68, 170, 255, 0.16);
+}
+
+.loradex-suggested-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    margin-right: 6px;
+    font-size: 12px;
+    cursor: help;
+}
+
 .loradex-thumb-wrap {
     width: 48px;
     height: 48px;

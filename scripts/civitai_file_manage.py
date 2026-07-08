@@ -58,27 +58,40 @@ LORA_CATEGORIES = {
 }
 
 
-def categorize_lora_by_tags(tags, manual_category=None):
-    """Return a category folder name for a LoRA based on its tags, or None.
+def categorize_lora_by_tags(tags, manual_category=None, description=None):
+    """Return a category folder name for a LoRA based on its tags/description.
 
     Args:
         tags: list of tags from the model/API.
         manual_category: optional category saved in the .json sidecar
-            (loraCategory). Takes precedence over tag heuristics. 'Auto'
+            (loraCategory). Takes precedence over heuristics. 'Auto'
             means "fall back to heuristic"; None disables auto-detection.
+        description: optional model description text. Used as a fallback
+            when tags do not match any known category.
     """
     if manual_category and str(manual_category).strip().lower() not in ('', 'auto'):
         return manual_category
     if manual_category is None:
         return None
-    if not tags:
+
+    def _match(texts):
+        for text in texts:
+            if not text:
+                continue
+            text_lower = str(text).strip().lower()
+            for category, keywords in LORA_CATEGORIES.items():
+                for keyword in keywords:
+                    if keyword in text_lower:
+                        return category
         return None
-    for tag in tags:
-        tag_lower = str(tag).strip().lower()
-        for category, keywords in LORA_CATEGORIES.items():
-            for keyword in keywords:
-                if keyword in tag_lower:
-                    return category
+
+    category = _match(tags or [])
+    if category:
+        return category
+    if description:
+        category = _match([description])
+        if category:
+            return category
     return None
 
 
@@ -5493,6 +5506,29 @@ def _lora_dex_model_name(file_path):
     return ''
 
 
+def _lora_dex_description(file_path):
+    """Read the model description from .api_info.json or .json sidecar."""
+    api_file = os.path.splitext(file_path)[0] + '.api_info.json'
+    if os.path.exists(api_file):
+        try:
+            data = _api.safe_json_load(api_file) or {}
+            desc = data.get('description') or data.get('model', {}).get('description')
+            if desc:
+                return str(desc)
+        except Exception:
+            pass
+    json_file = os.path.splitext(file_path)[0] + '.json'
+    if os.path.exists(json_file):
+        try:
+            data = _api.safe_json_load(json_file) or {}
+            desc = data.get('description')
+            if desc:
+                return str(desc)
+        except Exception:
+            pass
+    return ''
+
+
 def _lora_dex_version_name(file_path):
     """Read the installed version name from .api_info.json or .json sidecar."""
     api_file = os.path.splitext(file_path)[0] + '.api_info.json'
@@ -5593,16 +5629,23 @@ def scan_lora_dex_data(base_filter=None, category_filter='All', pending_only=Fal
             saved_category = 'Auto'
         civitai_name = _lora_dex_model_name(file_path)
         file_name = os.path.splitext(os.path.basename(file_path))[0]
+        tags = _lora_dex_tags(file_path)
+        description = _lora_dex_description(file_path)
+        suggested = None
+        if str(saved_category).strip().lower() == 'auto':
+            suggested = categorize_lora_by_tags(tags, manual_category='Auto', description=description)
         data.append({
             'file_path': file_path,
             'name': civitai_name or file_name,
             'file_name': file_name,
             'base_model': _lora_dex_base_model(file_path) or 'Unknown',
             'version': _lora_dex_version_name(file_path),
-            'tags': _lora_dex_tags(file_path),
+            'tags': tags,
+            'description': description,
             'preview_path': _lora_dex_preview_path(file_path),
             'saved_category': saved_category,
-            'current_category': saved_category,
+            'current_category': suggested or saved_category,
+            'suggested_category': suggested,
         })
 
     gl.lora_dex_data = data
@@ -5668,12 +5711,16 @@ def _build_lora_dex_table(items, page, page_size):
         saved = item['saved_category']
         saved_escaped = html.escape(saved, quote=True)
         current = item.get('current_category', saved)
+        suggested = item.get('suggested_category')
+        is_suggested = bool(suggested and current == suggested and str(saved).strip().lower() == 'auto')
         is_pending = current != saved
         if is_pending:
             gl.lora_dex_pending[fp] = current
         else:
             gl.lora_dex_pending.pop(fp, None)
         pending_class = ' loradex-pending' if is_pending else ''
+        suggested_class = ' loradex-suggested' if is_suggested else ''
+        suggested_badge = '<span class="loradex-suggested-badge" title="Suggested by tag/description heuristic">🤖</span>' if is_suggested else ''
         preview = item.get('preview_path', '')
         # Gradio serves local files via ./file=<path>; normalize separators to forward slashes.
         preview_url = './file=' + preview.replace('\\', '/') if preview else ''
@@ -5689,9 +5736,9 @@ def _build_lora_dex_table(items, page, page_size):
             for cat in LORA_DEX_CATEGORIES
         )
         rows_html.append(f'''
-        <div class="loradex-row{pending_class}" data-filepath="{fp_escaped}">
+        <div class="loradex-row{pending_class}{suggested_class}" data-filepath="{fp_escaped}">
             <div class="loradex-thumb-wrap">{preview_html}</div>
-            <div class="loradex-name" title="{name_escaped}">{item['name']}</div>
+            <div class="loradex-name" title="{name_escaped}">{suggested_badge}{item['name']}</div>
             <div class="loradex-base">{base}</div>
             <div class="loradex-version">{version}</div>
             <div class="loradex-category">
