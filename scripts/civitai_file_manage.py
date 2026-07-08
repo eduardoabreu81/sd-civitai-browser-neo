@@ -46,7 +46,7 @@ no_update = False
 last_update_scan = None  # Stores last update scan results for Dashboard summary
 last_dashboard_data = None  # Stores last dashboard scan raw data (categories, top files, orphans)
 
-# LoRA category mapping based on model tags (heuristic, same idea as models-info)
+# LoRA category mapping based on model tags/description (heuristic, same idea as models-info)
 LORA_CATEGORIES = {
     "Character":  {"character", "celebrity", "person", "people"},
     "Style":      {"style", "art style", "aesthetic"},
@@ -55,7 +55,32 @@ LORA_CATEGORIES = {
     "Pose":       {"pose", "action", "stance", "position", "standing", "sitting"},
     "Background": {"background", "environment", "scenery", "landscape", "indoor", "outdoor"},
     "Utility":    {"utility", "tool", "helper", "noise", "offset", "detail"},
+    "Slider":     {"slider", "increase", "decrease", "boost", "reduce", "enhance", "diminish",
+                   "more", "less", "intensify", "weaken", "adjust", "strength"},
 }
+
+
+def _detect_slider_semantics(text):
+    """Detect strong slider semantics in free text.
+
+    Matches patterns like:
+      - "X slider", "slider for X", "slider of X"
+      - "increase X", "decrease X", "boost X", "reduce X"
+      - "more X", "less X", "enhance X", "weaken X"
+      - "X adjuster", "X booster"
+    Returns True if the text strongly suggests a slider LoRA.
+    """
+    if not text:
+        return False
+    t = str(text).lower()
+    slider_patterns = [
+        r'\w+\s+slider',
+        r'slider\s+(?:for|of)\s+\w+',
+        r'(?:increase|decrease|boost|reduce|enhance|diminish|intensify|weaken|adjust)\s+\w+',
+        r'(?:more|less)\s+\w+',
+        r'\w+\s+(?:adjuster|booster)',
+    ]
+    return any(re.search(p, t) for p in slider_patterns)
 
 
 def categorize_lora_by_tags(tags, manual_category=None, description=None):
@@ -73,6 +98,12 @@ def categorize_lora_by_tags(tags, manual_category=None, description=None):
         return manual_category
     if manual_category is None:
         return None
+
+    # Strong slider semantics take precedence over generic keyword matching.
+    all_texts = list(tags or []) + ([description] if description else [])
+    for text in all_texts:
+        if _detect_slider_semantics(text):
+            return 'Slider'
 
     def _match(texts):
         for text in texts:
@@ -5479,7 +5510,7 @@ def cancel_scan():
 # LoraDex — LoRA category manager
 # ─────────────────────────────────────────────────────────────────────────────
 
-LORA_DEX_CATEGORIES = ['Auto', 'Character', 'Style', 'Clothing', 'Concept', 'Pose', 'Background', 'Utility', 'None']
+LORA_DEX_CATEGORIES = ['Auto', 'Character', 'Style', 'Clothing', 'Concept', 'Pose', 'Background', 'Utility', 'Slider', 'None']
 
 
 def _lora_dex_preview_path(file_path):

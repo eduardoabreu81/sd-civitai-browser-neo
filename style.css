@@ -388,6 +388,7 @@
 .lora-category-badge.pose      { background: rgba(14, 165, 233, 0.85); border-color: rgba(56, 189, 248, 0.6); }
 .lora-category-badge.background{ background: rgba(16, 185, 129, 0.85); border-color: rgba(52, 211, 153, 0.6); }
 .lora-category-badge.utility   { background: rgba(100, 116, 139, 0.85); border-color: rgba(148, 163, 184, 0.6); }
+.lora-category-badge.slider    { background: rgba(6, 182, 212, 0.85); border-color: rgba(34, 211, 238, 0.6); }
 
 /* Modern Custom-Checkbox */
 /* This style is required for the correct display and functionality of the custom checkbox */
