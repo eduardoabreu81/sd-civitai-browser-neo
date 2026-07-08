@@ -5776,6 +5776,8 @@ def _build_lora_dex_table(items, page, page_size):
         base = item.get('base_model', 'Unknown')
         version = item.get('version', '')
         name_escaped = html.escape(item['name'], quote=True)
+        file_name = item.get('file_name', '')
+        file_name_escaped = html.escape(file_name, quote=True)
         options_html = ''.join(
             f'<option value="{cat}"{" selected" if cat == current else ""}>{cat}</option>'
             for cat in LORA_DEX_CATEGORIES
@@ -5783,6 +5785,7 @@ def _build_lora_dex_table(items, page, page_size):
         rows_html.append(f'''
         <div class="loradex-row{pending_class}{suggested_class}" data-filepath="{fp_escaped}">
             <div class="loradex-thumb-wrap">{preview_html}</div>
+            <div class="loradex-filename" title="{file_name_escaped}">{file_name}</div>
             <div class="loradex-name" title="{name_escaped}">{suggested_badge}{item['name']}</div>
             <div class="loradex-base">{base}</div>
             <div class="loradex-version">{version}</div>
@@ -5805,8 +5808,9 @@ def _build_lora_dex_table(items, page, page_size):
     <div class="loradex-table">
         <div class="loradex-header">
             <div class="loradex-thumb-wrap"></div>
+            <div class="loradex-filename">Filename</div>
             <div class="loradex-name">LoRA name</div>
-            <div class="loradex-base">Base model</div>
+            <div class="loradex-base">Base</div>
             <div class="loradex-version">Version</div>
             <div class="loradex-category">Category</div>
             <div class="loradex-actions"></div>
