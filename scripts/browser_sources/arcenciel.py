@@ -47,7 +47,7 @@ class ArcencielSource(BrowserSource):
     }
 
     def __init__(self) -> None:
-        super().__init__("arcenciel", "arcenciel.io")
+        super().__init__("arcenciel", "Arc en Ciel")
 
     # ------------------------------------------------------------------
     # Metadata
@@ -81,7 +81,9 @@ class ArcencielSource(BrowserSource):
         **kwargs: Any,
     ) -> dict:
         """Search arcenciel.io models and return canonical results."""
+        debug_print(f"[Arc en Ciel] search query='{query}' page={page} page_size={page_size}")
         if not query or not query.strip():
+            debug_print("[Arc en Ciel] empty query, returning empty result")
             return paginated_result([], current_page=page, page_size=page_size, source=self.name)
 
         params: dict[str, Any] = {"q": query.strip(), "limit": page_size}
@@ -91,11 +93,14 @@ class ArcencielSource(BrowserSource):
         url = f"{self.API_URL}/models/search?{self._encode_params(params)}"
         data = self._request_json(url)
         if isinstance(data, str):
+            debug_print(f"[Arc en Ciel] search returned error string: {data}")
             return data
         if not isinstance(data, dict):
+            debug_print(f"[Arc en Ciel] unexpected search response type: {type(data)}")
             return paginated_result([], current_page=page, page_size=page_size, source=self.name)
 
         items = [self._normalize_model(item) for item in data.get("data", []) if isinstance(item, dict)]
+        debug_print(f"[Arc en Ciel] search returned {len(items)} model(s)")
 
         # arcenciel returns page/limit in the response; estimate total pages.
         current_page = data.get("page", page)

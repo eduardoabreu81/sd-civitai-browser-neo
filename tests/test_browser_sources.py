@@ -54,10 +54,10 @@ class TestCivitaiAdapter(unittest.TestCase):
             sys.path.remove('.')
 
     def test_source_registered(self):
-        self.assertEqual(self.bs.source_choices(), ['CivitAI', 'CivArchive', 'Hugging Face', 'arcenciel.io'])
+        self.assertEqual(self.bs.source_choices(), ['CivitAI', 'CivArchive', 'Hugging Face', 'Arc en Ciel'])
         self.assertEqual(self.bs.get_browser_source('civitai').display_name, 'CivitAI')
         self.assertEqual(self.bs.get_browser_source('huggingface').display_name, 'Hugging Face')
-        self.assertEqual(self.bs.get_browser_source('arcenciel').display_name, 'arcenciel.io')
+        self.assertEqual(self.bs.get_browser_source('arcenciel').display_name, 'Arc en Ciel')
 
     def test_create_api_url_matches_original_shape(self):
         url = self.src._create_api_url(
