@@ -5970,7 +5970,7 @@ def apply_all_lora_dex_changes(pending_items):
         else:
             failed += 1
 
-    status = f'<div style="padding:8px;">✅ Applied {ok} change(s)'
+    status = f'<div style="padding:8px;">✅ Applied {ok} change(s) on this page'
     if failed:
         status += f' • ⚠️ {failed} failed'
     status += '</div>'
@@ -6020,6 +6020,6 @@ def handle_lora_dex_command(command_json):
             gl.lora_dex_pending.pop(fp, None)
         for item in getattr(gl, 'lora_dex_data', []):
             item['current_category'] = item.get('saved_category', 'Auto')
-        return '<div style="padding:8px;">↺ Reset pending changes.</div>', _render_lora_dex_slice(getattr(gl, 'lora_dex_page', 0))
+        return '<div style="padding:8px;">↺ Reset pending changes on this page.</div>', _render_lora_dex_slice(getattr(gl, 'lora_dex_page', 0))
 
     return '', gr.update()

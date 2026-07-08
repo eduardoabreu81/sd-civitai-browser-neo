@@ -132,6 +132,20 @@
 
 ---
 
+### 2026-07-08 — LoraDex: botões de ação em lote agora indicam "página atual"
+
+**O que mudou (pt-BR):** Os botões de ação em lote do LoraDex tiveram os labels alterados para deixar claro que afetam **apenas a página atual**:
+- `✅ Apply all pending` → `✅ Apply page changes`
+- `↺ Reset all pending` → `↺ Reset page changes`
+
+Os textos de status também foram ajustados para "Applied X change(s) on this page" e "Reset pending changes on this page".
+
+**Motivação:** O comportamento técnico já era esse — o LoraDex só renderiza a página atual no DOM, então `loradexApplyAll()` só encontra linhas pendentes da página visível. Porém, o label antigo podia sugerir que a operação afetaria toda a coleção. A mudança remove essa ambiguidade sem alterar a lógica.
+
+**Arquivos alterados:** `scripts/civitai_gui.py`, `scripts/civitai_file_manage.py`.
+
+---
+
 ### 2026-07-08 — Pesquisa de integração com plataformas de modelos gratuitas
 
 **O que mudou (pt-BR):** Levantamento e validação técnica de fontes alternativas de modelos/LoRAs com API/token gratuita para download real de arquivos. Quatro plataformas foram investigadas; duas já têm endpoints confirmados e duas precisam de mais mapeamento.

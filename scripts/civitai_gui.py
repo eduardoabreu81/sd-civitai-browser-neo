@@ -538,8 +538,8 @@ def on_ui_tabs():
 
                     # ── Pagination + bulk actions ──
                     with gr.Row():
-                        loradex_apply_all_btn = gr.Button(value='✅ Apply all pending', variant='primary')
-                        loradex_reset_all_btn = gr.Button(value='↺ Reset all pending')
+                        loradex_apply_all_btn = gr.Button(value='✅ Apply page changes', variant='primary')
+                        loradex_reset_all_btn = gr.Button(value='↺ Reset page changes')
                         loradex_status = gr.HTML()
 
         ## Organization Tab
