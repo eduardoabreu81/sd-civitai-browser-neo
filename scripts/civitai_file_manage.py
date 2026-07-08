@@ -83,7 +83,7 @@ def _detect_slider_semantics(text):
     return any(re.search(p, t) for p in slider_patterns)
 
 
-def categorize_lora_by_tags(tags, manual_category=None, description=None):
+def categorize_lora_by_tags(tags, manual_category=None, description=None, name_hints=None):
     """Return a category folder name for a LoRA based on its tags/description.
 
     Args:
@@ -93,14 +93,20 @@ def categorize_lora_by_tags(tags, manual_category=None, description=None):
             means "fall back to heuristic"; None disables auto-detection.
         description: optional model description text. Used as a fallback
             when tags do not match any known category.
+        name_hints: optional list of strings (e.g. CivitAI model name, filename)
+            that can also be inspected by the heuristic. Useful for installed
+            files whose filename or model name contains category clues that are
+            not present in tags/description.
     """
     if manual_category and str(manual_category).strip().lower() not in ('', 'auto'):
         return manual_category
     if manual_category is None:
         return None
 
+    hints = list(name_hints or [])
+
     # Strong slider semantics take precedence over generic keyword matching.
-    all_texts = list(tags or []) + ([description] if description else [])
+    all_texts = list(tags or []) + hints + ([description] if description else [])
     for text in all_texts:
         if _detect_slider_semantics(text):
             return 'Slider'
@@ -117,6 +123,9 @@ def categorize_lora_by_tags(tags, manual_category=None, description=None):
         return None
 
     category = _match(tags or [])
+    if category:
+        return category
+    category = _match(hints)
     if category:
         return category
     if description:
@@ -5664,7 +5673,12 @@ def scan_lora_dex_data(base_filter=None, category_filter='All', pending_only=Fal
         description = _lora_dex_description(file_path)
         suggested = None
         if str(saved_category).strip().lower() == 'auto':
-            suggested = categorize_lora_by_tags(tags, manual_category='Auto', description=description)
+            suggested = categorize_lora_by_tags(
+                tags,
+                manual_category='Auto',
+                description=description,
+                name_hints=[civitai_name, file_name],
+            )
         data.append({
             'file_path': file_path,
             'name': civitai_name or file_name,
