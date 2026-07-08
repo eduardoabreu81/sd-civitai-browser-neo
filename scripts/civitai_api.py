@@ -1837,9 +1837,10 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                         gl.json_info = item
                         sha256_value = normalize_sha256(file['hashes'].get('SHA256')) or 'Unknown'
 
-                    size = file['metadata'].get('size', 'Unknown')
-                    format = file['metadata'].get('format', 'Unknown')
-                    fp = file['metadata'].get('fp', 'Unknown')
+                    file_metadata = file.get('metadata') or {}
+                    size = file_metadata.get('size', 'Unknown')
+                    format = file_metadata.get('format') or file.get('format') or 'Unknown'
+                    fp = file_metadata.get('fp', 'Unknown')
                     sizeKB = file.get('sizeKB', 0) * 1024
                     filesize = _download.convert_size(sizeKB)
 
@@ -2509,8 +2510,9 @@ def update_file_info(model_string, model_version, file_metadata):
                 for model in item['modelVersions']:
                     if model['name'] == model_version:
                         for file in model['files']:
-                            size = file['metadata'].get('size', 'Unknown')
-                            format = file['metadata'].get('format', 'Unknown')
+                            file_metadata = file.get('metadata') or {}
+                            size = file_metadata.get('size', 'Unknown')
+                            format = file_metadata.get('format') or file.get('format') or 'Unknown'
                             unique_file_name = f"{size} {format}"
                             file_list.append(unique_file_name)
                             pass

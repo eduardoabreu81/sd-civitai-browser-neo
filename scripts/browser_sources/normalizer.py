@@ -116,12 +116,28 @@ def canonical_file(
 
     Mirrors CivitAI's ``files`` items, where hashes live inside a nested dict.
     """
+    raw_metadata = raw.get("metadata") if isinstance(raw, dict) else None
+    metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
+
+    resolved_format = format or metadata.get("format")
+    if not resolved_format:
+        lower_filename = filename.lower()
+        if lower_filename.endswith(".safetensors"):
+            resolved_format = "SafeTensor"
+        elif lower_filename.endswith((".ckpt", ".pt", ".pth", ".bin")):
+            resolved_format = "PickleTensor"
+        elif lower_filename.endswith(".onnx"):
+            resolved_format = "ONNX"
+    if resolved_format:
+        metadata["format"] = resolved_format
+
     file_info = {
         "name": filename,
         "sizeKB": size_kb,
         "sizeBytes": size_bytes,
         "downloadUrl": download_url,
-        "format": format,
+        "format": resolved_format,
+        "metadata": metadata,
         "primary": primary,
         "hashes": {},
         "browserSourceFileRaw": raw,

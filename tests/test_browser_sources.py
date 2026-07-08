@@ -44,9 +44,11 @@ class TestCivitaiAdapter(unittest.TestCase):
 
         # Import inside the patched context so the adapter sees the fakes.
         from scripts.browser_sources.civitai import CivitAISource
+        from scripts.browser_sources.normalizer import canonical_file
         import scripts.browser_sources as bs
         self.src = CivitAISource()
         self.bs = bs
+        self.canonical_file = canonical_file
 
     def tearDown(self):
         self._patch.stop()
@@ -58,6 +60,19 @@ class TestCivitaiAdapter(unittest.TestCase):
         self.assertEqual(self.bs.get_browser_source('civitai').display_name, 'CivitAI')
         self.assertEqual(self.bs.get_browser_source('huggingface').display_name, 'Hugging Face')
         self.assertEqual(self.bs.get_browser_source('arcenciel').display_name, 'Arc en Ciel')
+
+    def test_canonical_file_includes_legacy_metadata(self):
+        file_info = self.canonical_file(
+            filename='model.safetensors',
+            raw={'metadata': {'size': 'full', 'fp': 'fp16'}},
+        )
+
+        self.assertEqual(file_info['format'], 'SafeTensor')
+        self.assertEqual(file_info['metadata'], {
+            'size': 'full',
+            'fp': 'fp16',
+            'format': 'SafeTensor',
+        })
 
     def test_create_api_url_matches_original_shape(self):
         url = self.src._create_api_url(
