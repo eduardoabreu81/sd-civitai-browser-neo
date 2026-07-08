@@ -84,6 +84,36 @@
 
 ---
 
+### 2026-07-08 — Fase B implementada: adapter CivArchive
+
+**O que mudou (pt-BR):** Adicionado o segundo browser source, **CivArchive**, como fallback para modelos deletados do CivitAI. O dropdown Source agora lista `CivitAI` e `CivArchive`.
+
+**Arquivos criados:**
+- `scripts/browser_sources/civarchive.py` — adapter `CivArchiveSource` com:
+  - Busca por nome via `/api/search?q=...` (suporta `type`, `base_model`, `limit`, `offset`).
+  - Busca por SHA256 via `/api/sha256/{hash}`.
+  - Detalhe de modelo via `/api/models/{id}?modelVersionId={vid}`.
+  - Resolução de download preferindo mirrors ativos; fallback para `downloadUrl` do CivArchive.
+  - Normalização para o formato canônico com campos `browserSource*`, mantendo compatibilidade com `model_list_html`, `update_model_info` e `selected_to_queue`.
+
+**Arquivos alterados:**
+- `scripts/browser_sources/__init__.py` — registra `civarchive` após `civitai`.
+- `tests/test_browser_sources.py` — testes para `CivArchiveSource` (search types, mirror selection, normalização de payload real).
+
+**Decisões técnicas:**
+- CivArchive não expõe paginação numérica; `page`/`page_size` são mapeados para `limit`/`offset`.
+- Resultados de search misturam `kind: file` e `kind: version`; o adapter coleta `model_id` únicos e busca o modelo completo para cada um, garantindo cards consistentes.
+- Download prefere mirrors não deletados; se todos estiverem deletados, ainda usa o primeiro mirror como último recurso.
+- O adapter reutiliza headers/proxies do helper de CivitAI (`_api.get_headers` / `_api.get_proxies`) para manter o mesmo comportamento de rede.
+
+**Testes:**
+- `python -m pytest tests/` → 95 passed.
+- `python -m py_compile scripts/browser_sources/*.py scripts/civitai_api.py scripts/civitai_gui.py scripts/civitai_file_manage.py scripts/civitai_global.py` → sem erros.
+
+**Próximo passo:** Fase C — adapter Hugging Face (search por texto + download direto de repos públicos).
+
+---
+
 ### 2026-07-08 — Pesquisa de integração com plataformas de modelos gratuitas
 
 **O que mudou (pt-BR):** Levantamento e validação técnica de fontes alternativas de modelos/LoRAs com API/token gratuita para download real de arquivos. Quatro plataformas foram investigadas; duas já têm endpoints confirmados e duas precisam de mais mapeamento.

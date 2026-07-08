@@ -19,6 +19,7 @@ from .registry import (
 
 # Register built-in sources. Keep CivitAI first so it remains the default.
 from . import civitai
+from . import civarchive
 
 __all__ = [
     "BrowserSource",

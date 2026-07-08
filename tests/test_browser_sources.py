@@ -54,7 +54,7 @@ class TestCivitaiAdapter(unittest.TestCase):
             sys.path.remove('.')
 
     def test_source_registered(self):
-        self.assertEqual(self.bs.source_choices(), ['CivitAI'])
+        self.assertEqual(self.bs.source_choices(), ['CivitAI', 'CivArchive'])
         self.assertEqual(self.bs.get_browser_source('civitai').display_name, 'CivitAI')
 
     def test_create_api_url_matches_original_shape(self):
@@ -154,6 +154,100 @@ class TestCivitaiAdapter(unittest.TestCase):
 
     def test_supports_pagination(self):
         self.assertTrue(self.src.supports_pagination())
+
+
+class TestCivArchiveAdapter(unittest.TestCase):
+    def setUp(self):
+        self._patch = patch.dict(sys.modules, _MODULE_OVERRIDES, clear=False)
+        self._patch.start()
+        sys.path.insert(0, '.')
+
+        from scripts.browser_sources.civarchive import CivArchiveSource
+        self.src = CivArchiveSource()
+
+    def tearDown(self):
+        self._patch.stop()
+        if '.' in sys.path:
+            sys.path.remove('.')
+
+    def test_supported_search_types(self):
+        self.assertEqual(self.src.supported_search_types(), ['Model name', 'SHA256'])
+
+    def test_get_download_url_prefers_active_mirror(self):
+        file_info = {
+            'name': 'model.safetensors',
+            'browserSourceFileRaw': {
+                'mirrors': [
+                    {'url': 'https://deleted.example/dl', 'deletedAt': '2025-01-01'},
+                    {'url': 'https://active.example/dl', 'deletedAt': None},
+                ],
+            },
+        }
+        self.assertEqual(self.src.get_download_url(file_info), 'https://active.example/dl')
+
+    def test_get_download_url_falls_back_to_first_mirror(self):
+        file_info = {
+            'name': 'model.safetensors',
+            'browserSourceFileRaw': {
+                'mirrors': [
+                    {'url': 'https://only.example/dl', 'deletedAt': '2025-01-01'},
+                ],
+            },
+        }
+        self.assertEqual(self.src.get_download_url(file_info), 'https://only.example/dl')
+
+    def test_normalize_model_from_civarchive_payload(self):
+        payload = {
+            'id': 1746460,
+            'name': 'Mixplin Style [Illustrious]',
+            'type': 'LORA',
+            'description': 'desc',
+            'is_nsfw': True,
+            'nsfw_level': 31,
+            'tags': ['art', 'style'],
+            'creator_username': 'Ty_Lee',
+            'creator_name': 'Ty_Lee',
+            'creator_url': '/users/Ty_Lee',
+            'version': {
+                'id': 1976567,
+                'modelId': 1746460,
+                'name': 'v1.0',
+                'baseModel': 'Illustrious',
+                'downloadCount': 437,
+                'ratingCount': 0,
+                'rating': 0,
+                'nsfw_level': 31,
+                'trigger': ['mxpln'],
+                'files': [{
+                    'id': 1874043,
+                    'name': 'mxpln-illustrious-ty_lee.safetensors',
+                    'type': 'Model',
+                    'sizeKB': 223124.37109375,
+                    'downloadUrl': 'https://civitai.com/api/download/models/1976567',
+                    'sha256': 'e2b7a280d6539556f23f380b3f71e4e22bc4524445c4c96526e117c6005c6ad3',
+                    'is_primary': False,
+                    'mirrors': [{
+                        'filename': 'mxpln-illustrious-ty_lee.safetensors',
+                        'url': 'https://civitai.com/api/download/models/1976567',
+                        'deletedAt': None,
+                    }],
+                }],
+                'images': [{'id': 86403595, 'url': 'https://img.genur.art/example.png', 'nsfwLevel': 1}],
+            },
+            'versions': [{'id': 1976567, 'name': 'v1.0'}],
+        }
+        model = self.src._normalize_model(payload)
+        self.assertEqual(model['browserSource'], 'civarchive')
+        self.assertEqual(model['browserSourceId'], '1746460')
+        self.assertEqual(model['type'], 'LORA')
+        self.assertEqual(model['name'], 'Mixplin Style [Illustrious]')
+        self.assertEqual(model['creator']['username'], 'Ty_Lee')
+        self.assertEqual(model['nsfw'], True)
+        version = model['modelVersions'][0]
+        self.assertEqual(version['id'], '1976567')
+        self.assertEqual(version['baseModel'], 'Illustrious')
+        self.assertEqual(version['trainedWords'], ['mxpln'])
+        self.assertEqual(version['files'][0]['hashes']['SHA256'], 'E2B7A280D6539556F23F380B3F71E4E22BC4524445C4C96526E117C6005C6AD3')
 
 
 if __name__ == '__main__':
