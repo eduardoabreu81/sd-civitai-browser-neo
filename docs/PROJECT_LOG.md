@@ -22,6 +22,19 @@
 
 ## Linha do Tempo
 
+### 2026-07-08 — Fix canonical file metadata for external source detail panels
+
+**O que mudou (pt-BR):** Corrigido o crash `KeyError: 'metadata'` ao clicar em cards do CivArchive. O helper compartilhado `canonical_file()` agora sempre produz o objeto legado `metadata`, preserva `size`/`fp` fornecidos pela origem e preenche `format`; quando o formato não vem da API, ele é inferido pela extensão (`.safetensors`, `.ckpt`, `.pt`, `.pth`, `.bin`, `.onnx`). Os dois consumidores legados em `civitai_api.py` também passaram a usar acesso defensivo e fallback para o formato top-level. Como Hugging Face e Arc en Ciel usam o mesmo normalizador, a correção cobre as três fontes externas.
+**Arquivos alterados:** `scripts/browser_sources/normalizer.py`, `scripts/civitai_api.py`, `tests/test_browser_sources.py`.
+**Decisões:** Corrigir o contrato na fronteira canônica e manter defesa adicional nos consumidores legados; fontes externas desconhecidas exibem `Unknown` para size/fp sem interromper o detail panel.
+**Pontos sensíveis:** Validação concluída com **111 passed + 2 subtests passed**, `py_compile` e `git diff --check`. Runtime na WebUI ainda necessário para confirmar detail panel, seleção de arquivo e download.
+**Próximos passos / Next steps:**
+- Atualizar a extensão remota e clicar novamente em um card do CivArchive.
+- Validar troca de versão/arquivo e início do download.
+- Depois investigar os modelos descartados por ausência de arquivos utilizáveis.
+
+---
+
 ### 2026-07-08 — Fix CivArchive refresh routing and result pagination
 
 **O que mudou (pt-BR):** Corrigido o refresh do Browser quando `from_update_tab=True`: tokens internos `browser_source://...` não são mais enviados ao `requests` como URLs HTTP e agora voltam ao adapter selecionado. O CivArchive ganhou logs com contagem de resultados brutos, IDs únicos e modelos normalizados. Como a API pública atualmente devolve uma janela fixa de 50 resultados e ignora `limit`/`offset`, a paginação passou a preservar a ordem dos IDs e fatiá-los client-side, evitando repetição da primeira página. Valores float vindos do Slider do Gradio são normalizados para inteiros antes do slicing. A busca sem termo agora funciona como modo de navegação padrão: o adapter omite `q` e usa os resultados default oferecidos pela API, mantendo paridade com a experiência do CivitAI.
