@@ -44,11 +44,12 @@ class TestCivitaiAdapter(unittest.TestCase):
 
         # Import inside the patched context so the adapter sees the fakes.
         from scripts.browser_sources.civitai import CivitAISource
-        from scripts.browser_sources.normalizer import canonical_file
+        from scripts.browser_sources.normalizer import canonical_file, canonical_image
         import scripts.browser_sources as bs
         self.src = CivitAISource()
         self.bs = bs
         self.canonical_file = canonical_file
+        self.canonical_image = canonical_image
 
     def tearDown(self):
         self._patch.stop()
@@ -73,6 +74,24 @@ class TestCivitaiAdapter(unittest.TestCase):
             'fp': 'fp16',
             'format': 'SafeTensor',
         })
+
+    def test_canonical_image_includes_legacy_shape(self):
+        image = self.canonical_image(
+            url='https://example.com/preview.png',
+            width=1024,
+            height=768,
+            nsfw=4,
+            prompt='test prompt',
+            raw={'meta': {'negativePrompt': 'bad quality'}},
+        )
+        video = self.canonical_image(url='https://example.com/sample.mp4')
+
+        self.assertEqual(image['type'], 'image')
+        self.assertEqual(image['nsfwLevel'], 4)
+        self.assertEqual(image['meta']['prompt'], 'test prompt')
+        self.assertEqual(image['meta']['negativePrompt'], 'bad quality')
+        self.assertEqual(video['type'], 'video')
+        self.assertEqual(video['nsfwLevel'], 0)
 
     def test_create_api_url_matches_original_shape(self):
         url = self.src._create_api_url(

@@ -162,12 +162,31 @@ def canonical_image(
 
     Mirrors CivitAI's ``images`` items used for card previews and galleries.
     """
+    raw_meta = raw.get("meta") if isinstance(raw, dict) else None
+    meta = dict(raw_meta) if isinstance(raw_meta, dict) else {}
+    if prompt and not meta.get("prompt"):
+        meta["prompt"] = prompt
+
+    raw_type = raw.get("type") if isinstance(raw, dict) else None
+    media_type = str(raw_type).lower() if raw_type else ""
+    if media_type not in {"image", "video"}:
+        clean_url = url.lower().split("?", 1)[0]
+        media_type = "video" if clean_url.endswith((".mp4", ".webm", ".mov", ".mkv")) else "image"
+
+    raw_nsfw_level = raw.get("nsfwLevel") if isinstance(raw, dict) else None
+    nsfw_level = raw_nsfw_level if raw_nsfw_level is not None else nsfw
+    if nsfw_level is None:
+        nsfw_level = 0
+
     return {
         "url": url,
         "width": width,
         "height": height,
         "nsfw": nsfw,
+        "nsfwLevel": nsfw_level,
         "hash": hash,
+        "type": media_type,
+        "meta": meta,
         "prompt": prompt or "",
         "browserSourceImageRaw": raw,
     }

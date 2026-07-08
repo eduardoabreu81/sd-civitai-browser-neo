@@ -993,8 +993,15 @@ def save_preview(file_path, api_response, overwrite_toggle=False, sha256=None):
             for file_entry in version['files']:
                 if file_entry['hashes'].get('SHA256') == sha256:
                     for image in version['images']:
-                        if image['type'] == 'image':
-                            url_with_width = re.sub(r'/width=\d+', f"/width={image['width']}", image['url'])
+                        if image.get('type', 'image') == 'image':
+                            image_url = image.get('url')
+                            if not image_url:
+                                continue
+                            image_width = image.get('width')
+                            url_with_width = (
+                                re.sub(r'/width=\d+', f"/width={image_width}", image_url)
+                                if image_width else image_url
+                            )
                             response = requests.get(url_with_width, proxies=proxies, verify=ssl)
 
                             if response.status_code == 200:
