@@ -964,6 +964,22 @@ def _resize_image_bytes(image_bytes, target_size=512, fmt='PNG', quality=90):
     output.seek(0)
     return output.getvalue()  # Return bytes, not BytesIO object
 
+
+def _preview_file_matches(file_entry, local_file, sha256=None):
+    """Match a canonical file by SHA256, falling back to its exact filename."""
+    expected_hash = str(sha256 or '').strip().upper()
+    entry_hash = str((file_entry.get('hashes') or {}).get('SHA256') or '').strip().upper()
+    if expected_hash and entry_hash and expected_hash == entry_hash:
+        return True, 'sha256'
+
+    entry_name = Path(str(file_entry.get('name') or '')).name.casefold()
+    local_name = Path(local_file).name.casefold()
+    if entry_name and entry_name == local_name:
+        return True, 'filename'
+
+    return False, None
+
+
 def save_preview(file_path, api_response, overwrite_toggle=False, sha256=None):
     proxies, ssl = _api.get_proxies()
     file_path = Path(file_path)
@@ -978,8 +994,14 @@ def save_preview(file_path, api_response, overwrite_toggle=False, sha256=None):
     alt_ext = '.preview.png' if preview_fmt == 'JPEG' else '.preview.jpg'
     alt_image_path = install_path / f"{name}{alt_ext}"
 
+    debug_print(
+        f"[Preview] start file={file_path.name!r} target={image_path.name!r} "
+        f"sha256={str(sha256 or '')[:12]}... overwrite={overwrite_toggle}"
+    )
+
     if not overwrite_toggle and (image_path.exists() or alt_image_path.exists()):
-        return
+        debug_print(f"[Preview] skipped: preview already exists for {file_path.name!r}")
+        return False
 
     if not sha256 and json_file.exists():
         data = json.loads(json_file.read_text(encoding='utf-8'))
@@ -988,68 +1010,107 @@ def save_preview(file_path, api_response, overwrite_toggle=False, sha256=None):
     elif sha256:
         sha256 = sha256.upper()
 
-    for item in api_response['items']:
-        for version in item['modelVersions']:
-            for file_entry in version['files']:
-                if file_entry['hashes'].get('SHA256') == sha256:
-                    for image in version['images']:
-                        if image.get('type', 'image') == 'image':
-                            image_url = image.get('url')
-                            if not image_url:
-                                continue
-                            image_width = image.get('width')
-                            url_with_width = (
-                                re.sub(r'/width=\d+', f"/width={image_width}", image_url)
-                                if image_width else image_url
+    items = api_response.get('items', []) if isinstance(api_response, dict) else []
+    if not items:
+        debug_print(f"[Preview] skipped: model JSON has no items for {file_path.name!r}")
+        return False
+
+    available_files = []
+    for item in items:
+        for version in item.get('modelVersions', []):
+            for file_entry in version.get('files', []):
+                available_files.append({
+                    'name': file_entry.get('name'),
+                    'sha256': (file_entry.get('hashes') or {}).get('SHA256'),
+                })
+                matched, matched_by = _preview_file_matches(file_entry, file_path, sha256)
+                if not matched:
+                    continue
+
+                images = version.get('images', [])
+                debug_print(
+                    f"[Preview] matched by {matched_by}: file={file_entry.get('name')!r}, "
+                    f"images={len(images)}"
+                )
+                for image in images:
+                    if image.get('type', 'image') != 'image':
+                        continue
+                    image_url = image.get('url')
+                    if not image_url:
+                        debug_print("[Preview] skipped image entry without URL")
+                        continue
+                    image_width = image.get('width')
+                    url_with_width = (
+                        re.sub(r'/width=\d+', f"/width={image_width}", image_url)
+                        if image_width else image_url
+                    )
+                    try:
+                        response = requests.get(
+                            url_with_width,
+                            headers=_api.get_headers(),
+                            proxies=proxies,
+                            verify=ssl,
+                            timeout=(60, 30),
+                        )
+                    except requests.exceptions.RequestException as exc:
+                        debug_print(f"[Preview] image request failed: {exc}")
+                        continue
+
+                    debug_print(f"[Preview] image response status={response.status_code}")
+                    if response.status_code != 200:
+                        continue
+
+                    try:
+                        resize_saved = getattr(opts, 'resize_preview_on_save', True)
+                        resize_size = getattr(opts, 'resize_preview_size', 512)
+
+                        if preview_fmt == 'JPEG':
+                            image_data = _resize_image_bytes(
+                                response.content,
+                                resize_size if resize_saved else None,
+                                fmt='JPEG',
+                                quality=jpeg_quality
                             )
-                            response = requests.get(url_with_width, proxies=proxies, verify=ssl)
+                        elif resize_saved:
+                            image_data = _resize_image_bytes(response.content, resize_size)
+                        else:
+                            image_data = response.content
 
-                            if response.status_code == 200:
-                                # Check if resize is enabled for saved previews
-                                resize_saved = getattr(opts, 'resize_preview_on_save', True)
-                                resize_size = getattr(opts, 'resize_preview_size', 512)
+                        if IS_KAGGLE:
+                            import sd_image_encryption  # Import Module for Encrypt Image
+                            img = Image.open(io.BytesIO(image_data))
+                            imginfo = img.info or {}
+                            if not all(key in imginfo for key in ['Encrypt', 'EncryptPwdSha']):
+                                sd_image_encryption.EncryptedImage.from_image(img).save(image_path)
+                        else:
+                            image_path.write_bytes(image_data)
+                    except Exception as exc:
+                        debug_print(f"[Preview] image processing failed: {type(exc).__name__}: {exc}")
+                        continue
 
-                                if preview_fmt == 'JPEG':
-                                    # Always re-encode via PIL to ensure RGB + correct format
-                                    image_data = _resize_image_bytes(
-                                        response.content,
-                                        resize_size if resize_saved else None,
-                                        fmt='JPEG',
-                                        quality=jpeg_quality
-                                    )
-                                elif resize_saved:
-                                    image_data = _resize_image_bytes(response.content, resize_size)
-                                else:
-                                    image_data = response.content
+                    if alt_image_path.exists():
+                        try:
+                            send2trash(str(alt_image_path))
+                            print(f"Removed old preview: {alt_image_path}")
+                        except Exception:
+                            try:
+                                os.remove(alt_image_path)
+                                print(f"Removed old preview: {alt_image_path}")
+                            except Exception as _e:
+                                print(f"Could not remove old preview {alt_image_path}: {_e}")
 
-                                if IS_KAGGLE:
-                                    import sd_image_encryption  # Import Module for Encrypt Image
-                                    img = Image.open(io.BytesIO(image_data))
-                                    imginfo = img.info or {}
-                                    if not all(key in imginfo for key in ['Encrypt', 'EncryptPwdSha']):
-                                        sd_image_encryption.EncryptedImage.from_image(img).save(image_path)
-                                else:
-                                    image_path.write_bytes(image_data)
+                    print(f"Preview saved at: {image_path}")
+                    debug_print(f"[Preview] saved successfully: {image_path}")
+                    return True
 
-                                # Remove preview in the alternate extension to avoid duplicates
-                                if alt_image_path.exists():
-                                    try:
-                                        send2trash(str(alt_image_path))
-                                        print(f"Removed old preview: {alt_image_path}")
-                                    except Exception:
-                                        try:
-                                            os.remove(alt_image_path)
-                                            print(f"Removed old preview: {alt_image_path}")
-                                        except Exception as _e:
-                                            print(f"Could not remove old preview {alt_image_path}: {_e}")
+                debug_print(f"[Preview] no usable preview image for matched file {file_path.name!r}")
+                return False
 
-                                print(f"Preview saved at: {image_path}")
-                            else:
-                                print(f"Failed to save preview. Status code: {response.status_code}")
-                            return
-
-                    print(f"No preview images found for '{name}'")
-                    return
+    debug_print(
+        f"[Preview] no matching file for name={file_path.name!r}, sha256={sha256!r}; "
+        f"available={available_files}"
+    )
+    return False
 
 def get_image_path(install_path, api_response, sub_folder):
     image_location = getattr(opts, 'image_location', '')
