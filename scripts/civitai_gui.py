@@ -16,6 +16,7 @@ import scripts.civitai_file_manage as _file
 import scripts.civitai_global as gl
 import scripts.civitai_api as _api
 import scripts.civitai_mcp as _mcp
+import scripts.browser_sources as _browser_sources
 from scripts.civitai_global import print, debug_print
 
 
@@ -46,7 +47,7 @@ def _save_browser_defaults(data):
         json.dump(data, f, indent=4)
 
 
-def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, sn, es, ss, ts):
+def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, sn, es, ss, ts, src):
     config = cmd_opts.ui_config_file
 
     # Create a dictionary to map the settings to their respective variables
@@ -57,6 +58,7 @@ def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, sn, es, ss, ts):
         'civitai_interface_neo/Time period:/value': pt,
         'civitai_interface_neo/Sort by:/value': st,
         'civitai_interface_neo/Base model:/value': bf,
+        'civitai_interface_neo/Source:/value': src,
         'civitai_interface_neo/Save info after download/value': cj,
         'civitai_interface_neo/Divide cards by date/value': False,  # This is a toggle, so its state does not matter here
         'civitai_interface_neo/Liked models only/value': ol,
@@ -87,13 +89,14 @@ def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, sn, es, ss, ts):
         print(f"Updated settings to: {config}")
 
     # Persist all browser filter defaults to extension-local file
-    print(f"[CivitAI Browser] Saving filter defaults: tile_size={ss}, tile_count={ts}, search_type={ust}, content_type={ct}, base_model={bf}, period={pt}, sort={st}, liked={ol}, hide={hi}, nsfw={sn}, exact={es}, save_json={cj}")
+    print(f"[CivitAI Browser] Saving filter defaults: tile_size={ss}, tile_count={ts}, search_type={ust}, content_type={ct}, base_model={bf}, source={src}, period={pt}, sort={st}, liked={ol}, hide={hi}, nsfw={sn}, exact={es}, save_json={cj}")
     _save_browser_defaults({
         'search_type': ust,
         'content_type': ct,
         'time_period': pt,
         'sort_by': st,
         'base_model': bf,
+        'browser_source': src,
         'save_info_after_download': cj,
         'liked_models_only': ol,
         'hide_installed_models': hi,
@@ -325,6 +328,14 @@ def on_ui_tabs():
             _browser_defaults = _load_browser_defaults()
             with gr.Row(elem_id='searchRow'):
                 with gr.Accordion(label='', open=False, elem_id=filterBox):
+                    with gr.Row():
+                        source = gr.Dropdown(
+                            label='Source:',
+                            choices=_browser_sources.source_choices(),
+                            value=_browser_defaults.get('browser_source', _browser_sources.source_choices()[0]),
+                            type='value',
+                            elem_id='browserSource'
+                        )
                     with gr.Row():
                         use_search_term = gr.Radio(label='Search type:', choices=['Model name', 'User name', 'Tag', 'SHA256'], value=_browser_defaults.get('search_type', 'Model name'), elem_id='searchType')
                     with gr.Row():
@@ -868,7 +879,8 @@ def on_ui_tabs():
                 show_nsfw,
                 exact_search,
                 size_slider,
-                tile_count_slider
+                tile_count_slider,
+                source
             ]
         )
 
@@ -1723,7 +1735,8 @@ def on_ui_tabs():
             only_liked,
             show_nsfw,
             exact_search,
-            tile_count_slider
+            tile_count_slider,
+            source
         ]
 
         refresh_inputs = [empty if item == page_slider else item for item in page_inputs]
@@ -1755,7 +1768,10 @@ def on_ui_tabs():
         # sentinel (not http), so we skip it to avoid clobbering the Browser grid.
         def _post_download_page_refresh(*args):
             url1 = gl.url_list.get(1) if isinstance(gl.url_list, dict) else None
-            if not (isinstance(url1, str) and url1.startswith('http')):
+            is_browser_source = isinstance(url1, str) and (
+                url1.startswith('http') or url1.startswith('browser_source://')
+            )
+            if not is_browser_source:
                 return tuple(gr.update() for _ in page_outputs)
             return _api.initial_model_page(*args, from_update_tab=True)
 
@@ -1812,7 +1828,8 @@ def on_ui_tabs():
             tile_count_slider,
             base_filter,
             show_nsfw,
-            exact_search
+            exact_search,
+            source
         ]
 
         cancel_btn_list = [cancel_all_tags, cancel_ver_search, cancel_installed, cancel_update_preview, cancel_organize]

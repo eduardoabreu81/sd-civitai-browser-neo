@@ -5120,7 +5120,7 @@ def enter_update_mode():
 
 
 def exit_update_mode(content_type, sort_type, period_type, use_search_term, search_term,
-                     tile_count, base_filter, nsfw, exact_search):
+                     tile_count, base_filter, nsfw, exact_search, source=None):
     """Deactivates Update Mode, clears banner, and returns to a normal browser state."""
     gl.update_mode = False
     gl.update_items = []

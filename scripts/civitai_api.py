@@ -24,8 +24,28 @@ import scripts.civitai_file_manage as _file
 import scripts.civitai_global as gl
 from scripts.civitai_global import print, debug_print
 
+# Multi-source browser adapters (CivitAI is registered as the default source).
+import scripts.browser_sources as _browser_sources
+
 
 gl.init()
+
+
+def _get_browser_source(source_name=None):
+    """Return the requested browser source adapter, defaulting to CivitAI."""
+    if source_name:
+        source = _browser_sources.get_browser_source(source_name)
+        if source:
+            return source
+    return _browser_sources.default_source()
+
+
+def _source_display_to_name(display_name):
+    """Resolve a UI display label back to the source machine name."""
+    if not display_name:
+        return "civitai"
+    name = _browser_sources.source_name_from_display(display_name)
+    return name or "civitai"
 
 
 ## === ANXETY EDITs ===
@@ -1127,11 +1147,15 @@ def create_api_url(content_type=None, sort_type=None, period_type=None, use_sear
 
 
 ## === ANXETY EDITs ===
-def initial_model_page(content_type=None, sort_type=None, period_type=None, use_search_term=None, search_term=None, current_page=None, base_filter=None, only_liked=None, nsfw=None, exact_search=None, tile_count=None, from_update_tab=False, target=''):
-    current_inputs = (content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, nsfw, exact_search)
+def initial_model_page(content_type=None, sort_type=None, period_type=None, use_search_term=None, search_term=None, current_page=None, base_filter=None, only_liked=None, nsfw=None, exact_search=None, tile_count=None, from_update_tab=False, target='', source='CivitAI'):
+    source_name = _source_display_to_name(source)
+    source_adapter = _get_browser_source(source_name)
+
+    current_inputs = (content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, nsfw, exact_search, source_name)
     if current_inputs != gl.previous_inputs and gl.previous_inputs != None or not current_page:
         current_page = 1
     gl.previous_inputs = current_inputs
+    gl.current_browser_source = source_name
 
     # ── Update Mode: render from gl.update_items, no API call ──
     if gl.update_mode:
@@ -1169,14 +1193,47 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
             # Handle SHA256 search specially
             if use_search_term == 'SHA256' and search_term:
                 debug_print(f"Performing SHA256 search for hash: {search_term}")
-                gl.json_data = _search_by_sha256(search_term)
+                gl.json_data = source_adapter.get_version_by_hash(search_term)
+                if gl.json_data is None:
+                    gl.json_data = 'sha256_not_found'
                 gl.url_list = {1: f"sha256_search_{search_term.strip().upper()}" if isinstance(gl.json_data, dict) else 'error'}
             else:
-                api_url = create_api_url(content_type, sort_type, period_type, use_search_term, base_filter, only_liked, tile_count, search_term, nsfw, exact_search)
-                gl.url_list = {1: api_url}
-                gl.json_data = request_civit_api(api_url)
+                gl.json_data = source_adapter.search(
+                    query=search_term or '',
+                    search_type=use_search_term,
+                    content_type=content_type,
+                    base_filter=base_filter,
+                    sort=sort_type,
+                    period=period_type,
+                    nsfw=nsfw,
+                    exact=exact_search,
+                    page=current_page,
+                    page_size=tile_count,
+                    only_liked=only_liked,
+                )
+                # CivitAI adapter exposes the underlying API url so legacy pagination works.
+                civitai_page_url = gl.json_data.get('metadata', {}).get('_civitaiPageUrl') if isinstance(gl.json_data, dict) else None
+                gl.url_list = {1: civitai_page_url or f"browser_source://{source_name}/page/1"}
         else:
             api_url = gl.url_list.get(current_page)
+            if api_url and api_url.startswith('browser_source://'):
+                gl.json_data = source_adapter.search(
+                    query=search_term or '',
+                    search_type=use_search_term,
+                    content_type=content_type,
+                    base_filter=base_filter,
+                    sort=sort_type,
+                    period=period_type,
+                    nsfw=nsfw,
+                    exact=exact_search,
+                    page=current_page,
+                    page_size=tile_count,
+                    only_liked=only_liked,
+                    page_url=api_url,
+                )
+            else:
+                # Fallback for legacy CivitAI urls still in gl.url_list.
+                gl.json_data = request_civit_api(api_url)
     else:
         api_url = gl.url_list.get(current_page)
         gl.from_update_tab = True
@@ -1201,25 +1258,29 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
     hasPrev, hasNext = False, False
 
     if not isinstance(gl.json_data, dict) or 'items' not in gl.json_data or 'metadata' not in gl.json_data:
-        # Defensive: _search_by_sha256 may return {'ambiguous': ...} or an error string
+        # Defensive: SHA256 search may return {'ambiguous': ...} or an error string
         err_key = gl.json_data if not isinstance(gl.json_data, dict) else 'sha256_not_found'
         HTML = api_error_msg(err_key)
     else:
-        gl.json_data = insert_metadata(1)
+        gl.json_data = insert_metadata(current_page)
 
         metadata = gl.json_data['metadata']
-        hasNext = 'nextPage' in metadata
-        hasPrev = 'prevPage' in metadata
+        hasNext = metadata.get('nextPage') is not None
+        hasPrev = metadata.get('prevPage') is not None
 
         # Check for empty results when searching by User Name
         if use_search_term == 'User name' and (not gl.json_data.get('items') or len(gl.json_data['items']) == 0):
             HTML = api_error_msg('user_not_found')
         else:
             for item in gl.json_data['items']:
-                if len(item['modelVersions']) > 0:
+                if len(item.get('modelVersions', [])) > 0:
                     model_list.append(f"{item['name']} ({item['id']})")
 
-            max_page = max(gl.url_list.keys())
+            # For browser-source results, derive max page from metadata; legacy path uses gl.url_list.
+            if gl.url_list and any(isinstance(v, str) and v.startswith('browser_source://') for v in gl.url_list.values()):
+                max_page = max(metadata.get('totalPages', 1), current_page)
+            else:
+                max_page = max(gl.url_list.keys())
             HTML = model_list_html(gl.json_data, target=target)
 
     return (
@@ -1242,39 +1303,73 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
         gr.update(value=None)                                           # Model Filename
     )
 
-def prev_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count):
-    return next_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, isNext=False)
+def prev_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, source='CivitAI'):
+    return next_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, isNext=False, source=source)
 
-def next_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, isNext=True):
+def next_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, isNext=True, source='CivitAI'):
+    source_name = _source_display_to_name(source)
+    source_adapter = _get_browser_source(source_name)
 
-    current_inputs = (content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, nsfw, exact_search)
+    current_inputs = (content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, nsfw, exact_search, source_name)
     if current_inputs != gl.previous_inputs and gl.previous_inputs != None:
-        return initial_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count)
-
-    api_url = create_api_url(isNext=isNext)
-    gl.json_data = request_civit_api(api_url)
+        return initial_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, source=source)
 
     next_page = current_page
     model_list = []
     max_page = 1
     hasPrev, hasNext = False, False
 
+    target_page = current_page + 1 if isNext else current_page - 1
+    api_url = gl.url_list.get(next_page if isNext else current_page)
+
+    # Prefer the source adapter for all browser-source pagination.  The adapter
+    # will validate any cached page_url and either reuse it or rebuild from the
+    # search parameters when it doesn't match the requested target_page.
+    if source_name != 'civitai' or (api_url and api_url.startswith('browser_source://')):
+        gl.json_data = source_adapter.search(
+            query=search_term or '',
+            search_type=use_search_term,
+            content_type=content_type,
+            base_filter=base_filter,
+            sort=sort_type,
+            period=period_type,
+            nsfw=nsfw,
+            exact=exact_search,
+            page=target_page,
+            page_size=tile_count,
+            only_liked=only_liked,
+            page_url=api_url,
+        )
+    else:
+        # Legacy CivitAI pagination path (real CivitAI URLs still in url_list).
+        api_url = create_api_url(isNext=isNext)
+        gl.json_data = request_civit_api(api_url)
+
     if not isinstance(gl.json_data, dict):
         HTML = api_error_msg(gl.json_data)
     else:
-        next_page = current_page + 1 if isNext else current_page - 1
+        next_page = target_page
 
         gl.json_data = insert_metadata(next_page, api_url)
 
         metadata = gl.json_data['metadata']
-        hasNext = 'nextPage' in metadata
-        hasPrev = 'prevPage' in metadata
+        hasNext = metadata.get('nextPage') is not None
+        hasPrev = metadata.get('prevPage') is not None
+
+        # Cache the real CivitAI page URL for this page so future direct page
+        # jumps can reuse it when it matches the requested page number.
+        civitai_page_url = metadata.get('_civitaiPageUrl')
+        if civitai_page_url:
+            gl.url_list[next_page] = civitai_page_url
 
         for item in gl.json_data['items']:
-            if len(item['modelVersions']) > 0:
+            if len(item.get('modelVersions', [])) > 0:
                 model_list.append(f"{item['name']} ({item['id']})")
 
-        max_page = max(gl.url_list.keys())
+        if gl.url_list and any(isinstance(v, str) and v.startswith('browser_source://') for v in gl.url_list.values()):
+            max_page = max(metadata.get('totalPages', 1), next_page)
+        else:
+            max_page = max(gl.url_list.keys())
         HTML = model_list_html(gl.json_data)
 
     return (
@@ -1299,6 +1394,11 @@ def next_model_page(content_type, sort_type, period_type, use_search_term, searc
 
 def insert_metadata(page_nr, api_url=None):
     metadata = gl.json_data['metadata']
+
+    # Browser-source adapters already supply complete metadata with next/prev
+    # pages. Legacy CivitAI urls need to be recorded in gl.url_list.
+    if api_url and isinstance(api_url, str) and api_url.startswith('browser_source://'):
+        return gl.json_data
 
     if not metadata.get('prevPage', None) and page_nr > 1:
         metadata['prevPage'] = gl.url_list.get((page_nr - 1))

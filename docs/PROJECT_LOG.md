@@ -1,0 +1,726 @@
+# PROJECT_LOG
+
+## Escopo Atual (v0.9.0)
+
+- **Extension para Forge Neo** — Browse, download e organize modelos do CivitAI diretamente no WebUI com suporte a Gradio 4+
+- **Auto-organização inteligente** — Modelos organizados por base model (SDXL/, Pony/, FLUX/, Wan/, etc.) com backup/rollback automático e suporte a subpastas por subtipo Wan (I2V/T2V/TI2V)
+- **Download robusto com Aria2** — Queue persistente, hash validation, auto-reconnect e multi-connection
+- **Dashboard e estatísticas** — Análise de disco por categoria/arquitetura, top files, orphan detection, export CSV/JSON
+- **Curadoria de criadores** — Sistema de favoritos ⭐ e ban 🚫 com persistência em disco
+
+---
+
+## Estado Rápido
+
+**Stack:** Python 3.x + Gradio 4.40.0 + Forge Neo + Aria2 + JavaScript vanilla  
+**Features ativas:** Browse/Search, Download Queue, Auto-Organization, Update Detection, Dashboard, Creator Management, Local Models browser  
+**Status (main):** v0.9.0 — Estável (CivitAI Domain Support, Update Mode Isolation, Download Resilience)  
+**Status (branch `revamp`):** Beta-Revamp v0.1.0 — em desenvolvimento, não released. Aba Local Models self-contained (Update Models fundida), isolamento Browser↔Local, resiliência de fetch. Ver "Linha do Tempo — Branch `revamp`"  
+**Twin project:** sd-civitai-browser-ex (Gradio 3, A1111/Forge Classic) — mudanças específicas do Neo não devem migrar automaticamente
+
+---
+
+## Linha do Tempo
+
+### 2026-07-08 — Plano aprovado: Multi-Browser Neo (browser_sources)
+
+**O que mudou (pt-BR):** Decidido expandir o Browser para suportar múltiplas fontes de modelos. A nomenclatura interna muda de `civitai_source` para `browser_source`, preparando terreno para um futuro rename do app para `sd-multi-browser-neo`. A prioridade mandatória é **não quebrar o módulo existente**: todas as funções atuais (search, download, update, organize, dashboard, LoraDex) continuam funcionando exatamente como hoje, e as novas origens agregam informações por cima.
+
+**Estrutura planejada:**
+- `scripts/browser_sources/` — módulo de adapters:
+  - `base.py` → classe abstrata `BrowserSource`
+  - `registry.py` → `get_browser_source(name)`
+  - `normalizer.py` → converte payloads externos para formato canônico
+  - `civitai.py`, `civarchive.py`, `huggingface.py`, `arcenciel.py`, `modelscope.py`
+- Formato canônico mantém compatibilidade com o formato CivitAI já esperado por `model_list_html`, `selected_to_queue`, `save_model_info`, etc.
+- Novos campos no sidecar: `browserSource`, `browserSourceId`, `browserSourceVersionId`, `browserSourceUrl`, `browserSourceDownloadUrl`, `browserSourceSha256`, `browserMirrors`.
+- Settings novas usarão prefixo `browser_source_*`; settings antigas (`civitai_api_key`, etc.) permanecem inalteradas.
+- UI: dropdown **Source** na aba Browser (`CivitAI`, `CivArchive`, `Hugging Face`, `arcenciel.io`, `ModelScope`).
+
+**Fases de implementação aprovadas:**
+1. **Fase A — Fundação:** criar `browser_sources/`, mover CivitAI para adapter, adicionar dropdown Source, garantir que CivitAI continua funcionando.
+2. **Fase B — CivArchive:** search por ID/SHA256, download, fallback em Update Models para modelos deletados.
+3. **Fase C — Hugging Face:** search por texto, download direto, mapeamento de repo → tipo/base model.
+4. **Fase D — arcenciel.io:** metadados públicos, download via `externalDownloadUrl`, Link Key opcional.
+5. **Fase E — ModelScope:** search + filtro SD/LoRA, download via `/resolve/`.
+6. **Fase F — Cross-source:** comparação SHA-256, mirrors no sidecar, badges "available elsewhere".
+7. **Fase G — Rename futuro:** renomear repo/app para `sd-multi-browser-neo` (sem data definida).
+
+**Decisões:** O nome da aba e do repo permanecem "CivitAI Browser Neo" até a Fase G. Sidecars antigos continuam válidos; novos campos são adicionados sem remover os antigos (`modelId`, `modelVersionId`, etc.). A comparação cross-source será baseada em SHA-256.
+
+**Arquivos envolvidos (Fase A):** `scripts/browser_sources/*`, `scripts/civitai_api.py`, `scripts/civitai_gui.py`.
+
+---
+
+### 2026-07-08 — Fase A implementada: adapter CivitAI + dropdown Source
+
+**O que mudou (pt-BR):** Criada a fundação do Multi-Browser Neo. CivitAI foi refatorada para um adapter dentro de `scripts/browser_sources/`, e a aba Browser ganhou um dropdown **Source:** mantendo CivitAI como padrão. Todas as funções existentes continuam intactas; a nova camada apenas encapsula a origem da busca.
+
+**Arquivos criados:**
+- `scripts/browser_sources/__init__.py` — registra adapters built-in.
+- `scripts/browser_sources/base.py` — classe abstrata `BrowserSource` com contrato de search, fetch, download e normalização.
+- `scripts/browser_sources/registry.py` — `register_source`, `get_browser_source`, `source_choices`, `source_name_from_display`, `default_source`.
+- `scripts/browser_sources/normalizer.py` — `canonical_model`, `canonical_version`, `canonical_file`, `canonical_image`, `paginated_result`, `get_sha256`.
+- `scripts/browser_sources/civitai.py` — adapter `CivitAISource` que encapsula `create_api_url`, busca por SHA256, paginação e proveniência `browserSource*`.
+- `tests/test_browser_sources.py` — testes unitários isolados para o adapter CivitAI.
+
+**Arquivos alterados:**
+- `scripts/civitai_global.py` — adicionado `current_browser_source` ao estado global.
+- `scripts/civitai_api.py` — adicionados `_get_browser_source()` e `_source_display_to_name()`; `initial_model_page`, `next_model_page`, `prev_model_page` agora aceitam `source` e delegam para o adapter; `insert_metadata` é no-op para URLs `browser_source://`; paginação reconstrói URLs quando o cache não bate com a página solicitada.
+- `scripts/civitai_gui.py` — adicionado dropdown `source`, parâmetro `src` em `saveSettings`, `source` salvo/restaurado nos defaults, `source` incluído em `page_inputs`, `refresh_inputs`, `load_to_browser_inputs`; `_post_download_page_refresh` reconhece URLs `browser_source://`.
+- `scripts/civitai_file_manage.py` — `exit_update_mode` aceita o parâmetro `source` opcional para compatibilidade com `load_to_browser_inputs`.
+
+**Decisões técnicas:**
+- O adapter produz itens no formato canônico compatível com `model_list_html`, `update_model_versions`, `update_model_info` e `selected_to_queue`.
+- URLs `browser_source://{name}/page/{n}` são tokens opacos; o adapter as ignora e reconstrói a partir dos parâmetros quando necessário.
+- URLs reais do CivitAI são cacheadas em `gl.url_list` para saltos diretos de página, mas são validadas contra o número da página solicitada para evitar buscar a página errada.
+- O default do dropdown é CivitAI (`_browser_sources.source_choices()[0]`), garantindo comportamento idêntico para usuários existentes.
+
+**Testes:**
+- `python -m pytest tests/` → 91 passed (incluindo os 8 novos do adapter).
+- `python -m py_compile scripts/browser_sources/*.py scripts/civitai_api.py scripts/civitai_gui.py scripts/civitai_file_manage.py scripts/civitai_global.py` → sem erros de sintaxe.
+
+**Próximo passo:** Fase B — adapter CivArchive para fallback de modelos deletados.
+
+---
+
+### 2026-07-08 — Pesquisa de integração com plataformas de modelos gratuitas
+
+**O que mudou (pt-BR):** Levantamento e validação técnica de fontes alternativas de modelos/LoRAs com API/token gratuita para download real de arquivos. Quatro plataformas foram investigadas; duas já têm endpoints confirmados e duas precisam de mais mapeamento.
+
+**Plataformas validadas:**
+
+| Plataforma | API de metadados | Download de arquivo | Autenticação | Observações |
+|---|---|---|---|---|
+| **CivitAI** | `https://civitai.com/api/v1/...` | Redirect assinado via `downloadUrl` | Token gratuito `?token=` ou `Authorization: Bearer` | Já integrado; rate limits agressivos (HTTP 429). |
+| **CivArchive** | `GET https://civarchive.com/api/models/{id}`<br>`GET https://civarchive.com/api/sha256/{sha256}` | `GET https://civarchive.com/api/download/models/{version_id}?type=Model&format=SafeTensor` | Não identificada para leitura | Fallback para modelos deletados do CivitAI. |
+| **Hugging Face** | `GET https://huggingface.co/api/models?search=...` | `https://huggingface.co/{repo_id}/resolve/main/{filename}` | Leitura pública sem token; repos gated precisam de aceite + token | Mais estável; ideal como mirror primário. |
+| **arcenciel.io** | `GET https://arcenciel.io/api/models/classes`<br>`GET https://arcenciel.io/api/models/search?...`<br>`GET https://arcenciel.io/api/models/{id}`<br>`GET https://arcenciel.io/api/models/{id}/versions/{version_id}` | Via `externalDownloadUrl` (geralmente HuggingFace) ou possivelmente `https://arcenciel.io/models/{filePath}` | Metadados públicos; download/fila precisa de **Link Key** (`lk_...`) ou API key legada no header `x-link-key` / `x-api-key` | Comunidade ativa de anime/NoobAI; extensão ComfyUI oficial. Base do Link: `https://link.arcenciel.io/api/link`. |
+| **ModelScope** | `GET https://www.modelscope.cn/openapi/v1/models?search=...`<br>`GET https://www.modelscope.cn/openapi/v1/models/{owner}/{name}`<br>`GET https://www.modelscope.cn/api/v1/models/{owner}/{name}/repo/files?Revision=...` | `https://www.modelscope.cn/models/{owner}/{name}/resolve/{revision}/{file_path}` | Leitura pública sem token; token para repos privados/gated | Chinês, mas CORS aberto; bom para modelos Qwen/Wan/FLUX. |
+
+**Plataformas descartadas:**
+- **Liblib.art**: API só no plano Pro (pagamento chinês).
+- **Tensor.Art, SeaArt, PixAI**: plataformas de geração online, não repositórios de download de arquivo.
+
+**Decisões:** A próxima fase de integração deve priorizar **Hugging Face** (mais simples e estável) e **CivArchive** (fallback deletados) como primeiros conectores. **arcenciel.io** e **ModelScope** vêm depois, pois exigem UI de configuração de token/Link Key e mapeamento de tipos de modelo. Nenhum código de integração foi escrito nesta etapa — apenas levantamento e requisições de validação.
+
+**Arquivos alterados:** `docs/PROJECT_LOG.md`.
+**Pontos sensíveis:** Os endpoints foram testados em 2026-07-08; APIs de terceiros podem mudar. O download do arcenciel.io sem Link Key ainda não foi confirmado; a URL `externalDownloadUrl` aponta para HuggingFace, o que pode ser usado como fallback. ModelScope retorna 404 no endpoint legacy `/api/v1/models/{id}/repo?FilePath=...` sem autenticação, mas o endpoint `/resolve/` funciona publicamente.
+
+---
+
+### 2026-07-08 — Organization modular: base model + categoria de LoRA
+
+**O que mudou (pt-BR):** A aba **Organization** ganhou dois toggles independentes acima dos botões de organização:
+- **Organize by base model** (default: valor da setting `civitai_neo_auto_organize`)
+- **Organize LoRAs by category** (default: valor da setting `civitai_neo_lora_category_sort`)
+
+O usuário pode agora escolher organizar apenas por base, apenas por categoria, ou ambos. A hierarquia é sempre **Base > Category**. Exemplos para a pasta `Lora/`:
+- Só base: `Lora/Anima/`
+- Só categoria: `Lora/Character/`
+- Ambos: `Lora/Anima/Character/`
+
+A função `analyze_organization_plan()` foi reescrita para computar o `target_suffix` a partir dos flags selecionados, detectando também cenários de reorganização (ex.: mover de `Lora/Character/` para `Lora/Anima/Character/` quando o usuário muda de "só categoria" para "base + categoria"). `validate_organization()` e `fix_misplaced_files()` também passaram a receber os mesmos flags. A categoria é calculada com a heurística completa (tags + descrição + nome do arquivo/nome CivitAI), respeitando categoria manual salva no sidecar.
+
+**Arquivos alterados:** `scripts/civitai_gui.py`, `scripts/civitai_file_manage.py`.
+**Decisões:** Os toggles da UI refletem as settings de download automático, mas são inputs independentes da operação manual — o usuário pode organizar manualmente de forma diferente do download automático sem alterar as settings. Non-LoRAs ignoram a categoria. Se ambos os toggles estiverem OFF, a operação mostra um aviso e não move nada.
+**Pontos sensíveis:** Reorganizações em larga escala (ex.: de `Lora/<categoria>/` para `Lora/<base>/<categoria>/`) podem mover muitos arquivos; o backup/rollback continua funcionando normalmente. Modelos sem base model detectado e com base ON caem em `Other`; com base OFF e categoria ON, vão diretamente para `Lora/<categoria>/`.
+**Commit:** `4b76906` — branch `revamp`.
+
+### 2026-07-08 — LoraDex: nome/versão CivitAI, CSS corrigido, auto-sugestão e categoria Slider
+
+**O que mudou (pt-BR):** Quatro melhorias na aba **LoraDex**:
+1. **CSS corrigido:** o HTML da lista agora é envolvido com `_wrap_html_with_css()`, então o grid/table do LoraDex é renderizado corretamente (mini-thumbnail, linhas separadas, colunas alinhadas) em vez de imagens gigantes empilhadas.
+2. **Nome e versão corretos:** em vez de exibir o nome do arquivo no disco, o LoraDex agora mostra o nome do modelo da CivitAI (`model.name` do `.api_info.json`) e o nome da versão instalada (`name` do `.api_info.json`). Fallback para nome do arquivo apenas quando o sidecar não existe.
+3. **Auto-sugestão de categoria:** a heurística de categorização agora também usa a **descrição** do modelo como fallback quando as tags não batem. No LoraDex, se não houver categoria manual salva (`Auto`) e a heurística encontrar uma categoria, o dropdown já abre pré-selecionado com a sugestão e a linha é sinalizada com borda azul e badge 🤖. O usuário pode aplicar, alterar ou ignorar cada sugestão.
+4. **Nova categoria Slider:** adicionada categoria `Slider` para LoRAs que aumentam/diminuem uma característica. A heurística detecta keywords como `slider`, `increase`, `decrease`, `boost`, `reduce`, `more`, `less`, etc. e também padrões semânticos fortes como `"X slider"`, `"slider for X"`, `"increase X"`, `"more X"`, `"X adjuster"`. A semântica Slider tem prioridade sobre o matching genérico de keywords, então um "breast slider" vira Slider em vez de Clothing.
+5. **Coluna Filename + colunas base/version reduzidas:** a tabela do LoraDex ganhou uma coluna **Filename** (o nome exibido nos cards do Extra Networks) logo após o thumbnail; as colunas Base model e Version foram estreitadas para economizar espaço.
+
+**Arquivos alterados:** `scripts/civitai_file_manage.py`, `style_html.css`, `style.css`.
+**Decisões:** `categorize_lora_by_tags()` ganhou parâmetros `description` e `name_hints`, além de uma pré-verificação de semântica Slider. A sugestão só aparece quando `saved_category == 'Auto'`; categorias manuais nunca são sobrescritas. As sugestões entram no estado "pending" (amarelo) junto com alterações manuais, mas têm classe/CSS distinta `loradex-suggested` para indicar origem automática.
+**Pontos sensíveis:** Match por descrição/nome é substring case-insensitive, então pode haver raros falsos positivos; tags ainda têm prioridade (exceto pela semântica Slider, que é pré-verificada). Modelos sem `.api_info.json` continuam com nome de arquivo e versão vazia, mas ainda podem ser categorizados manualmente.
+**Commits:** `ca8cd73` (CSS), `b012ea9` (nome/versão), `2161cd6` (auto-sugestão), `cfda816` (Slider), `9f627b5` (filename/model-name hints), `6b04c85` (coluna filename + colunas reduzidas) — branch `revamp`.
+
+### 2026-07-08 — Fallback de `modelTags` no `.json` sidecar
+
+**O que mudou (pt-BR):** O sidecar `.api_info.json` retornado pelo endpoint `/model-versions/by-hash` da CivitAI **não contém tags do nível do modelo**. Para não depender só dele, `find_and_save()` passou a persistir as `modelTags` (tags do nível do modelo) também no `.json` sidecar durante o download e durante **"Update model info & tags"** (tanto com overwrite ON quanto OFF — no OFF só adiciona se a chave ainda não existir). Com isso, três fluxos passam a usar `modelTags` do `.json` como fallback quando não há tags no `.api_info.json`/API:
+1. **Organização em lote** (`get_model_info_for_organization` → `analyze_organization_plan`).
+2. **LoraDex** (`_lora_dex_tags`).
+3. **Download/update de LoRAs** (`selected_to_queue` lê `modelTags` do sidecar do arquivo instalado existente quando `version.tags` vem vazio).
+
+**Arquivos alterados:** `scripts/civitai_file_manage.py`, `scripts/civitai_download.py`.
+**Decisões:** Nova helper `_read_model_tags_from_sidecar(file_path)` centraliza a leitura. Tags manuais/categoria manual continuam tendo prioridade sobre a heurística. Se a API/resposta perder tags no futuro, o sidecar preserva o último valor conhecido.
+**Pontos sensíveis:** Apenas o `.json` sidecar passa a crescer ligeiramente (uma lista de strings). A heurística de categoria de LoRA continua a mesma; o fallback só aumenta a chance de acerto para modelos já instalados ou atualizados.
+**Commit:** `310d720` — `feat(python): fallback modelTags from .json sidecar for LoraDex, org and update` (branch `revamp`).
+
+### 2026-07-07 — LoraDex: gerenciador manual de categorias de LoRA
+
+**O que mudou (pt-BR):** Adicionada a sub-aba **LoraDex** dentro de **Local Models** (ao lado do *Local Models Browser*). É uma lista vertical paginada que permite ao usuário revisar e ajustar manualmente a categoria de cada LoRA instalada. Cada linha exibe mini-thumbnail (com zoom no hover), nome, base model, versão e um dropdown de categoria; alterações ficam pendentes (destaque amarelo) até serem aplicadas individualmente ou em lote. As categorias manuais são persistidas no `.json` sidecar (`loraCategory`) e têm prioridade sobre a heurística de tags tanto no download quanto na organização em lote.
+**Arquivos alterados:** `scripts/civitai_global.py`, `scripts/civitai_gui.py`, `scripts/civitai_file_manage.py`, `scripts/civitai_download.py`, `javascript/civitai-html.js`, `style_html.css`.
+**Decisões:** A aba *Local Models* foi convertida em `gr.Tabs` com duas sub-abas (`Local Models Browser` e `LoraDex`). O backend escaneia apenas a pasta `Lora`, lê metadados dos sidecars `.api_info.json`/`.json` e renderiza HTML customizado com paginação própria. `categorize_lora_by_tags()` agora aceita `manual_category`; `get_model_info_for_organization()` retorna a categoria manual; `analyze_organization_plan()` e `selected_to_queue()` a usam para decidir a subpasta. Categorias suportadas no dropdown: `Auto`, `Character`, `Style`, `Clothing`, `Concept`, `Pose`, `Background`, `Utility`, `None`. `Auto` remove a chave do sidecar; `None` grava `null`; demais gravam a string.
+**Pontos sensíveis:** LoRAs sem `.api_info.json` exibem base model/versão como `Unknown`/vazio, mas ainda podem ser categorizados manualmente. O preview usa `file://` via URL relativa `file/<path>` do Gradio. Aplicação em lote re-renderiza a página atual mantendo filtros.
+
+### 2026-07-07 — Fix `download_finish` crash on empty Update-selected queue
+
+**O que mudou (pt-BR):** Corrigido `TypeError` em `scripts/civitai_download.py:752` quando `gl.last_version` era `None` no callback `download_finish`. O erro ocorria ao usar **Update selected** no painel Local Models sem nenhum card marcado (ou quando o trigger disparava antes de a fila ser populada), enquanto **Update to latest** não apresentava o problema porque sempre carregava `gl.update_items`.
+**Arquivos alterados:** `scripts/civitai_download.py`.
+**Decisões:** Substituída a concatenação direta `gl.last_version + " [Installed]"` por uma guarda que só marca a versão como instalada quando `last_version` existe. Se for `None`, o fluxo segue normalmente sem marcar o botão Delete.
+**Pontos sensíveis:** O fix é puramente defensivo; o comportamento correto do botão **Update selected** continua exigindo que o usuário marque os checkboxes dos cards desatualizados.
+**Commit:** `0de650b fix(python): guard last_version None in download_finish` (branch `revamp`).
+
+### 2026-07-07 — Preview JPEG format + Aria2 HTTP 429 retry/backoff
+
+**O que mudou (pt-BR):** Adicionadas duas melhorias de resiliência/economia inspiradas no `SiliconeShojo/models-info`:
+1. **Preview JPEG:** novas settings `preview_format` (PNG/JPEG, default PNG) e `preview_jpeg_quality` (50–100, default 90). Quando JPEG está ativo, previews principais (`<model>.preview.jpg`) e imagens da galeria (`<model>_N.jpg`) são salvas em JPEG com qualidade configurável, reduzindo espaço em disco. PNG permanece o default para preservar comportamento atual e transparência.
+2. **Retry/backoff no Aria2 para HTTP 429:** `download_file` agora detecta quando o Aria2 reporta `errorCode=29` com mensagem contendo `429`/`Too Many Requests`. Nesse caso, remove o download atual, espera um backoff exponencial (máx 60s) e re-adiciona com um link de download fresco obtido via `get_download_link`. Máximo de 5 retries; outros erros mantêm falha imediata.
+**Arquivos alterados:** `scripts/civitai_gui.py`, `scripts/civitai_file_manage.py`, `scripts/civitai_download.py`.
+**Decisões:** `_resize_image_bytes` passou a aceitar `fmt` e `quality`, e `target_size=None` para re-encode sem redimensionar. `save_preview` e `save_images` passaram a usar a extensão correta e a converter RGB para JPEG. Ao salvar no novo formato, o preview/galeria antigo na extensão contrária é removido (`send2trash` com fallback `os.remove`) para evitar duplicatas quando a setting é alterada e o usuário roda "Update model info & tags" com overwrite. O delete/move de arquivos associados já procurava pelo stem `.preview`, então `.preview.jpg` continua sendo tratado corretamente.
+**Pontos sensíveis:** O formato PNG continua sendo o padrão; usuários precisam alterar explicitamente a setting para JPEG. O retry de 429 depende de `get_download_link` conseguir renovar o link assinado — se a CivitAI mantiver o rate limit no endpoint de redirecionamento, o retry pode falhar.
+
+### 2026-07-07 — LoRA category subfolders by tags
+
+**O que mudou (pt-BR):** Adicionada organização automática de LoRAs em subpastas por categoria de uso baseada nas tags do modelo. Nova setting `civitai_neo_lora_category_sort` (default OFF) nas settings de Model Organization. Quando ativada junto com `civitai_neo_auto_organize`, LoRAs são organizadas em `Lora/<base>/<categoria>/` (ex.: `Lora/SDXL/Style/`, `Lora/Pony/Character/`). Categorias suportadas: Character, Style, Clothing, Concept, Pose, Background, Utility. Funciona tanto no download de novos modelos quanto na operação em lote **Update Models → Organize/Validate**.
+**Arquivos alterados:** `scripts/civitai_gui.py`, `scripts/civitai_file_manage.py`, `scripts/civitai_download.py`.
+**Decisões:** `get_model_info_for_organization()` passou a retornar também as tags do `.api_info.json`. A heurística de match é por substring case-insensitive nas tags, com a primeira categoria que der match vencendo. Apenas LoRAs são afetados; Checkpoints e outros tipos mantêm o comportamento atual. A validação de organização reutiliza `analyze_organization_plan`, então já reconhece paths `base/category` como corretos.
+**Pontos sensíveis:** Modelos sem tags ou sem `.api_info.json` ficam diretamente em `Lora/<base>/`. A precisão depende das tags declaradas no CivitAI, que nem sempre são consistentes.
+
+### 2026-04-17 — Prefer Latest Installed Card Status
+
+**O que mudou (pt-BR):** Ajustada a lógica de borda dos cards para priorizar a versão mais nova já instalada do mesmo modelo, evitando que modelos permaneçam laranja quando a versão atual também está presente localmente.
+**Arquivos alterados:** `scripts/civitai_api.py`.
+**Decisões:** O status de card agora considera a presença de uma versão instalada atual como dominante; versões antigas no mesmo modelo não forçam mais o card para outdated quando a versão mais nova também está instalada.
+**Pontos sensíveis:** A regra continua distinguindo modelos realmente desatualizados, mas não penaliza coleções que mantêm múltiplas versões instaladas do mesmo modelo.
+
+### 2026-04-17 — Restore realtime Browser card updates
+
+**O que mudou (pt-BR):** Corrigido o fluxo de atualização visual em tempo real dos cards no Browser após download/delete, com identificação estável por model_id e reaplicação automática do filtro de esconder instalados.
+**Arquivos alterados:** `scripts/civitai_api.py`, `javascript/civitai-html.js`.
+**Decisões:** Removido o acoplamento frágil ao texto do `onclick` para localizar cards; o estado do card agora é atualizado preservando outras classes visuais e reaplicando o hide-installed sem exigir novo refresh da busca.
+**Pontos sensíveis:** Cards já renderizados antes da mudança continuam com fallback por `onclick`, mas novos renders usam `data-model-id` como fonte principal.
+
+### 2026-03-13 — Trigger Words Group Preservation on Update Models
+
+**O que mudou (pt-BR):** Ajustado o fluxo de "Update model info & tags" para preservar grupos de trigger words no mesmo formato do CivitAI. O sidecar agora salva `activation text groups` (lista por grupo) além do campo legado `activation text` consolidado.
+**Arquivos alterados:** `scripts/civitai_api.py`, `scripts/civitai_file_manage.py`.
+**Decisões:** O lookup local no painel passou a priorizar apenas o campo agrupado para evitar achatamento por split em vírgulas; fallback legado permanece opcional para cenários de compatibilidade.
+**Pontos sensíveis:** Sidecars antigos sem `activation text groups` continuam dependentes da API para renderização em grupos até serem atualizados via "Update model info & tags".
+
+### 2026-03-12 — Trigger Word Consolidation
+
+**O que mudou (pt-BR):** Implementada consolidação de trigger words a partir de três fontes: metadata embutida em `.safetensors`, campo local `'activation text'` do `.json` sidecar e `trainedWords` da API. A exibição no painel usa lista unificada e sem duplicatas, mantendo fallback para API quando não existe cache local.
+**Arquivos alterados:** `scripts/civitai_file_manage.py`, `scripts/civitai_api.py`.
+**Decisões:** Parsing de metadata `.safetensors` feito via leitura do header (sem carregar tensores em memória); deduplicação case-insensitive preservando ordem de primeira ocorrência; lookup local do `.json` com fallback recursivo para suportar subpastas de organização (ex.: `Wan/I2V`).
+**Pontos sensíveis:** Busca recursiva de `.json` pode crescer em custo em coleções muito grandes; cache local pode ficar desatualizado em relação à API até novo save/scan.
+
+### 2026-03-10 — v0.7.4: Wan I2V/T2V Differentiation
+
+**Contexto:** A API do CivitAI já retorna valores distintos de `baseModel` para subtypes Wan (`Wan Video 14B i2v 480p`, `Wan Video 2.2 T2V-A14B`, etc.). Aproveitamos isso para diferenciar visualmente nos cards e opcionalmente nas pastas.
+
+#### Mudanças
+- **`scripts/civitai_api.py`:** `BASE_MODEL_SHORT` mapeado para `'T2V'`, `'I2V'`, `'TI2V'` em vez de `'Wan'` genérico. Adicionados também `Flux.2 Klein` e `Flux.2 D` → `'F2'` (antes caía no fallback `'flux'` → `'F1'`, incorreto).
+- **`scripts/civitai_file_manage.py`:** `normalize_base_model()` agora suporta opt-in de subpastas Wan por tipo. Check de "já organizado" corrigido para funcionar com caminhos multi-nível (`Wan/I2V`).
+- **`scripts/civitai_gui.py`:** Nova setting `civitai_neo_wan_subfolder_by_type` (OFF por padrão) — quando ativa, organiza Wan em `Wan/I2V/`, `Wan/T2V/`, `Wan/TI2V/`.
+
+#### Basemodels Wan confirmados na API
+- `Wan Video 1.3B t2v` → T2V
+- `Wan Video 14B t2v` → T2V
+- `Wan Video 14B i2v 480p` → I2V
+- `Wan Video 14B i2v 720p` → I2V
+- `Wan Video 2.2 T2V-A14B` → T2V
+- `Wan Video 2.2 I2V-A14B` → I2V
+- `Wan Video 2.2 TI2V-5B` → TI2V
+
+#### Commits
+- `45e1200` feat: differentiate Wan I2V/T2V in base model short badges
+- `01c07b9` feat: optional Wan I2V/T2V/TI2V subfolder organization
+- `313775f` feat: add Flux.2 Klein / Flux.2 D base model short badges [NEO-ONLY]
+
+**Contexto:** Criação dos arquivos de contexto para orientar agentes AI e humanos no desenvolvimento do projeto.
+
+#### Arquivos Principais Mapeados
+- **Backend Python:**
+  - `scripts/civitai_gui.py` (2074 linhas) — Interface Gradio, callbacks, settings
+  - `scripts/civitai_api.py` (2059 linhas) — Client CivitAI API, geração HTML, validação
+  - `scripts/civitai_download.py` (1279 linhas) — Aria2 RPC, queue manager, hash check
+  - `scripts/civitai_file_manage.py` (4058 linhas) — File ops, organização, dashboard, creator mgmt
+  - `scripts/civitai_global.py` (70 linhas) — Estado global compartilhado (anti-pattern legacy)
+  - `scripts/download_log.py` (173 linhas) — Persistência JSONL da queue
+
+- **Frontend:**
+  - `javascript/civitai-html.js` (1806 linhas) — Card interaction, tile sizing, UI dynamics
+  - `style_html.css` + `style.css` — Estilos customizados
+
+- **Infra:**
+  - `install.py` — Hook do Forge para instalar dependencies
+  - `aria2/` — Binários Win/Linux do Aria2
+
+#### Features Confirmadas (README ↔ Código)
+- ✅ Browse & Search com filtros avançados (base model, content type, period, sort)
+- ✅ Download queue com Aria2 (multi-connection, cancel, progress)
+- ✅ Queue persistence via `download_log.py` → `neo_download_queue.jsonl`
+- ✅ SHA256 hash validation pós-download
+- ✅ Auto-organization com backup (últimos 5 em `civitai_organization_backups.json`)
+- ✅ Update detection (orange borders) com batch update
+- ✅ Dashboard com breakdown por categoria/arquitetura, top 10 files/categories, orphan scan
+- ✅ Creator management (favorite/ban) com persistência em `favoriteCreators.txt` / `bannedCreators.txt`
+- ✅ Model info overlay com "Send to txt2img", LoRA syntax insertion
+- ✅ Forge Neo folder compatibility (embeddings auto-detect, upscaler fallback)
+- ✅ Smart version selection (respeita filtro de base model ativo)
+
+#### Decisões Arquiteturais
+1. **Estado Global (`gl.init()`):** Variáveis globais compartilhadas entre módulos (legacy design, não thread-safe)
+   - `download_queue`, `json_data`, `json_info`, `recent_model`, etc.
+   - Threading: `_not_downloading` event para sincronização de downloads
+   - **Não refatorar sem planejamento:** usado em toda a codebase
+
+2. **Aria2 RPC Lifecycle:** Start automático no import de `civitai_download.py`
+   - Port 24000, secret `R7T5P2Q9K6`
+   - Auto-reconnect se crashar durante sessão
+   - Tracking file: `aria2/running`
+
+3. **Filesystem Safety:**
+   - Delete via `send2trash()` (recycle bin)
+   - Sanitização de filename (illegal chars, max length)
+   - Associated files (`.json`, `.png`, `.txt`) movem junto com model
+
+4. **Queue Persistence (v0.6.2+):**
+   - JSONL format em `config_states/neo_download_queue.jsonl`
+   - Estados: `queued → downloading → completed/cancelled/failed/dismissed`
+   - Restore banner aparece se houver entradas `queued` órfãs após disconnect
+
+5. **Gradio 4+ Breaking Changes:**
+   - APIs diferentes do Gradio 3 (usadas em sd-civitai-browser-ex)
+   - Settings persistence via `elem_id` matching no `ui_config_file`
+   - `gr.update()` syntax específica do Gradio 4
+
+6. **Forge Neo vs. Classic Folder Differences:**
+   - Embeddings: `models/embeddings/` (Neo) vs. `embeddings/` (Classic)
+   - Upscalers: `models/ESRGAN/` (Neo unifica tudo) vs. subfolders separados (Classic)
+   - Auto-detection implementada em `civitai_file_manage.py`
+
+#### Pontos Sensíveis
+- **Update detection sensível:** Comentário em `civitai_api.py:472` — "Sensitive check for updates by `name_match`... It is possible that an outdated version of the model will not be marked as outdated"
+  - Comparação por nome pode falhar em edge cases
+  - Considerar melhorar lógica de matching no futuro
+
+- **NSFW check impreciso:** Comentário em `civitai_api.py:113` — "This nsfwlevel system is not accurate..."
+  - Depende da metadata da CivitAI (não 100% confiável)
+  - Fallback: check primeira imagem do model
+
+- **Folder resolver None:** Debug print em `civitai_api.py:254` — "Warning: Folder resolver returned None for content_type"
+  - Pode acontecer com content types desconhecidos
+  - Fallback: pasta "Other" ou erro
+
+- **Threading não totalmente thread-safe:**
+  - `gl.download_queue` modificado por callbacks Gradio sem lock explícito
+  - `_not_downloading` event protege apenas cancelamento/cleanup
+  - Não observado bugs críticos, mas não ideal para concorrência pesada
+
+---
+
+### 2026-03-05 — Bugfix + Feature: Melhorias de Download de Wildcards
+
+#### Bug Corrigido: IndentationError em `civitai_file_manage.py`
+- **Root cause:** `if sha in installed_hashes:` não tinha corpo — `installed_versions.append()` estava no mesmo nível de indentação do `if`, e havia um `continue` solto abaixo
+- **Fix:** Corrigida indentação com 4 espaços + substituído `continue` por `break`
+- **Commit:** `680de02` — afetava apenas NEO (EX usa `installed_map`/`installed_all`, implementação diferente)
+
+#### Feature: Melhorias no Download de Wildcards (`cfe322b` NEO / `b28f9bd` EX)
+Três mudanças implementadas nos dois repositórios:
+
+1. **Skip de imagens para Wildcards** — `save_preview` e `save_images` ignorados quando o `content_type` do item é `'Wildcards'`. Wildcards não têm localização útil para previews.
+
+2. **Pasta própria por wildcard** (padrão: ON) — Cada wildcard é salvo em um subdiretório com o nome do modelo (ex: `wildcards/emotion-pack/emotion-pack.txt`). Compatível com o `__subfolder/name__` syntax do sd-dynamic-prompts.
+   - Novo setting: `civitai_neo_wildcard_own_folder` (default=True)
+
+3. **Organização por base model opcional** (padrão: OFF) — A separação por base model (`auto_organize`) que se aplicava a todos os tipos agora é opt-in para wildcards, porque wildcards são geralmente agnósticos à arquitetura.
+   - Novo setting: `civitai_neo_wildcard_organize_by_base` (default=False)
+
+#### Arquivos Alterados
+- `scripts/civitai_download.py` (NEO + EX): `selected_to_queue()` + bloco pós-download
+- `scripts/civitai_gui.py` (NEO + EX): 2 novos settings na seção Model Organization
+
+---
+
+## Backlog
+
+### 🐛 Bugs Conhecidos
+- [ ] **Update detection:** Lógica de `name_match` pode não marcar alguns outdated models (ver `civitai_api.py:472`)
+- [ ] **NSFW check:** Sistema de `nsfwLevel` não é 100% preciso (depende da metadata inconsistente da CivitAI)
+
+### 🔧 Technical Debt
+- [ ] **Estado global:** Refatorar `gl.init()` para classe/contexto thread-safe (breaking change, planejar cuidadosamente)
+- [ ] **Threading:** Adicionar locks explícitos em `download_queue` mutations
+- [ ] **Error handling:** Padronizar tratamento de exceções (atualmente mix de try/except com prints)
+- [ ] **Type hints:** Adicionar type annotations (código legacy sem tipos)
+
+### ✨ Features Planejadas (Roadmap)
+
+#### v0.8.0 — Advanced Curation *(próxima)*
+- [ ] Saved search presets (salvar combinações de filtros)
+- [ ] Favorites in creator/user search
+- [ ] Additional browser QoL improvements
+
+#### v1.0.0 — First Stable Release
+- [ ] Resolver todos os bugs conhecidos
+- [ ] Full Forge Neo compatibility guarantee
+- [ ] Performance optimization (lazy loading de cards?)
+- [ ] Automated tests (atualmente zero cobertura)
+
+### 📝 Melhorias Futuras (Não Priorizadas)
+- [ ] **Dashboard:** Gráficos interativos (Plotly/Chart.js?)
+- [ ] **Search:** Autocomplete nos filtros
+- [ ] **Download:** Torrent support como alternativa ao Aria2
+- [ ] **Organization por Tag** *(design validado, 2026-03-06)*
+  - **Fase 1:** Salvar `tags` e `user_tags` no `.json` sidecar durante `find_and_save` (requer segundo request a `/models/{id}`); tornar tags no painel editáveis para atribuição manual
+  - **Fase 2:** Aba Manage: usuário escolhe tags "âncora" → modelos com aquela tag vão para `<tipo>/tag_nome/`; convive com organização por base model
+  - Bloqueio: `/model-versions/by-hash` não retorna tags; precisa de request extra ao `modelId`
+- [ ] **Organization:** Outras regras customizáveis (além de base model e tag)
+- [ ] **API:** Rate limit handling mais sofisticado
+- [ ] **UI:** Dark mode toggle (atualmente depende do WebUI theme)
+- [ ] **I18n:** Suporte a idiomas (atualmente inglês/português misturados)
+
+### 🧪 Investigações
+- [ ] **Performance:** Profile `civitai_api.py` HTML generation (2k+ linhas, pode ser lento?)
+- [ ] **Memory:** `gl.json_data` cresce indefinidamente? (leak potencial em sessões longas)
+- [ ] **Aria2:** Testar limites de queue size (atualmente sem limite)
+
+---
+
+## Notas de Manutenção
+
+### Ao Adicionar Features
+1. Verificar se é compatível com Gradio 4+ (se não, marcar como Neo-only)
+2. Se tocar filesystem: adicionar backup/rollback
+3. Se tocar download: atualizar `download_log.py` states se necessário
+4. Atualizar README.md (Changelog + Features)
+5. Adicionar entrada neste PROJECT_LOG.md
+6. Se mudar arquitetura/invariantes: atualizar AGENTS.local.md
+
+### Ao Fazer Bugfix
+1. Documentar root cause
+2. Adicionar entrada datada neste log
+3. Se crítico: mencionar no README Changelog
+4. Considerar adicionar test case (quando/se framework de testes for implementado)
+
+### Twin Project Sync (NEO ↔ EX)
+- **Regra geral:** NEO é upstream, EX recebe features quando compatíveis
+- **Projeto EX:** `C:\Users\Eduardo\OneDrive\Documentos\GitHub\sd-civitai-browser-ex`
+  - Target: A1111, Forge Classic (Gradio 3.15+)
+  - Versão atual: v0.2.0-ex (baseada no Neo v0.7.0)
+  - Repo: https://github.com/eduardoabreu81/sd-civitai-browser-ex
+- **Gradio 4+ features:** NÃO portar para EX
+- **Forge Neo folder logic:** NÃO portar para EX (tem próprio fallback)
+- **Bugfixes genéricos:** PORTAR para EX (API logic, file ops, etc.)
+- **Comunicação:** Marcar PRs/commits com `[NEO-ONLY]` ou `[SYNC-TO-EX]`
+- **Comunicação:** Marcar PRs/commits com `[NEO-ONLY]` ou `[SYNC-TO-EX]`
+
+### Regras de Documentação
+
+> **What's New (apenas a família da minor atual):** A seção "What's New" mantém as entradas da família da minor atual vX.Y.* inteira (ex: se estamos em v0.6.1, ficam v0.6.1 e v0.6.0 no What's New; se estamos em v0.4.0-ex, fica apenas v0.4.0-ex). Versões de famílias anteriores (ex: v0.5.x) pertencem exclusivamente ao Changelog.
+
+---
+
+**Última atualização:** 2026-05-09 (v0.9.0 major update consolidated)
+
+---
+
+### 2026-04-20 a 2026-05-09 — v0.9.0 Major Update: CivitAI Domain Support, Update Mode Isolation & Download Resilience
+
+**O que mudou (pt-BR):** Major update consolidando múltiplas melhorias críticas desenvolvidas entre Abril e Maio de 2026. Como não houve release intermediário no CivitAI, toda a família de mudanças foi unificada em v0.9.0.
+
+**1. CivitAI Domain Support**
+- Suporte a domínios `civitai.com` (SFW) e `civitai.red` (completo).
+- Setting `civitai_sfw_only` para restringir a `civitai.com`.
+- Todas as URLs dinâmicas (API, links HTML, Referer) passaram a usar `get_civitai_domain()`.
+- Parser de direct-link atualizado para aceitar ambos os domínios.
+- Links smart em previews apontando para domínio correto.
+
+**2. Update Mode Isolation & SHA256 Safety**
+- Isolamento de estado do Update Mode — filtros do Browser não interferem mais quando Update Mode está ativo.
+- `gl.update_mode` e `gl.update_items` inicializados em `gl.init()` para prevenir `AttributeError`.
+- Detecção de SHA256 ambíguo — consulta ambos os domínios (`.com` e `.red`) quando a API retorna múltiplos modelos para um hash.
+- Recheck de SHA256 em caso de mismatch — re-consulta a API via `version_id` para detectar silent-updates do autor.
+- Busca por SHA256 defensiva: trata respostas em lista, campos ausentes, valida formato do hash.
+
+**3. Exact Search Fix**
+- Exact search restrito a "Model name" — CivitAI API não suporta quoted search para Tag ou User name.
+
+**4. Batch Download Resilience**
+- Loop interno (`while gl.download_queue:`) eliminando gaps entre itens na fila batch.
+- Timeout 30s + retry automático (até 3×) para falhas de rede/timeout.
+- Buffer SHA256 aumentado de 1MB para 8MB.
+- Banner de restore inclui itens `failed` além de `queued`/`downloading`.
+
+**5. Update List Sort & Re-trigger Fix**
+- Lista de outdated ordenada por mtime (mais recente primeiro).
+- Guarda contra re-trigger duplo no `queue_trigger`.
+
+**6. Documentação Interna**
+- Regras de sincronização Neo↔EX documentadas em `AGENTS.md` e `.github/copilot-instructions.md`.
+- AGENTS.md protegido em todos os 7 repos (adicionado ao `.gitignore`).
+
+**Arquivos alterados:** `scripts/civitai_api.py`, `scripts/civitai_download.py`, `scripts/civitai_file_manage.py`, `scripts/civitai_gui.py`, `scripts/civitai_global.py`, `scripts/download_log.py`, `javascript/civitai-html.js`, `README.md`, `.gitignore`
+
+**Decisões:**
+- Todas as mudanças da família 0.9.x foram unificadas em v0.9.0 pois não houve release pública intermediária.
+- A regra de versionamento interno (bump Z para bugfix) foi usada durante o desenvolvimento, mas para fins de release pública consideramos tudo como v0.9.0.
+
+**Pontos sensíveis:**
+- Lógica de ambiguidade consulta ambos os domínios, dobrando requisições em casos raros.
+- Silent-update detection depende do `version_id` estar presente no item da fila.
+- Mudança de domínio em tempo real requer reload da UI para atualizar todos os links cached.
+
+**Próximos passos / Next steps:**
+- Responder e fechar issue #2 no GitHub (EX).
+- Verificar se há outras issues abertas no EX para triagem.
+- Planejar próxima feature para Neo (possivelmente melhorias no Dashboard ou Organizer).
+
+### 2026-03-13 — API Request Resilience
+
+**O que mudou (pt-BR):** Implementado *exponential backoff* (retentativas com espera progressiva) para erros de servidor do CivitAI (HTTP 500, 502, 503, 504) na função `request_civit_api`.
+**Arquivos alterados:** `scripts/civitai_api.py`
+**Decisões:** O update/scan não deve falhar no primeiro erro transitório; agora realiza até 3 tentativas com espera progressiva.
+**Pontos sensíveis:** Em indisponibilidade prolongada da API, o fluxo ainda pode pular itens após o limite de tentativas.
+
+### 2026-05-09 — Local Model Review (Phase B)
+
+**O que mudou (pt-BR):** Implementado sistema de marcação local "Mark for review" para modelos instalados, permitindo ao usuário sinalizar modelos que precisam de revisão manual sem depender de API ou sidecar writes.
+
+**Arquivos alterados:**
+- `scripts/civitai_local_review.py` (novo) — Storage versionado (`config_states/local_review_status.json`), resolver de metadados local puro, interface `mark_file_for_review()`.
+- `scripts/civitai_api.py` — `_resolve_local_model_meta()` lê `.json` sidecar e `.api_info.json` sem gerar SHA256 ou chamar API.
+- `scripts/civitai_gui.py` — Botão "Mark for review" no Model Detail Panel, visível apenas quando o modelo está instalado localmente; feedback via `review_status_text`.
+
+**Decisões:**
+- Integração no **Model Detail Panel** escolhida por ser a superfície per-modelo nativa do app; Local Models é bulk-only e Browser Cards exigiriam JS+hidden-input complexo.
+- Não foi modificado o tuple de 13 retornado por `update_model_info`; o estado do botão é controlado via `.then()` nos eventos `list_versions.select` e `model_select.change`.
+- `mark_file_for_review` usa lazy import para evitar circularidade e valida existência do arquivo antes de persistir.
+- Schema de storage é versionado (v1) com migração automática de formato flat legado.
+
+**Pontos sensíveis:**
+- Modelos sem sidecars `.json` ainda podem ser marcados, mas terão metadados mínimos (apenas `fileName`, `filePath`, `contentType` inferido).
+- O botão aparece/desaparece dinamicamente com base em `os.path.isfile()`; não é confiável se o arquivo for movido entre a seleção do modelo e o clique no botão (protegido por re-validação no callback).
+
+**Testes:** 34 testes unitários em `tests/test_civitai_local_review.py` — todos passando.
+
+### 2026-03-17 — Checkpoint SHA256 Cache Sync
+
+**O que mudou (pt-BR):** Adicionado sync de SHA256 de checkpoints para o cache oficial do WebUI em dois momentos: (1) automaticamente ao concluir download de checkpoint e (2) manualmente por botão na aba Update Models para reconciliar sidecars locais com o cache existente.
+**Arquivos alterados:** `scripts/civitai_file_manage.py`, `scripts/civitai_download.py`, `scripts/civitai_gui.py`, `README.md`
+**Decisões:** Sync usa SHA256 já presente no sidecar local (sem recálculo pesado no botão), adiciona apenas entradas faltantes no cache e mantém um registro local em `lib/models/checkpoint_hashes.json` para rastreamento e limpeza de órfãos.
+**Pontos sensíveis:** Checkpoints sem `sha256` no sidecar são reportados como não sincronizados até receberem metadata válida; remoções manuais de arquivo são limpas na próxima execução do botão.
+
+
+
+---
+
+## Backlog / TODO
+
+### Portabilidade para browser-ex
+- [ ] **Validar mudanças recentes no EX** — Verificar se as alterações de 2026-05-08 (sort update list por mtime + fix re-trigger loop no download) fazem sentido na versão sd-civitai-browser-ex (Gradio 3 / A1111 / Forge Classic). Se aplicável, marcar commit com [SYNC-TO-EX].
+
+---
+
+## Linha do Tempo — Branch `revamp` (Beta-Revamp v0.1.0)
+
+> Trabalho em desenvolvimento no branch `revamp` (divergiu de `main` em `a02e944`). UI marcada com o badge **Beta-Revamp v0.1.0** (`civitai_gui.py:322`). Tema central: aba **Local Models** self-contained, com a antiga aba **Update Models** fundida dentro dela. Ainda **não released** no CivitAI. Inclui novos módulos `civitai_html_builder.py` e `civitai_local_review.py` (ambos com testes) e docs de planejamento (`docs/REVAMP_AUDIT.md`, `docs/REVAMP_LAYOUT_PROPOSAL.md`, `docs/HTML_COMPONENT_ANALYSIS.md`, `docs/FUNCTION_MAP.md`).
+
+### 2026-05-13 — HTML builder extraction + revamp layout planning
+
+**O que mudou (pt-BR):** Extraídos os construtores de HTML de `update_model_info` para um módulo dedicado `civitai_html_builder.py`, com cobertura de testes. Adicionada remoção automática do card de modelo atualizado na aba Update Models e corrigida a ordem de binding dos `.then()` (deferido até `refresh_inputs`/`page_outputs` existirem). Criados docs internos de planejamento do revamp.
+**Arquivos alterados:** `scripts/civitai_html_builder.py` (novo), `scripts/civitai_gui.py`, `scripts/civitai_api.py`, `tests/test_civitai_html_builder.py` (novo), `docs/REVAMP_LAYOUT_PROPOSAL.md` (novo), `docs/HTML_COMPONENT_ANALYSIS.md` (novo), `docs/FUNCTION_MAP.md`.
+**Decisões:** Separar a geração de HTML da lógica de callback para viabilizar o novo layout de overlay sem inchar `update_model_info`.
+**Pontos sensíveis:** HTMLs antigos exigem localizar o fechamento do description-block por contagem de profundidade (fallback chain).
+
+### 2026-05-25 — Browser filter defaults em JSON local
+
+**O que mudou (pt-BR):** Defaults dos filtros do Browser passaram a persistir em JSON local da extension (em vez de depender só do settings do Forge). Removido parâmetro morto `olf` do `settings_map`/`saveSettings`.
+**Arquivos alterados:** `scripts/civitai_gui.py`, `javascript/civitai-html.js`.
+**Decisões:** Persistência local evita perda de filtros entre reloads e desacopla do ciclo de settings do WebUI.
+**Pontos sensíveis:** Inputs do `saveSettings` e parâmetros devem ficar alinhados para não reintroduzir args mortos.
+
+### 2026-05-29 — Ocultar progress bars nativas do Gradio 4
+
+**O que mudou (pt-BR):** Barras de progresso nativas do Gradio 4 ocultadas nos callbacks de download/update; reaplicação dos filtros hideInstalled/banned quando o DOM da lista é regenerado.
+**Arquivos alterados:** `javascript/civitai-html.js`.
+**Pontos sensíveis:** Depende de seletores do DOM gerado pelo Gradio 4.
+
+### 2026-06-01 — Update mode: versões selecionáveis + retention via send2trash
+
+**O que mudou (pt-BR):** No Update Mode o usuário pode escolher a versão alvo; resolução de versão passou a ser híbrida (family/baseModel). Política de retention ('replace' e 'move to _Trash') passou a usar `send2trash` em vez de `os.remove`.
+**Arquivos alterados:** `scripts/civitai_download.py`, `scripts/civitai_file_manage.py`, `scripts/civitai_gui.py`.
+**Decisões:** Alinhar retention com o invariante de filesystem safety (nunca delete direto).
+**Pontos sensíveis:** Resolução híbrida pode escolher versão inesperada se family e baseModel divergirem.
+
+### 2026-06-06 a 2026-06-07 — Aba Local Models self-contained (merge da aba Update Models)
+
+**O que mudou (pt-BR):** A aba **Update Models** foi fundida dentro de **Local Models**, que virou um browser autossuficiente (rename / delete / update) com grid próprio e filtro de base model independente. Adicionados: multi-select update, spinner de loading, refresh do detail panel ao trocar de versão, trained tags + "Add to prompt" no detail panel (B3), marcação de card como instalado pós-download e remoção da versão antiga conforme retention. Removidos os handoffs "load to browser". Badge **Beta-Revamp v0.1.0** adicionado à UI.
+**Arquivos alterados:** `scripts/civitai_gui.py`, `scripts/civitai_file_manage.py`, `javascript/civitai-html.js`, `style.css`.
+**Decisões:** Consolidar a gestão de modelos locais num só lugar; Local Models deixa de depender do Browser para operar.
+**Pontos sensíveis:** Restaurado o refresh pós-download do Browser e adicionada guarda contra worker null; houve reverts de tentativas de dedup do worker de progresso que quebravam a barra.
+
+### 2026-06-08 — Reorg de Maintenance & Updates + filtro "only updates"
+
+**O que mudou (pt-BR):** UI de Maintenance & Updates de-cluttered (controle único de content-type), accordion movido para acima do grid e depois para a aba **Organization**. Filtro "only updates" virou view puramente client-side; "Update to latest" passou a funcionar sem scan prévio e a mostrar progresso; adicionado modo replace/keep no update. Guarda contra `sidecar sha256: null` no version_match/sha lookup. Corrigido flash do "Add to prompt" ao clicar no card.
+**Arquivos alterados:** `scripts/civitai_gui.py`, `scripts/civitai_file_manage.py`, `javascript/civitai-html.js`.
+**Pontos sensíveis:** `sha256: null` em sidecars antigos precisa de guarda explícita para não poluir o match.
+
+### 2026-06-10 — Resiliência de fetch do Local + isolamento Browser/Local
+
+**O que mudou (pt-BR):** Corrigido HTTP 500 no load do Local browser. Fetch passou a ser híbrido: uma chamada batched-first com fallback per-id; query single-id `?ids=` (corrige 500 da civitai.red); tentativa em civitai.com primeiro com fallback para .red; chunked fetch + recovery via version-endpoint para coleções grandes. Estado das abas Browser e Local isolado, com barras de download independentes por aba, origem de download registrada por item de fila e botões Clear próprios. Corrigidos: guarda de update parcial de card, "scan poisoning" e full clear.
+**Arquivos alterados:** `scripts/civitai_api.py`, `scripts/civitai_download.py`, `scripts/civitai_file_manage.py`, `scripts/civitai_gui.py`, `javascript/civitai-html.js`.
+**Decisões:** Batched-first minimiza requisições (1 chamada) mas faz fallback per-id quando a API retorna 500; consultar civitai.com antes de .red reduz exposição a NSFW quando possível.
+**Pontos sensíveis:** Fallback per-id multiplica requisições em coleções grandes; recovery via version-endpoint depende de `version_id` presente.
+
+### 2026-06-12 — Botão "Download selected version" no detail panel do Local
+
+**O que mudou (pt-BR):** Adicionado botão "Download selected version" no Model Detail Panel da aba Local, permitindo baixar a versão selecionada diretamente do painel.
+**Arquivos alterados:** `scripts/civitai_gui.py`, `javascript/civitai-html.js`.
+**Pontos sensíveis:** Depende de a versão escolhida no dropdown estar sincronizada com o estado do painel.
+
+### 2026-06-16 — Fix de delete (3 caminhos) + invalidação de `gl.update_items` no fluxo Local
+
+**O que mudou (pt-BR):** Corrigidas falhas intermitentes ao apagar modelos nos 3 caminhos (botão do card, seleção única no detail, multisseleção) via cadeia de fallback SHA256 → modelId → filename, respeitando `civitai_neo_delete_to_trash`; `delete_model` nunca mais retorna `None` (busca em todas as pastas). Auditoria de segregação Browser↔Local: único vazamento real era `gl.update_items` — agora `download_single_update` o ignora e `reset_update_items()` dispara no Load/search do Local. Front-end: `deleteInstalledModel` troca `setTimeout(100)` por duplo `requestAnimationFrame` (evita race do SHA256 vazio).
+**Arquivos alterados:** `scripts/civitai_file_manage.py`, `scripts/civitai_gui.py`, `scripts/civitai_download.py`, `javascript/civitai-html.js`.
+**Pontos sensíveis:** `reset_update_items()` deliberadamente NÃO roda dentro de `render_local_browser` (senão apagaria os itens recém-coletados por um scan). Validação: estática (`py_compile`/`node -c`); runtime pendente.
+
+### 2026-06-17 — Detecção de status de versão robusta (baseModel+índice) + ordenação na aba Local
+
+**O que mudou (pt-BR):** (1) Reescrito o `installstatus` do `get_model_card` (Browser) para usar o campo `baseModel` + ordem do array (índice 0 = mais novo) em vez de parsear o nome da versão — comparação semântica de nome só como desempate quando ambos têm número limpo. Corrige molduras erradas com nomes livres (ex.: "Rose Quartz"/"Pearl" → outdated correto; "Ani-il_v9.0"/"Last" última versão → verde). Cross-family (azul) refinado: só dispara quando outro baseModel tem versão **mais recente** que a instalada (ignora linhagens antigas). Unifica a lógica do Browser com a do `version_match` (aba Local). (2) Nova ordenação na aba Local Models: dropdown "Sort by:" (Name A-Z/Z-A, Recently/Oldest downloaded) com re-sort leve sem rescan (`resort_local_browser` sobre o cache `gl.local_json_data`, carimbando `_local_mtime`). (3) `model_list_html` ignora `gl.sortNewest` quando `target='local'` — fecha mais um vazamento cross-tab (toggle de data do Browser não afeta o Local).
+**Arquivos alterados:** `scripts/civitai_api.py`, `scripts/civitai_file_manage.py`, `scripts/civitai_gui.py`.
+**Pontos sensíveis:** Cross-family agora depende da ordem por data do array da API (índice 0 = mais recente globalmente). Ordenação por data usa mtime do arquivo no disco. Validação: estática (`py_compile`) + verificação isolada da lógica de molduras contra 3 modelos reais (3/3 PASS); validado na WebUI ✅ (sort + molduras + isolamento OK).
+
+### 2026-06-17 — Safeguard: "Update to latest" preserva a família (baseModel)
+
+**O que mudou (pt-BR):** O botão "Update to latest" do Local podia pular de família (ex.: baixar Pony quando a instalada é Illustrious) no fallback `versions_list[0]` (mais nova global), que dispara quando a versão instalada não é identificada (sidecar sem `sha256`). Fix **A** (`trigger_local_update`): em vez de `model_id||[]`, ancora no SHA256 do arquivo instalado → acha o `baseModel` dele → força a versão mais nova **do mesmo baseModel** (`model_id||[id]`), ignorando a auto-resolução. Fix **B** (`_resolve_versions_to_download`): detecção do instalado agora casa por `sha256` **ou** `modelVersionId` cacheado (alinha com `version_match`), tornando o fallback global-newest inalcançável nos fluxos de update.
+**Arquivos alterados:** `scripts/civitai_gui.py`, `scripts/civitai_download.py`.
+**Pontos sensíveis:** Fix B mantém o `versions_list[0]` para download fresco (correto). Validação: `py_compile` OK + verificação sintética da resolução de família (4/4 PASS); runtime na WebUI pendente.
+**Pendência relacionada:** features de conta via MCP (favoritar/seguir/notificações) planejadas — ver memória `mcp-account-features-plan`.
+
+### 2026-06-17 — Local detail-panel instantâneo + galeria no update do Local + badge de conta (MCP passos 1-2)
+
+**O que mudou (pt-BR):** (1) **Clique de card na aba Local sem rede:** `update_model_info(..., prefer_cached_images=True)` usa as imagens já cacheadas em `gl.local_json_data` (o `/models` já traz `modelVersions[].images`); o `meta` por-imagem é deliberadamente pulado (só importa no card do botão CivitAI do txt2img). Antes ia na civitai.red + 3× backoff (~6s por clique). (2) **Galeria no update pela aba Local:** o fetch lazy de `preview_html` em `download_create_thread` passou a resolver contra o `item['model_json']` próprio (origin-independent) em vez do `gl.json_data` do Browser — sem isso, `preview_html` vinha vazio e `save_images` abortava em silêncio (só o `preview.png` saía). (3) **Features de conta via MCP (passos 1-2):** novo `scripts/civitai_mcp.py` — cliente JSON-RPC do `mcp.civitai.com` (stateless, JSON puro, UA obrigatório, `whoami` cacheado) + badge passivo "Connected as <user>" no topo do Dashboard, auto-conectado em background; switch `account_features_mcp` default ON (opt-out silencioso). Sem botão de teste (decisão do usuário: conexão automática quando há API key).
+**Arquivos alterados:** `scripts/civitai_api.py`, `scripts/civitai_gui.py`, `scripts/civitai_download.py`, `scripts/civitai_mcp.py` (novo).
+**Decisões:** Local detail = das imagens em memória (exato/instantâneo, sem meta); arquitetura MCP = cliente próprio (favoritar/seguir/notificações não existem na REST v1, só via MCP/tRPC).
+**Pontos sensíveis:** Badge precisa de API key no pod para validar (whoami autenticado). Validação: `py_compile` OK; runtime na WebUI pendente.
+**Commits:** `8747105`, `039342e`, `8ce5c77`.
+
+### 2026-06-18 — Performance de scan (card Local + bulk download), filtro de base no bulk, e suíte "Send to txt2img"
+
+**O que mudou (pt-BR):**
+**Performance — fim dos tree-walks repetidos:**
+- *Clique de card Local:* `update_model_versions` ganhou `installed_file_paths` — detecta a versão instalada lendo só os 1-3 arquivos conhecidos (carimbados como `_local_paths` por `render_local_browser`) em vez de `os.walk`+`json.load` na árvore inteira do tipo a cada clique. Fallback ao walk quando o item não tem o carimbo (exige re-rodar "Load local models").
+- *Bulk download (Browser):* `selected_to_queue` monta um índice **uma vez** por batch (`build_installed_index()` → `{hashes, ver_ids, by_model_id}`); `_resolve_versions_to_download` e `find_installed_file_by_model_id` reusam — de **2×N walks** para **1**. Era a "etapa BEM demorada de validação/roteamento".
+
+**Filtro de base respeitado no bulk download:** o `base_filter` da busca agora chega ao `selected_to_queue`; em download novo, `_pick_filtered_or_first` escolhe a versão mais nova **cujo baseModel está no filtro** (não a global mais nova) — corrige modelos vindo como Anima/Chroma quando o filtro era Illustrious/NoobAI.
+
+**"Send to txt2img" (card do botão CivitAI):**
+- *Defer do `#paste`* (dois `requestAnimationFrame`) — corrige o campo sendo limpo (race: `#paste` lia o prompt antes do Gradio comprometer o valor).
+- *`sendToTxt2img`* monta o infotext a partir do **meta já renderizado no card** (linhas `data-key`) em vez de re-baixar a imagem e ler o PNG embutido — exato e instantâneo. Fallback ao embutido (`sendImgUrl`) só quando a imagem não tem meta no card.
+- *Botão "Try reading params from image file"* no empty state (imagens) — torna o fallback embutido alcançável quando a API não traz meta.
+- *Conversão SwarmUI→A1111:* `fetch_and_process_image` detecta JSON `sui_image_params` (embutido de imagens geradas no SwarmUI) e converte pra infotext A1111 (prompt/negative/steps/sampler/cfg/seed/size/model + LoRAs inline `<lora:nome:peso>`) — era o "texto gigantesco" que o `#paste` não conseguia parsear.
+
+**Outros:** `BeautifulSoup(html)` em `convert_local_images` agora especifica `'html.parser'` (silencia `GuessedAtParserWarning`; comportamento consistente entre ambientes).
+**Arquivos alterados:** `scripts/civitai_api.py`, `scripts/civitai_download.py`, `scripts/civitai_file_manage.py`, `scripts/civitai_gui.py`, `javascript/civitai-html.js`, `style.css`.
+**Decisões:** Índice único por batch (corrige O(N²)→O(N)); filtro = "uma versão por modelo, a mais nova que casa"; "Send to txt2img" prioriza o meta do card (o que o usuário vê), embutido como fallback, e converte SwarmUI.
+**Pontos sensíveis:** O ganho de velocidade do card Local exige re-rodar "Load local models" (itens precisam de `_local_paths`). Conversão SwarmUI passa o nome do sampler como está (pode não mapear 1:1 no WebUI). Validação: `py_compile`/`node -c` OK + testes isolados (filtro 4/4, match instalado 3/3, conversão SwarmUI com o JSON real do usuário); runtime na WebUI pendente.
+**Commits:** `cb00367`, `47d0eea`, `4af4d21`, `c57089f`, `b066066`, `3c5511c`, `a282646`.
+**Status:** `revamp` aproximando-se do **Release Candidate**. Pendente: MCP passo 3 (⭐ favorite / 🔔 follow no detail panel), depois passo 4 (feed de notificações no Dashboard) — ver memória `mcp-account-features-plan`.
+
+### 2026-06-18 — Features de conta via MCP: favorite/notify no detail panel + feed de notificações (passos 3-4)
+
+**O que mudou (pt-BR):**
+**Passo 3 — toggles no detail panel do Browser:** botões **⭐ Favorite** (`set_model_favorite`, `setTo` explícito → seguro/idempotente) e **🔔 Notify new versions** (`toggle_notify_model`, toggle server-side) no painel de detalhe, gated por `account_features_mcp` + API key (`_account_ready`). Estado por toggle em `gr.State` (`fav_state`/`notify_state`); `seed_account_buttons` roda via `.then` no `model_select.change` (lê o `model_id` já atualizado) e mostra/esconde os botões conforme account ready.
+**Seed do Favorite (resolve a limitação):** o MCP `get_model` **não** expõe `isFavorite`/`isNotified` (structuredContent só tem `id`/`name`/`air`). Mas o estado de favorito **existe** via REST `/models?favorites=true` — o mesmo endpoint do filtro "only liked" do Browser. Novo `get_favorited_model_ids()` (cacheado por sessão, paginado) + `set_favorited_cache()` (sync após toggle) em `civitai_api.py`; o detail panel abre já como **⭐ Favorited** quando o modelo está nos favoritos. **Notify continua sem seed** (não há endpoint de leitura de "modelos que sigo", nem REST nem MCP) — começa off e reflete após o 1º clique.
+**Passo 4 — feed no Dashboard:** accordion colapsável **"🔔 Following — new versions"** + botão "Check notifications" → `_mcp.list_notifications(limit=50)`, renderizando o **texto humano** do MCP (robusto à estrutura do item). Gated por account ready.
+**Arquivos alterados:** `scripts/civitai_gui.py`, `scripts/civitai_api.py`.
+**Decisões:** Favorite com `setTo` explícito (sem risco) + seed via REST favorites; Notify como toggle honesto (sem seed possível); feed renderiza texto cru até validarmos o payload real.
+**Pontos sensíveis:** Notify pode inverter no 1º clique se já seguido (sem seed). Filtro de categoria do feed e parsing em linhas clicáveis ficam pendentes até ver o retorno real de `list_notifications`. Validação: `py_compile` OK; **runtime na WebUI pendente** (todas as features de conta precisam da API key do usuário no pod). Probe do transporte MCP feito sem auth (stateless, JSON puro, 53 tools).
+**Commits:** `a7e9b8d`, `c2f45be`, `efa5f78`.
+**Próximos passos / Next steps:**
+- Validar passos 1-4 na WebUI (badge, ⭐/🔔, feed) com a API key — **colar o texto do feed** pra filtrar categoria "nova versão" e formatar em linhas.
+- MCP fase 2 (opcional): reviews 1-5★ no detail panel (`upsert_resource_review`).
+- Fechar o **Release Candidate** do `revamp` após a validação runtime do lote 06-17/06-18.
+
+### 2026-06-23 — Resolução exata de arquivo nos cards + feed "Following" acionável + Send-to-txt2img só-prompt
+
+**O que mudou (pt-BR):**
+**[Fix] Match exato de arquivo nos botões de card:** `model_from_sent` (botão CivitAI) e `send_to_browser` resolviam o arquivo com `file.startswith(model_name)` guardando o **último** match → modelos com prefixo comum (ex.: "Char" vs "Char - Outfit" vs "Char v2") abriam o arquivo errado. Agora preferem **match exato de stem** (`os.path.splitext(file)[0] == model_name`); prefixo só como fallback.
+**[Feat/Fix] Feed "Following — new versions" (Dashboard/MCP):** accordion passou a abrir expandido; o `list_notifications` retorna texto minimal (`#id tipo data`, sem nome/link) e ruidoso, então o feed agora **filtra só `new-model-version`** e monta **linhas com link** a partir do structuredContent (`details.modelId`/`modelVersionId`/nome → link pro modelo+versão), com fallback pras linhas filtradas e um diagnóstico no terminal (`[Following feed] sample notification: …`).
+**[Fix] "Send to txt2img" com card só-prompt:** `sendToTxt2img` só emitia a linha `Negative prompt:` quando havia negativo; um card só com prompt positivo virava uma linha solta que o `#paste` ignorava. Agora **sempre** emite `Negative prompt:` (vazia quando ausente), igual ao `metaToTxt2Img`.
+**Arquivos alterados:** `scripts/civitai_file_manage.py`, `scripts/civitai_gui.py`, `javascript/civitai-html.js`.
+**Pontos sensíveis:** O mapeamento das chaves do structuredContent do `list_notifications` ainda não foi confirmado em runtime (codado defensivo + diagnóstico); decisão pendente da ação do clique no feed (link CivitAI / abrir no Browser / download).
+**Commits:** `38fcaa3`, `aadf560`, `fa1ea5d`, `eeb39c1`.
+**Próximos passos / Next steps:**
+- Validar o feed com a key e colar o `sample notification` do terminal pra finalizar o mapeamento + decidir a ação do clique.
+
+### 2026-06-24 — Borda verde por modelVersionId + paginação da aba Local Models
+
+**O que mudou (pt-BR):**
+**[Fix] Card instalado sem borda verde:** na detecção de instalado do `get_model_card`, `collect_existing_files` só casava por `sha256` do sidecar ou nome de arquivo. Se o `.json` não tivesse `sha256` (ou o arquivo fosse renomeado), o `installstatus` ficava vazio (sem borda) mesmo o modelo estando instalado. Agora `collect_existing_files` também coleta o **`modelVersionId`** cacheado e o `get_model_card` casa as versões por ele (alinhado com `version_match`). Ex.: Animosity (model 2596298, versão 2916492, Illustrious V1.1 = idx 0) volta a ficar verde.
+**[Feat] Paginação da aba Local Models:** o grid renderizava **todos** os cards de uma vez, sobrecarregando o DOM em bibliotecas grandes. Agora `_render_local_slice` **fatia em memória** a lista já ordenada de `gl.local_json_data` e renderiza só uma página (padrão 50), com dropdown **"Per page" (25/50/100)** ao lado do Sort e uma **barra Prev/"Page X/Y"/Next** embutida no HTML do grid (`localGoToPage` → `#local_page_trigger` → `render_local_page`). A ordenação é aplicada na lista **inteira antes** de fatiar, então a ordem se mantém entre páginas; Load/Sort/Per-page voltam pra página 1.
+**Arquivos alterados:** `scripts/civitai_api.py`, `scripts/civitai_file_manage.py`, `scripts/civitai_gui.py`, `javascript/civitai-html.js`, `style.css`.
+**Decisões:** Paginação por **slice server-side** (não client-side) porque o gargalo real é o DOM com milhares de cards; barra embutida no HTML do grid pra não tocar os 7 call sites de `render_local_browser`.
+**Pontos sensíveis:** Cada troca de página re-roda `collect_existing_files` (1 `os.walk` por render) pra detecção de borda — cachear se ficar lento em bibliotecas enormes. `render_local_page` recebe `page.<rand>` (sufixo aleatório força o change event) → pega o inteiro antes do ponto.
+**Commits:** `93bbb51`, `3082dc6`.
+**Próximos passos / Next steps:**
+- Validar runtime: paginação (Per page/Prev/Next/sort entre páginas) e borda verde do Animosity.
+- Considerar cache do `collect_existing_files` se a troca de página ficar lenta.
+- Fechar o **Release Candidate** do `revamp` após validar o acumulado 06-17→06-24.
+
+---
+
+## Backlog / Próxima Sessão
+
+### 2026-07-08 — Proposta: Dynamic Base Model Filtering no Extra Networks
+
+**Inspiração:** recurso do `SiliconeShojo/models-info` — dropdown de filtro por arquitetura injetado diretamente no header toolbar do Extra Networks do WebUI, filtrando os cards nativos sem reload e agrupando não reconhecidos em **Unknown**.
+
+**Objetivo no Browser Neo:** oferecer o mesmo filtro dinâmico para os cards do **Extra Networks nativo do Forge Neo**, permitindo ao usuário ver apenas modelos de uma arquitetura (SD 1.5, SDXL, Flux, Pony, SD 3.5, Wan, etc.) e limpar a biblioteca via categoria Unknown.
+
+**Desafios técnicos identificados:**
+1. O Browser Neo hoje só injeta um botão nos cards nativos (`javascript/civitai-html.js:596-643`); não controla o toolbar/header do Extra Networks.
+2. Os cards nativos do Forge Neo **não expõem base model** no DOM (nenhum `data-base-model` ou atributo equivalente).
+3. É preciso mapear cada card nativo para o base model correspondente. As fontes possíveis são:
+   - **Sidecars `.json`/`.api_info.json` já salvos pelo Browser Neo** (mais confiável, mas só cobre modelos que passaram pelo extension).
+   - **Metadados que o Forge Neo já carrega internamente** (se houver API/DOM acessível — a investigar).
+   - **Re-escanear os arquivos no disco** para construir um índice `nome/stem → base_model` (lento em coleções grandes; precisa de cache).
+4. Lazy loading/paginação do Extra Networks exige re-aplicação contínua do filtro (MutationObserver ou hooks nos eventos de refresh/aba).
+5. Seletores do DOM podem variar entre versões do Forge Neo; precisaremos de fallback defensivo.
+
+**Caminhos possíveis (a decidir na próxima sessão):**
+- **Opção A — Documentar/planejar:** escrever especificação completa, seletores, funções e sequência de implementação sem codar ainda.
+- **Opção B — MVP com sidecars:** dropdown injetado no toolbar; filtro baseado apenas nos modelos que já têm sidecar `.json`/`.api_info.json` salvo pelo Browser Neo; Unknown para o resto.
+- **Opção C — Investigar DOM primeiro:** abrir o Forge Neo (local ou via Playwright) para confirmar seletores exatos do toolbar e dos cards nativos antes de planejar.
+
+**Arquivos prováveis de envolvimento:** `javascript/civitai-html.js`, `scripts/civitai_file_manage.py` (índice/lookup), `style.css`, possivelmente `scripts/civitai_api.py`.
+**Status:** proposta registrada; aguardando decisão do usuário para iniciar.
+
+---
+
+## Resumo para README (próximo release)
+
+### What's New — v0.10.0 (Revamp)
+
+- **LoraDex — curadoria visual de LoRAs**  
+  Nova sub-aba dentro de *Local Models* para revisar e ajustar a categoria de cada LoRA instalada. Lista compacta com mini-thumbnail (zoom no hover), nome do modelo CivitAI, base model, versão instalada e dropdown de categoria. Alterações pendentes são destacadas em amarelo e podem ser aplicadas individualmente ou em lote.
+
+- **Auto-sugestão de categoria de LoRA**  
+  O LoraDex sugere automaticamente uma categoria (`Character`, `Style`, `Clothing`, `Concept`, `Pose`, `Background`, `Utility`) com base nas tags do modelo; se as tags não forem suficientes, usa a descrição como fallback. Sugestões aparecem pré-selecionadas no dropdown e são sinalizadas com borda azul + badge 🤖. Categorias manuais salvas pelo usuário têm sempre prioridade.
+
+- **Subpastas de LoRA por categoria**  
+  Quando `civitai_neo_lora_category_sort` está ativa junto com `civitai_neo_auto_organize`, LoRAs são organizadas em `Lora/<base>/<categoria>/` tanto no download quanto em organização em lote.
+
+- **Preview em JPEG**  
+  Nova opção para salvar previews e imagens da galeria em JPEG com qualidade configurável, reduzindo espaço em disco.
+
+- **Retry Aria2 em HTTP 429**  
+  Downloads que levam rate limit da CivitAI são automaticamente re-tentados com backoff e link fresco.
+
+- **Melhorias no Local Models**  
+  Paginação, detecção de versão instalada por `modelVersionId`, isolamento Browser↔Local e filtros de base model respeitados em updates em lote.
+
+- **Estabilidade**  
+  Fix de crash em `download_finish` com fila vazia, resolução exata de arquivo por stem e fallback de `modelTags` no sidecar para organização/LoraDex/download.
+
