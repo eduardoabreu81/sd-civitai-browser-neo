@@ -5737,7 +5737,7 @@ def _render_lora_dex_slice(page, page_size=None, pending_only=False):
     bar_bottom = _build_lora_dex_pagination_bar(page, pages, total, page_size)
 
     html = f'<div class="loradex-container">{bar_top}{table}{bar_bottom}</div>'
-    return gr.update(value=html)
+    return gr.update(value=_wrap_html_with_css(html))
 
 
 def render_lora_dex_page(base_filter=None, category_filter='All', pending_only=False, search_term='', page_size=25):
