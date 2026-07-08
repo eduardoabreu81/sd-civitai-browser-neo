@@ -114,6 +114,20 @@
 
 ---
 
+### 2026-07-08 — UI de proveniência: source badge no card e painel de mirrors
+
+**O que mudou (pt-BR):** Adicionada indicação visual de origem do modelo tanto nos cards quanto no painel de detalhes, preparando a UI para o Multi-Browser Neo.
+
+1. **Source badge no card:** modelos cuja origem é diferente de CivitAI (ex.: CivArchive) exibem um badge `CIVARCHIVE` no canto superior do card, com cor roxa distinta. Dados legados do CivitAI não exibem badge, mantendo a aparência atual.
+2. **Seção Source no detail panel:** o bloco *Version Information* agora mostra uma linha **Source** com o nome da origem e o ID externo, além de uma nota explicativa quando o arquivo vem do CivArchive (backup espelhado, original pode estar indisível no CivitAI).
+3. **Painel de Download Mirrors:** quando o arquivo canônico possui `browserSourceFileRaw.mirrors` (caso do CivArchive), o detail panel lista cada mirror com URL clicável e status **Active** ou **Deleted**, destacando visualmente mirrors ativos (borda verde) e deletados (borda vermelha/opacidade reduzida).
+
+**Arquivos alterados:** `scripts/civitai_api.py`, `style.css`.
+**Decisões:** O badge só aparece quando `browserSource != 'civitai'`, evitando poluir cards de modelos já existentes. O link de download principal (`model_url`) continua apontando para o melhor mirror ativo via adapter. A seção de mirrors é omitida quando não há dados de espelhamento. O CSS reutiliza a classe `.source-badge` já usada nos cards, com ajustes específicos para o painel de detalhes.
+**Pontos sensíveis:** Apenas o arquivo primário/selecionado é consultado para mirrors; modelos com múltiplos arquivos mostrarão os mirrors do arquivo principal. O status `deleted` é inferido da presença de `deletedAt` no mirror.
+
+---
+
 ### 2026-07-08 — Pesquisa de integração com plataformas de modelos gratuitas
 
 **O que mudou (pt-BR):** Levantamento e validação técnica de fontes alternativas de modelos/LoRAs com API/token gratuita para download real de arquivos. Quatro plataformas foram investigadas; duas já têm endpoints confirmados e duas precisam de mais mapeamento.

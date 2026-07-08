@@ -829,6 +829,13 @@ def model_list_html(json_data, target=''):
         else:
             nsfw_badge = ''
 
+        # Source Badge — CivitAI, CivArchive, etc.  Hidden for legacy CivitAI data.
+        browser_source = item.get('browserSource') or 'civitai'
+        if browser_source and browser_source != 'civitai':
+            source_badge = f'<div class="source-badge source-{browser_source.lower()}">{escape(browser_source)}</div>'
+        else:
+            source_badge = ''
+
         # LoRA category badge: manual override from .json sidecar wins, otherwise
         # fall back to the model-level tags returned by the CivitAI API.
         lora_category_badge = ''
@@ -856,7 +863,7 @@ def model_list_html(json_data, target=''):
             f'base-model="{base_model}" date="{date}" data-model-id="{model_id}" data-creator="{escape(model_uploader_card)}" '
             f'onclick="{select_onclick}">'
             f'<div class="card-header">'
-            f'<div class="badges-container">{model_type_badge}{status_badge}{nsfw_badge}</div>'
+            f'<div class="badges-container">{model_type_badge}{status_badge}{nsfw_badge}{source_badge}</div>'
         )
 
         # Show delete button for up-to-date installed models;
@@ -1757,11 +1764,13 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                     output_training = output_training.strip(', ')
                 if selected_version['baseModel']:
                     output_basemodel = selected_version['baseModel']
+                selected_file_info = None
                 for file in selected_version['files']:
                     dl_dict[file['name']] = file['downloadUrl']
 
                     if not model_filename:
                         model_filename = file['name']
+                        selected_file_info = file
                         dl_url = file['downloadUrl']
                         gl.json_info = item
                         sha256_value = normalize_sha256(file['hashes'].get('SHA256')) or 'Unknown'
@@ -1782,6 +1791,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                     if is_primary:
                         default_file = unique_file_name
                         model_filename = file['name']
+                        selected_file_info = file
                         dl_url = file['downloadUrl']
                         gl.json_info = item
                         sha256_value = normalize_sha256(file['hashes'].get('SHA256')) or 'Unknown'
@@ -2034,6 +2044,52 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                     f'<dt>SHA256</dt>'
                     f'<dd><span style="font-family:monospace;font-size:11px;word-break:break-all;user-select:all;">{escape(sha256_value)}</span></dd>'
                 ) if sha256_value and sha256_value != 'Unknown' else ''
+
+                # Source / mirrors section for multi-source support
+                browser_source = item.get('browserSource') or 'civitai'
+                browser_source_id = item.get('browserSourceId') or item.get('id', '')
+                source_rows = (
+                    '<dt>Source</dt>'
+                    f'<dd><span class="source-badge source-{escape(browser_source.lower())}">{escape(browser_source)}</span>'
+                    f' <span class="source-id">ID: {escape(str(browser_source_id))}</span></dd>'
+                )
+                if browser_source.lower() == 'civarchive':
+                    source_rows += (
+                        '<dt>Note</dt>'
+                        '<dd class="source-note">Mirrored backup from CivArchive. '
+                        'The original model may no longer be available on CivitAI.</dd>'
+                    )
+
+                mirrors_html = ''
+                if selected_file_info:
+                    raw_file = selected_file_info.get('browserSourceFileRaw') or {}
+                    mirrors = raw_file.get('mirrors') or []
+                    if mirrors:
+                        mirror_rows = []
+                        for mirror in mirrors:
+                            if not isinstance(mirror, dict):
+                                continue
+                            m_url = mirror.get('url', '')
+                            deleted_at = mirror.get('deletedAt')
+                            status = 'deleted' if deleted_at else 'active'
+                            status_label = 'Deleted' if deleted_at else 'Active'
+                            display_url = escape(m_url[:80] + '...' if len(m_url) > 80 else m_url)
+                            mirror_rows.append(
+                                f'<li class="mirror-row mirror-{status}">'
+                                f'<a href="{escape(m_url)}" target="_blank" rel="noopener" class="mirror-url">{display_url}</a>'
+                                f'<span class="mirror-status">{status_label}</span>'
+                                f'</li>'
+                            )
+                        if mirror_rows:
+                            mirrors_html = (
+                                '<dt>Download Mirrors</dt>'
+                                '<dd>'
+                                '<ul class="mirror-list">'
+                                f'{"".join(mirror_rows)}'
+                                '</ul>'
+                                '</dd>'
+                            )
+
                 version_info = (
                     '<div class="version-info-block">'
                         '<h3 class="block-header">Version Information</h3>'
@@ -2055,6 +2111,8 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                                 '</div>'
                             '</dd>'
                             f'{_sha256_row}'
+                            f'{source_rows}'
+                            f'{mirrors_html}'
                             f'{"<dt>Download Link</dt>" if model_url else ""}'
                             f'{f"<dd><a href={model_url} target=_blank>{model_url}</a></dd>" if model_url else ""}'
                         '</dl>'
