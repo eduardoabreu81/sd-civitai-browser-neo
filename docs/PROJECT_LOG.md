@@ -183,6 +183,35 @@
 
 ---
 
+### 2026-07-08 — Regra de ouro: CivitAI é a fonte principal; double-check por SHA256
+
+**O que decidiu (pt-BR):** CivitAI continua sendo e sempre será a fonte principal de verdade para metadados, previews e validação. Quando um modelo for encontrado em fontes externas (Hugging Face, arcenciel.io, CivArchive, ModelScope, etc.), o extension deve sempre tentar fazer um **double-check pelo SHA256** contra a CivitAI.
+
+**Comportamento planejado (Fase F — Cross-source):**
+1. Para cada arquivo canônico vindo de uma fonte externa, obter seu SHA256 (quando a API da fonte entregar; caso contrário, calcular localmente após o download).
+2. Consultar `https://civitai.com/api/v1/model-versions/by-hash/{sha256}` (e/ou `civitai.red`) para verificar se o CivitAI conhece aquele arquivo.
+3. Se o CivitAI retornar um match:
+   - Usar os metadados ricos do CivitAI (nome, versão, base model, trigger words, tags, previews, permissões) como fonte primária de exibição.
+   - Manter a URL de download da fonte original (o usuário escolheu baixar de lá).
+   - No **detail panel**, adicionar uma tag/visual indicando: **"Verified on CivitAI"** (ou similar) com link para a página do modelo no CivitAI.
+4. Se não houver match:
+   - Exibir os metadados da fonte externa mesmo.
+   - Adicionar tag/visual: **"Not found on CivitAI"** ou **"CivitAI-independent"**.
+
+**Por quê:**
+- Evita duplicatas e confusão quando o mesmo arquivo existe em várias plataformas.
+- Garante que o usuário tenha a melhor experiência de metadados possível (CivitAI é mais completo para SD/LoRA).
+- Respeita a decisão do usuário de baixar de uma fonte alternativa (por fallback, velocidade, mirror, etc.) sem perder a riqueza da informação.
+
+**Onde entra no código (futuro):**
+- Novo helper cross-source em `scripts/browser_sources/cross_source.py`: `lookup_civitai_by_sha256(sha256)`.
+- `scripts/civitai_api.py` no detalhe do modelo: após renderizar o bloco `Browser Source`, consultar CivitAI e injetar o badge de verificação.
+- Sidecar `.api_info.json` pode armazenar `civitaiVerified`, `civitaiModelId`, `civitaiVersionId` para cache entre sessões.
+
+**Arquivos envolvidos (planejado):** `scripts/browser_sources/cross_source.py`, `scripts/civitai_api.py`, `style.css`.
+
+---
+
 ### 2026-07-08 — UI de proveniência: source badge no card e bloco Browser Source no detail panel
 
 **O que mudou (pt-BR):** Adicionada indicação visual de origem do modelo tanto nos cards quanto no painel de detalhes, preparando a UI para o Multi-Browser Neo.
