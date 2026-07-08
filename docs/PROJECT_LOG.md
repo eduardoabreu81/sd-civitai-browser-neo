@@ -22,6 +22,19 @@
 
 ## Linha do Tempo
 
+### 2026-07-08 — Fix CivArchive refresh routing and result pagination
+
+**O que mudou (pt-BR):** Corrigido o refresh do Browser quando `from_update_tab=True`: tokens internos `browser_source://...` não são mais enviados ao `requests` como URLs HTTP e agora voltam ao adapter selecionado. O CivArchive ganhou logs com contagem de resultados brutos, IDs únicos e modelos normalizados. Como a API pública atualmente devolve uma janela fixa de 50 resultados e ignora `limit`/`offset`, a paginação passou a preservar a ordem dos IDs e fatiá-los client-side, evitando repetição da primeira página. Valores float vindos do Slider do Gradio são normalizados para inteiros antes do slicing.
+**Arquivos alterados:** `scripts/civitai_api.py`, `scripts/browser_sources/civarchive.py`, `tests/test_browser_sources.py`.
+**Decisões:** Manter `browser_source://` como token opaco restrito à camada de adapters; nunca encaminhá-lo ao cliente HTTP. Paginar apenas a janela retornada pelo CivArchive até existir um endpoint público com paginação real.
+**Pontos sensíveis:** A busca do CivArchive ainda faz fetch de detalhe para os IDs da página atual porque o payload de search não contém arquivos completos. Validação estática concluída com **109 passed + 2 subtests passed**, `py_compile` e `git diff --check`; runtime na WebUI pendente.
+**Próximos passos / Next steps:**
+- Repetir a busca no CivArchive e confirmar os logs `raw_results`, `unique_model_ids`, `page_model_ids` e `normalized_models`.
+- Validar cards, Next/Prev e detail panel do CivArchive.
+- Prosseguir com a validação do Hugging Face e finalizar o Arc en Ciel.
+
+---
+
 ### 2026-07-08 — Fix Browser source callback contract and diagnostics
 
 **O que mudou (pt-BR):** Corrigida uma regressão da Fase A que quebrava todas as buscas da aba Browser, inclusive CivitAI. O dropdown `source` era o 12º input do callback Gradio, mas `initial_model_page` interpretava esse valor como `from_update_tab` e `next_model_page` como `isNext`. Como nomes de fonte são strings truthy, a busca inicial desviava para o fluxo de Update Mode sem chamar nenhum adapter, resultando apenas na mensagem genérica de erro e sem logs `[DEBUG]`. As assinaturas de busca inicial/Next/Prev agora compartilham a mesma ordem posicional, e os flags internos passaram a keyword-only. Também foi adicionado um wrapper de execução dos adapters com diagnóstico de início, tipo de retorno, exceção e traceback quando debug está ativo. A mensagem genérica deixou de citar exclusivamente a API CivitAI.
