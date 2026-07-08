@@ -3182,25 +3182,21 @@ def get_model_categories():
     Returns dict mapping folder names to detection patterns
     """
     # Default categories based on Forge Neo supported models
+    # Keep in sync with get_base_models() in civitai_gui.py and BASE_MODEL_SHORT
+    # in civitai_api.py. These are the base models officially supported by
+    # Forge Neo (Haoming02/sd-webui-forge-classic neo branch).
     default_categories = {
-        'SD': ['SD 1', 'SD1', 'SD 2', 'SD2'],
+        'SD': ['SD 1', 'SD1'],
         'SDXL': ['SDXL'],
-        'Pony': ['PONY', 'PONYXL', 'PONY XL', 'PONY V6', 'PONYV6'],
+        'Pony': ['PONY', 'PONYXL', 'PONY XL', 'PONY V6', 'PONYV6', 'PONY V7', 'PONYV7'],
         'Illustrious': ['ILLUSTRIOUS'],
         'NoobAI': ['NOOBAI', 'NOOB AI', 'NOOB', 'NAI'],
         'FLUX': ['FLUX'],
         'Wan': ['WAN'],
         'Qwen': ['QWEN'],
-        'Z-Image': ['Z-IMAGE', 'ZIMAGE', 'Z IMAGE'],
+        'Z-Image': ['Z-IMAGE', 'ZIMAGE', 'Z IMAGE', 'ZIMAGETURBO', 'ZIMAGEBASE'],
         'Lumina': ['LUMINA'],
         'Anima': ['ANIMA'],
-        'Cascade': ['CASCADE'],
-        'PixArt': ['PIXART', 'PIX ART'],
-        'Playground': ['PLAYGROUND'],
-        'SVD': ['SVD', 'STABLE VIDEO'],
-        'Hunyuan': ['HUNYUAN'],
-        'Kolors': ['KOLORS'],
-        'AuraFlow': ['AURAFLOW', 'AURA FLOW'],
         'Chroma': ['CHROMA'],
     }
     
