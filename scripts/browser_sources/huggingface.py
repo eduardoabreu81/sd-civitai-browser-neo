@@ -217,13 +217,21 @@ class HuggingFaceSource(BrowserSource):
 
         # Search result may include siblings (file list). Build real files when available.
         siblings = repo.get("siblings") or []
-        files = self._siblings_to_files(repo_id, siblings)
+        files = self._siblings_to_files(repo_id, siblings, model_type)
+
+        # Try to enrich from README.md when no base model or triggers were detected.
+        readme = ""
+        if not base_model:
+            readme = self._fetch_readme(repo_id)
+            base_model = self._extract_base_model_from_readme(readme)
+        trained_words = self._extract_trigger_words_from_readme(readme)
 
         version = canonical_version(
             source_version_id="main",
             name="main",
             base_model=base_model,
             description=repo.get("description") or "",
+            trained_words=trained_words,
             files=files,
             images=self._siblings_to_images(repo_id, siblings),
             download_url=f"{self.BASE_URL}/{quote(repo_id, safe='/')}",
@@ -252,7 +260,7 @@ class HuggingFaceSource(BrowserSource):
         base_model = self._detect_base_model(tags, repo_id, data.get("modelId", ""))
         nsfw = any("nsfw" in t.lower() for t in tags) or "nsfw" in repo_id.lower()
 
-        files = self._fetch_repo_files(repo_id)
+        files = self._fetch_repo_files(repo_id, model_type)
         if not files:
             # Fallback: one synthetic file so the card can still render.
             files = [canonical_file(
@@ -265,11 +273,19 @@ class HuggingFaceSource(BrowserSource):
         # Try to find a preview image in the repo files.
         images = self._pick_preview_images(repo_id, files)
 
+        # Try to enrich from README.md when no base model or triggers were detected.
+        readme = ""
+        if not base_model:
+            readme = self._fetch_readme(repo_id)
+            base_model = self._extract_base_model_from_readme(readme)
+        trained_words = self._extract_trigger_words_from_readme(readme)
+
         version = canonical_version(
             source_version_id="main",
             name="main",
             base_model=base_model,
             description=data.get("description") or "",
+            trained_words=trained_words,
             files=files,
             images=images,
             download_url=f"{self.BASE_URL}/{quote(repo_id, safe='/')}",
@@ -291,7 +307,7 @@ class HuggingFaceSource(BrowserSource):
             raw=data,
         )
 
-    def _fetch_repo_files(self, repo_id: str) -> list[dict]:
+    def _fetch_repo_files(self, repo_id: str, model_type: str = "Other") -> list[dict]:
         """List downloadable model files in the repo's main branch."""
         url = f"{self.API_URL}/{quote(repo_id, safe='/')}/tree/main"
         data = self._request_json(url)
@@ -299,7 +315,7 @@ class HuggingFaceSource(BrowserSource):
             return []
 
         result: list[dict] = []
-        model_extensions = (".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".onnx")
+        model_extensions = self._model_file_extensions(model_type)
         for entry in data:
             if not isinstance(entry, dict):
                 continue
@@ -344,10 +360,10 @@ class HuggingFaceSource(BrowserSource):
     # ------------------------------------------------------------------
     # Detection helpers
     # ------------------------------------------------------------------
-    def _siblings_to_files(self, repo_id: str, siblings: list[dict]) -> list[dict]:
+    def _siblings_to_files(self, repo_id: str, siblings: list[dict], model_type: str = "Other") -> list[dict]:
         """Convert HF sibling entries into canonical file dicts."""
         result: list[dict] = []
-        model_extensions = (".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".onnx")
+        model_extensions = self._model_file_extensions(model_type)
         for s in siblings:
             if not isinstance(s, dict):
                 continue
@@ -440,6 +456,91 @@ class HuggingFaceSource(BrowserSource):
             if lower == "upscaler":
                 return "upscaler"
         return None
+
+    def _model_file_extensions(self, model_type: str) -> tuple[str, ...]:
+        """Return allowed file extensions for a given content type.
+
+        Checkpoint and LoRA downloads are restricted to Safetensors for safety.
+        Other types keep their original extension set.
+        """
+        if str(model_type).lower() in ("checkpoint", "lora", "locon", "dora"):
+            return (".safetensors",)
+        return (".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".onnx")
+
+    def _fetch_readme(self, repo_id: str) -> str:
+        """Fetch README.md raw text from a HF repo, if it exists."""
+        url = f"{self.BASE_URL}/{quote(repo_id, safe='/')}/resolve/main/README.md"
+        headers = _api.get_headers()
+        proxies, verify = _api.get_proxies()
+        try:
+            response = requests.get(url, headers=headers, proxies=proxies, verify=verify, timeout=(30, 15))
+        except requests.exceptions.RequestException:
+            return ""
+        if response.status_code != 200:
+            return ""
+        try:
+            return response.text
+        except Exception:
+            return ""
+
+    def _extract_base_model_from_readme(self, readme: str) -> Optional[str]:
+        """Try to extract the base model from README.md contents."""
+        if not readme:
+            return None
+        lines = readme.splitlines()
+        # Look for explicit base model declarations.
+        for line in lines:
+            lower = line.lower()
+            if any(k in lower for k in ("base model", "base_model", "basemodel", "base: ", "model base")):
+                for hint, base in self.BASE_MODEL_HINTS.items():
+                    if hint in lower:
+                        return base
+                # If no known mapping, return the cleaned line value.
+                cleaned = re.sub(r"^[^:：]+[:：]\s*", "", line).strip()
+                if cleaned:
+                    return cleaned
+        return None
+
+    def _extract_trigger_words_from_readme(self, readme: str) -> list[str]:
+        """Try to extract trigger words from README.md contents."""
+        if not readme:
+            return []
+        triggers: list[str] = []
+        lines = readme.splitlines()
+        in_trigger_section = False
+        for line in lines:
+            stripped = line.strip()
+            lower = stripped.lower()
+            if any(k in lower for k in ("trigger word", "trigger words", "trigger:", "triggers:", "activation text", "activation words")):
+                in_trigger_section = True
+                # If the trigger is on the same line after the label, capture it.
+                value = re.sub(r"^[^:：]*[:：]\s*", "", stripped).strip()
+                if value and value.lower() not in ("trigger word", "trigger words"):
+                    triggers.extend(self._split_triggers(value))
+                continue
+            if in_trigger_section:
+                if not stripped or stripped.startswith("#") or stripped.startswith("-") and not any(c.isalnum() for c in stripped):
+                    in_trigger_section = False
+                    continue
+                triggers.extend(self._split_triggers(stripped))
+        # Deduplicate while preserving order.
+        seen: set[str] = set()
+        result: list[str] = []
+        for t in triggers:
+            if t and t.lower() not in seen:
+                seen.add(t.lower())
+                result.append(t)
+        return result
+
+    @staticmethod
+    def _split_triggers(text: str) -> list[str]:
+        """Split a trigger string by common separators."""
+        text = text.strip("\"'[]()")
+        if "," in text:
+            return [t.strip().strip("\"'") for t in text.split(",") if t.strip()]
+        if ";" in text:
+            return [t.strip().strip("\"'") for t in text.split(";") if t.strip()]
+        return [text.strip().strip("\"'")]
 
     # ------------------------------------------------------------------
     # Request helpers

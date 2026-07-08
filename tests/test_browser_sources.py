@@ -345,6 +345,58 @@ class TestHuggingFaceAdapter(unittest.TestCase):
         url = self.src.get_download_url(file_info)
         self.assertEqual(url, 'https://huggingface.co/owner/cool-lora/resolve/main/cool-lora.safetensors')
 
+    def test_checkpoint_only_lists_safetensors(self):
+        search_response = [{
+            'id': 'owner/cool-checkpoint',
+            'modelId': 'owner/cool-checkpoint',
+            'tags': ['stable-diffusion'],
+            'siblings': [
+                {'rfilename': 'model.safetensors'},
+                {'rfilename': 'model.ckpt'},
+                {'rfilename': 'model.pt'},
+            ],
+        }]
+        with patch('scripts.browser_sources.huggingface.requests.get') as mock_get:
+            mock_get.return_value = self._make_response(search_response)
+            result = self.src.search(query='cool checkpoint', content_type='Checkpoint', page_size=10)
+
+        files = result['items'][0]['modelVersions'][0]['files']
+        self.assertEqual(len(files), 1)
+        self.assertEqual(files[0]['name'], 'model.safetensors')
+
+    def test_readme_enriches_base_model_and_triggers(self):
+        repo_detail = {
+            'id': 'owner/lora-with-readme',
+            'modelId': 'owner/lora-with-readme',
+            'tags': ['lora'],
+        }
+        tree = [{'path': 'lora.safetensors', 'size': 1024000}]
+        readme = (
+            "# My LoRA\n\n"
+            "Base model: SDXL\n\n"
+            "Trigger words: style_of_mylora, mylora\n\n"
+            "Enjoy!"
+        )
+
+        def side_effect(url, **kwargs):
+            if url.endswith('/README.md'):
+                resp = self._make_response({})
+                resp.status_code = 200
+                resp.text = readme
+                resp.json.side_effect = Exception('not json')
+                return resp
+            if '/tree/main' in url:
+                return self._make_response(tree)
+            return self._make_response(repo_detail)
+
+        with patch('scripts.browser_sources.huggingface.requests.get') as mock_get:
+            mock_get.side_effect = side_effect
+            model = self.src.get_model('owner/lora-with-readme')
+
+        version = model['modelVersions'][0]
+        self.assertEqual(model['baseModel'], 'SDXL')
+        self.assertEqual(set(version['trainedWords']), {'style_of_mylora', 'mylora'})
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -135,13 +135,17 @@
 **Decisões técnicas:**
 - Hugging Face não fornece SHA256 nos endpoints públicos usados; o hash será calculado localmente após o download, como já acontece hoje.
 - A paginação é feita client-side (slice sobre resultados da busca) porque o endpoint de search do HF é cursor-based e não expõe `offset` de forma confiável.
-- Apenas arquivos com extensões de modelo (`.safetensors`, `.ckpt`, `.pt`, `.pth`, `.bin`, `.onnx`) são listados como arquivos canônicos; imagens nos siblings viram previews.
+- Para **Checkpoint** e **LoRA** (incluindo LoCon/DoRA), apenas arquivos `.safetensors` são listados. Outros tipos mantêm `.ckpt`, `.pt`, `.pth`, `.bin`, `.onnx`.
+- Quando as tags HF não trazem base model ou trigger words, o adapter baixa `README.md` do repo e extrai:
+  - **Base model** a partir de linhas como `Base model: SDXL`, `Base_model: ...`, etc.
+  - **Trigger words** a partir de linhas/seções como `Trigger words: ...`, `Trigger word: ...`, etc.
+- Imagens nos siblings viram previews/galeria.
 - O dropdown Source agora lista `CivitAI`, `CivArchive`, `Hugging Face` automaticamente via registry.
 
 **Testes:**
-- `python -m pytest tests/` → 100 passed.
+- `python -m pytest tests/` → 102 passed.
 - `python -m py_compile scripts/browser_sources/*.py scripts/civitai_api.py scripts/civitai_gui.py scripts/civitai_file_manage.py` → sem erros.
-- Teste manual de API: search retornou repos, `/tree/main` listou arquivos `.safetensors`, e `HEAD` na URL `/resolve/main/` retornou `200` com `Content-Length`.
+- Teste manual de API: search retornou repos, `/tree/main` listou arquivos `.safetensors`, `README.md` retornou texto, e `HEAD` na URL `/resolve/main/` retornou `200` com `Content-Length`.
 
 **Próximo passo:** Fase D — adapter arcenciel.io (metadados públicos + Link Key opcional).
 
