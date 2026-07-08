@@ -772,6 +772,15 @@ def model_list_html(json_data, target=''):
         else:
             nsfw_badge = ''
 
+        # LoRA category badge (uses model-level tags from CivitAI)
+        lora_category_badge = ''
+        if item.get('type') in ('LORA', 'LoCon', 'DoRA'):
+            category = _file.categorize_lora_by_tags(item.get('tags', []))
+            if category:
+                lora_category_badge = (
+                    f'<div class="lora-category-badge {category.lower()}">{category}</div>'
+                )
+
         # Card click handler. For the local-models browser (target='local') the card
         # routes selection to the local hidden textbox via select_model's targetPrefix.
         if target:
@@ -836,8 +845,13 @@ def model_list_html(json_data, target=''):
             )
 
         # ModelCard HTML (Footer)
+        lora_category_ribbon = (
+            f'<div class="lora-category-ribbon">{lora_category_badge}</div>'
+            if lora_category_badge else ''
+        )
         card_html += (
             f'</div>'
+            f'{lora_category_ribbon}'
             f'{imgtag}'
             f'<figcaption title="{full_name}">{display_name}</figcaption></figure>'
         )

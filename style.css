@@ -355,6 +355,40 @@
     font-weight: 700;
 }
 
+/* LoRA category ribbon — displayed below the top badges */
+.lora-category-ribbon {
+    position: absolute;
+    top: 48px;
+    left: 10px;
+    z-index: 9;
+    pointer-events: none;
+}
+
+.lora-category-badge {
+    display: inline-flex;
+    align-items: center;
+    height: 20px;
+    padding: 3px 9px;
+    border-radius: 10px;
+    font-size: 0.7em;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: #ffffff;
+    background: rgba(139, 92, 246, 0.85);
+    border: 1px solid rgba(167, 139, 250, 0.6);
+    box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.15);
+    backdrop-filter: blur(6px);
+    text-transform: capitalize;
+}
+
+.lora-category-badge.character { background: rgba(59, 130, 246, 0.85); border-color: rgba(96, 165, 250, 0.6); }
+.lora-category-badge.style     { background: rgba(168, 85, 247, 0.85); border-color: rgba(192, 132, 252, 0.6); }
+.lora-category-badge.clothing  { background: rgba(236, 72, 153, 0.85); border-color: rgba(244, 114, 182, 0.6); }
+.lora-category-badge.concept   { background: rgba(245, 158, 11, 0.85); border-color: rgba(251, 191, 36, 0.6); }
+.lora-category-badge.pose      { background: rgba(14, 165, 233, 0.85); border-color: rgba(56, 189, 248, 0.6); }
+.lora-category-badge.background{ background: rgba(16, 185, 129, 0.85); border-color: rgba(52, 211, 153, 0.6); }
+.lora-category-badge.utility   { background: rgba(100, 116, 139, 0.85); border-color: rgba(148, 163, 184, 0.6); }
+
 /* Modern Custom-Checkbox */
 /* This style is required for the correct display and functionality of the custom checkbox */
 .model-checkbox {
