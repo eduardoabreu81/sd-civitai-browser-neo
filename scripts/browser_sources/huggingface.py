@@ -93,6 +93,7 @@ class HuggingFaceSource(BrowserSource):
         "text-to-image": "Checkpoint",
         "image-to-image": "Checkpoint",
         "text-to-video": "Checkpoint",
+        "image-to-video": "Checkpoint",
         "video-to-video": "Checkpoint",
         "text-to-image-generation": "Checkpoint",
     }
@@ -136,53 +137,77 @@ class HuggingFaceSource(BrowserSource):
         clean_query = (query or "").strip()
         normalized_page = max(1, int(page or 1))
         normalized_page_size = max(1, int(page_size or 20))
+        target_base_models = self._resolve_base_model_filter(base_filter, clean_query)
         # HF model search is cursor-based and doesn't expose offset. Fetch enough
         # rows to slice the requested page client-side, capped to keep runtime sane.
         fetch_limit = min(max(normalized_page * normalized_page_size, normalized_page_size), 100)
-
-        # Map extension content type(s) to HF filters when possible.
-        hf_filter = self._content_type_to_hf_filter(content_type)
-        params: dict[str, Any] = {
+        if target_base_models:
+            fetch_limit = min(max(fetch_limit * 4, 50), 100)
+        target_content_types = self._resolve_content_type_filter(content_type)
+        hf_filters = self._resolve_hf_filters(content_type, target_base_models)
+        base_params: dict[str, Any] = {
             "limit": fetch_limit,
             "full": "true",
             "sort": "downloads",
             "direction": "-1",
         }
         if clean_query:
-            params["search"] = clean_query
-        if hf_filter:
-            params["filter"] = hf_filter
+            base_params["search"] = clean_query
 
         debug_print(
             f"[HuggingFace] search query='{clean_query or '<browse>'}' "
             f"page={normalized_page} page_size={normalized_page_size} "
-            f"fetch_limit={fetch_limit} filter={hf_filter or '<none>'}"
+            f"fetch_limit={fetch_limit} filters={hf_filters or ['<none>']} "
+            f"base_filter={target_base_models or '<none>'}"
         )
 
-        url = f"{self.API_URL}?{self._encode_params(params)}"
-        data = self._request_json(url)
-        if isinstance(data, str):
-            debug_print(f"[HuggingFace] search returned error string: {data}")
-            return data
-        if not isinstance(data, list):
-            debug_print(f"[HuggingFace] unexpected search response type: {type(data)}")
-            return paginated_result(
-                [],
-                current_page=normalized_page,
-                page_size=normalized_page_size,
-                source=self.name,
-            )
+        raw_repos_by_id: dict[str, dict] = {}
+        raw_repo_count = 0
+        query_filters = hf_filters or [None]
+        for hf_filter in query_filters:
+            params = dict(base_params)
+            if hf_filter:
+                params["filter"] = hf_filter
+
+            url = f"{self.API_URL}?{self._encode_params(params)}"
+            data = self._request_json(url)
+            if isinstance(data, str):
+                debug_print(f"[HuggingFace] search returned error string: {data}")
+                return data
+            if not isinstance(data, list):
+                debug_print(f"[HuggingFace] unexpected search response type: {type(data)}")
+                return paginated_result(
+                    [],
+                    current_page=normalized_page,
+                    page_size=normalized_page_size,
+                    source=self.name,
+                )
+            raw_repo_count += len(data)
+            for repo in data:
+                if not isinstance(repo, dict):
+                    continue
+                repo_id = repo.get("id") or repo.get("modelId")
+                if repo_id and repo_id not in raw_repos_by_id:
+                    raw_repos_by_id[str(repo_id)] = repo
+
+        data = list(raw_repos_by_id.values())
 
         # Build canonical models from repo summaries.
         models: list[dict] = []
         discarded_no_files = 0
+        discarded_base_filter = 0
+        discarded_type_filter = 0
         for repo in data:
             if not isinstance(repo, dict):
                 continue
             model = self._normalize_repo_summary(repo)
             versions = model.get("modelVersions", []) if model else []
             files = versions[0].get("files", []) if versions else []
-            if model and files:
+            if model and files and not self._matches_content_type_filter(model, target_content_types):
+                discarded_type_filter += 1
+            elif model and files and not self._matches_base_model_filter(model, target_base_models):
+                discarded_base_filter += 1
+            elif model and files:
                 models.append(model)
             elif model:
                 discarded_no_files += 1
@@ -197,8 +222,11 @@ class HuggingFaceSource(BrowserSource):
         page_models = models[start:start + normalized_page_size]
 
         debug_print(
-            f"[HuggingFace] raw_repos={len(data)} normalized_models={len(models)} "
+            f"[HuggingFace] raw_repos={raw_repo_count} unique_repos={len(data)} "
+            f"normalized_models={len(models)} "
             f"discarded_no_files={discarded_no_files} "
+            f"discarded_type_filter={discarded_type_filter} "
+            f"discarded_base_filter={discarded_base_filter} "
             f"page_items={len(page_models)} current_page={normalized_page} total_pages={total_pages}"
         )
 
@@ -237,7 +265,7 @@ class HuggingFaceSource(BrowserSource):
     # ------------------------------------------------------------------
     # Normalization
     # ------------------------------------------------------------------
-    def _normalize_repo_summary(self, repo: dict) -> Optional[dict]:
+    def _normalize_repo_summary(self, repo: dict, *, enrich_readme: bool = False) -> Optional[dict]:
         """Build a canonical model from a HF search result item."""
         repo_id = repo.get("id")
         if not repo_id:
@@ -255,10 +283,10 @@ class HuggingFaceSource(BrowserSource):
 
         # Try to enrich from README.md when no base model or triggers were detected.
         readme = ""
-        if not base_model:
+        if enrich_readme and not base_model:
             readme = self._fetch_readme(repo_id)
             base_model = self._extract_base_model_from_readme(readme)
-        trained_words = self._extract_trigger_words_from_readme(readme)
+        trained_words = self._extract_trigger_words_from_readme(readme) if enrich_readme else []
 
         version = canonical_version(
             source_version_id="main",
@@ -357,6 +385,8 @@ class HuggingFaceSource(BrowserSource):
             lower_path = path.lower()
             if not any(lower_path.endswith(ext) for ext in model_extensions):
                 continue
+            if self._is_auxiliary_component_path(path, model_type):
+                continue
             size = entry.get("size")
             size_kb = size / 1024 if isinstance(size, (int, float)) else None
             result.append(canonical_file(
@@ -403,6 +433,8 @@ class HuggingFaceSource(BrowserSource):
             path = s.get("rfilename", "")
             lower = path.lower()
             if not any(lower.endswith(ext) for ext in model_extensions):
+                continue
+            if self._is_auxiliary_component_path(path, model_type):
                 continue
             result.append(canonical_file(
                 filename=path.split("/")[-1],
@@ -459,35 +491,189 @@ class HuggingFaceSource(BrowserSource):
             if lower.startswith("base_model:"):
                 base_value = lower.split(":", 1)[1]
                 for hint, base in self.BASE_MODEL_HINTS.items():
-                    if hint in base_value:
+                    if self._matches_base_model_hint(hint, base_value):
                         return base
                 # Return the raw base_model value if no known mapping.
                 return base_value
 
         text = " ".join(tags).lower() + " " + repo_id.lower() + " " + model_id.lower()
         for hint, base in self.BASE_MODEL_HINTS.items():
-            if hint in text:
+            if self._matches_base_model_hint(hint, text):
                 return base
         return None
 
-    def _content_type_to_hf_filter(self, content_type: Optional[str | list[str]]) -> Optional[str]:
-        """Map extension content type to a HF model tag filter."""
+    @staticmethod
+    def _matches_base_model_hint(hint: str, text: str) -> bool:
+        """Return True when a base-model hint matches without broad false positives."""
+        hint = str(hint or "").lower()
+        text = str(text or "").lower()
+        if not hint or not text:
+            return False
+
+        if hint == "anima":
+            # "anima" should match Anima/Animagine/KiwimixAnima-style repos,
+            # but not generic animation terms like animate/animatediff.
+            return bool(re.search(r"(?<![a-z0-9])anima(?!t(?:e|ed|es|ing|ion)|diff)", text))
+
+        if " " in hint or "/" in hint or "." in hint or "-" in hint:
+            return hint in text
+
+        return bool(re.search(rf"(?<![a-z0-9]){re.escape(hint)}(?![a-z0-9])", text))
+
+    def _resolve_hf_filters(
+        self,
+        content_type: Optional[str | list[str]],
+        target_base_models: list[str],
+    ) -> list[str]:
+        """Map extension filters to Hugging Face pipeline/tag filters."""
+        types = self._content_type_values(content_type)
+        video_search = self._is_video_base_model_search(target_base_models)
+
+        if any(t in {"lora", "locon", "dora"} for t in types):
+            return ["lora"]
+        if "textualinversion" in types:
+            return ["textual-inversion"]
+        if "vae" in types:
+            return ["vae"]
+        if "upscaler" in types:
+            return ["upscaler"]
+
+        # Forge Neo supports video model families such as Wan, HunyuanVideo,
+        # Stable Video Diffusion and LTX. HF classifies those by pipeline tags,
+        # not by the broad "stable-diffusion" tag.
+        if video_search:
+            return ["text-to-video", "image-to-video"]
+
+        # Default checkpoint/common-model search should prefer actual image
+        # generation pipelines. The old "stable-diffusion" tag was too broad
+        # and pulled unrelated repos into semantic searches like "anima".
+        if not types or "checkpoint" in types:
+            return ["text-to-image"]
+
+        return []
+
+    @staticmethod
+    def _content_type_values(content_type: Optional[str | list[str]]) -> list[str]:
+        """Normalize Browser content type selections for matching."""
         if not content_type:
+            return []
+        values = content_type if isinstance(content_type, list) else [content_type]
+        return [
+            str(value).strip().lower().replace(" ", "")
+            for value in values
+            if value and str(value).strip().lower() not in {"all", "none"}
+        ]
+
+    def _resolve_content_type_filter(self, content_type: Optional[str | list[str]]) -> list[str]:
+        """Return canonical model type names requested by the Browser."""
+        resolved: list[str] = []
+        for value in self._content_type_values(content_type):
+            if value == "checkpoint":
+                resolved.append("checkpoint")
+            elif value == "lora":
+                resolved.append("lora")
+            elif value == "locon":
+                resolved.append("locon")
+            elif value == "dora":
+                resolved.append("dora")
+            elif value == "textualinversion":
+                resolved.append("textualinversion")
+            elif value == "vae":
+                resolved.append("vae")
+            elif value == "upscaler":
+                resolved.append("upscaler")
+            elif value == "controlnet":
+                resolved.append("controlnet")
+        return resolved
+
+    @staticmethod
+    def _is_video_base_model_search(target_base_models: list[str]) -> bool:
+        """Return True for Forge Neo video-capable model families."""
+        video_base_models = {
+            "wan",
+            "hunyuanvideo",
+            "stable video diffusion",
+            "ltx",
+        }
+        return any(str(base).strip().lower() in video_base_models for base in target_base_models)
+
+    def _resolve_base_model_filter(
+        self,
+        base_filter: Optional[str | list[str]],
+        query: str = "",
+    ) -> list[str]:
+        """Resolve UI base-model filters and exact base-model query terms."""
+        resolved: list[str] = []
+
+        raw_filters = base_filter if isinstance(base_filter, list) else [base_filter] if base_filter else []
+        for value in raw_filters:
+            if not value:
+                continue
+            normalized = self._normalize_base_model_value(str(value))
+            if normalized and normalized not in resolved:
+                resolved.append(normalized)
+
+        # HF's text search is broad. When the whole query is exactly a known
+        # base-model family (e.g. "anima", "wan", "flux"), use it as an
+        # additional semantic filter instead of showing unrelated text matches.
+        query_base = self._normalize_base_model_value(query, exact=True)
+        if query_base and query_base not in resolved:
+            resolved.append(query_base)
+
+        return resolved
+
+    def _normalize_base_model_value(self, value: str, *, exact: bool = False) -> Optional[str]:
+        """Normalize a possible base-model label to the extension's naming."""
+        lower = str(value or "").strip().lower()
+        if not lower:
             return None
-        types = content_type if isinstance(content_type, list) else [content_type]
-        for t in types:
-            lower = str(t).lower()
-            if lower in ("lora", "locon", "dora"):
-                return "lora"
-            if lower == "textualinversion":
-                return "textual-inversion"
-            if lower == "checkpoint":
-                return "stable-diffusion"
-            if lower == "vae":
-                return "vae"
-            if lower == "upscaler":
-                return "upscaler"
-        return None
+
+        if exact:
+            candidates = {
+                hint: base
+                for hint, base in self.BASE_MODEL_HINTS.items()
+                if " " not in hint and "/" not in hint
+            }
+            if lower in candidates:
+                return candidates[lower]
+            return None
+
+        for hint, base in self.BASE_MODEL_HINTS.items():
+            if self._matches_base_model_hint(hint, lower):
+                return base
+        return value.strip()
+
+    @staticmethod
+    def _matches_base_model_filter(model: dict, target_base_models: list[str]) -> bool:
+        """Return True when a normalized HF model matches requested base filters."""
+        if not target_base_models:
+            return True
+        base_model = str(model.get("baseModel") or "").strip().lower()
+        if not base_model:
+            return False
+        return any(base_model == str(target).strip().lower() for target in target_base_models)
+
+    @staticmethod
+    def _matches_content_type_filter(model: dict, target_content_types: list[str]) -> bool:
+        """Return True when a normalized HF model matches requested content types."""
+        if not target_content_types:
+            return True
+
+        model_type = str(model.get("type") or "").strip().lower()
+        groups = {
+            "checkpoint": {"checkpoint"},
+            "lora": {"lora"},
+            "locon": {"locon"},
+            "dora": {"dora"},
+            "textualinversion": {"textualinversion"},
+            "vae": {"vae"},
+            "upscaler": {"upscaler"},
+            "controlnet": {"controlnet"},
+        }
+        accepted: set[str] = set()
+        for target in target_content_types:
+            accepted.update(groups.get(target, {target}))
+        return model_type in accepted
 
     def _model_file_extensions(self, model_type: str) -> tuple[str, ...]:
         """Return allowed file extensions for a given content type.
@@ -544,6 +730,46 @@ class HuggingFaceSource(BrowserSource):
 
         return (location_rank, extension_rank, lower)
 
+    @staticmethod
+    def _is_auxiliary_component_path(path: str, model_type: str = "Other") -> bool:
+        """Return True for component files that should not be primary checkpoints."""
+        if str(model_type).lower() != "checkpoint":
+            return False
+
+        lower = str(path or "").lower()
+        segments = [segment for segment in lower.split("/") if segment]
+        component_segments = {
+            "feature_extractor",
+            "safety_checker",
+            "scheduler",
+            "text_encoder",
+            "text_encoder_2",
+            "text_encoder_3",
+            "tokenizer",
+            "tokenizer_2",
+            "tokenizer_3",
+            "vae",
+            "vae_1_0",
+            "vae_decoder",
+            "vae_encoder",
+        }
+        if any(segment in component_segments for segment in segments[:-1]):
+            return True
+
+        filename = segments[-1] if segments else lower
+        auxiliary_filename_tokens = (
+            "clip_vision",
+            "clip-g",
+            "clip_l",
+            "clip_g",
+            "text_encoder",
+            "t5xxl",
+            "umt5",
+            "vae",
+            "lora",
+        )
+        return any(token in filename for token in auxiliary_filename_tokens)
+
     def _fetch_readme(self, repo_id: str) -> str:
         """Fetch README.md raw text from a HF repo, if it exists."""
         url = f"{self.BASE_URL}/{quote(repo_id, safe='/')}/resolve/main/README.md"
@@ -570,7 +796,7 @@ class HuggingFaceSource(BrowserSource):
             lower = line.lower()
             if any(k in lower for k in ("base model", "base_model", "basemodel", "base: ", "model base")):
                 for hint, base in self.BASE_MODEL_HINTS.items():
-                    if hint in lower:
+                    if self._matches_base_model_hint(hint, lower):
                         return base
                 # If no known mapping, return the cleaned line value.
                 cleaned = re.sub(r"^[^:：]+[:：]\s*", "", line).strip()

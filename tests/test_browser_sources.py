@@ -453,7 +453,7 @@ class TestHuggingFaceAdapter(unittest.TestCase):
 
         requested_url = mock_get.call_args_list[0].args[0]
         self.assertNotIn('search=', requested_url)
-        self.assertIn('filter=stable-diffusion', requested_url)
+        self.assertIn('filter=text-to-image', requested_url)
         self.assertIn('sort=downloads', requested_url)
         self.assertEqual(len(result['items']), 1)
         self.assertEqual(result['items'][0]['name'], 'owner/browsable-checkpoint')
@@ -479,6 +479,104 @@ class TestHuggingFaceAdapter(unittest.TestCase):
 
         self.assertEqual(len(result['items']), 1)
         self.assertEqual(result['items'][0]['browserSourceId'], 'owner/has-model-file')
+
+    def test_checkpoint_filter_excludes_lora_results_from_text_to_image(self):
+        search_response = [
+            {
+                'id': 'owner/anima-checkpoint',
+                'modelId': 'owner/anima-checkpoint',
+                'tags': ['text-to-image', 'base_model:circlestone-labs/Anima'],
+                'siblings': [{'rfilename': 'anima-checkpoint.safetensors'}],
+            },
+            {
+                'id': 'owner/anima-lora',
+                'modelId': 'owner/anima-lora',
+                'tags': ['text-to-image', 'lora', 'base_model:circlestone-labs/Anima'],
+                'siblings': [{'rfilename': 'anima-lora.safetensors'}],
+            },
+        ]
+        with patch('scripts.browser_sources.huggingface.requests.get') as mock_get:
+            mock_get.return_value = self._make_response(search_response)
+            result = self.src.search(query='anima', content_type='Checkpoint', page_size=10)
+
+        self.assertEqual(len(result['items']), 1)
+        self.assertEqual(result['items'][0]['browserSourceId'], 'owner/anima-checkpoint')
+        self.assertEqual(result['items'][0]['type'], 'Checkpoint')
+
+    def test_video_base_model_search_uses_video_pipeline_filters(self):
+        text_to_video_response = [{
+            'id': 'Wan-AI/Wan2.2-T2V-A14B-Diffusers',
+            'modelId': 'Wan-AI/Wan2.2-T2V-A14B-Diffusers',
+            'tags': ['text-to-video'],
+            'pipeline_tag': 'text-to-video',
+            'siblings': [{'rfilename': 'transformer/diffusion_pytorch_model.safetensors'}],
+        }]
+        image_to_video_response = [{
+            'id': 'Wan-AI/Wan2.2-I2V-A14B-Diffusers',
+            'modelId': 'Wan-AI/Wan2.2-I2V-A14B-Diffusers',
+            'tags': ['image-to-video'],
+            'pipeline_tag': 'image-to-video',
+            'siblings': [{'rfilename': 'transformer/diffusion_pytorch_model.safetensors'}],
+        }]
+
+        with patch('scripts.browser_sources.huggingface.requests.get') as mock_get:
+            mock_get.side_effect = [
+                self._make_response(text_to_video_response),
+                self._make_response(image_to_video_response),
+            ]
+            result = self.src.search(query='wan', content_type='Checkpoint', page_size=10)
+
+        requested_urls = [call.args[0] for call in mock_get.call_args_list]
+        self.assertIn('filter=text-to-video', requested_urls[0])
+        self.assertIn('filter=image-to-video', requested_urls[1])
+        self.assertEqual([item['browserSourceId'] for item in result['items']], [
+            'Wan-AI/Wan2.2-T2V-A14B-Diffusers',
+            'Wan-AI/Wan2.2-I2V-A14B-Diffusers',
+        ])
+        self.assertTrue(all(item['baseModel'] == 'Wan' for item in result['items']))
+
+    def test_exact_base_model_query_filters_huggingface_results(self):
+        search_response = [
+            {
+                'id': 'owner/real-anima',
+                'modelId': 'owner/real-anima',
+                'tags': ['stable-diffusion', 'base_model:anima'],
+                'siblings': [{'rfilename': 'real-anima.safetensors'}],
+            },
+            {
+                'id': 'owner/animation-helper',
+                'modelId': 'owner/animation-helper',
+                'tags': ['stable-diffusion', 'base_model:runwayml/stable-diffusion-v1-5'],
+                'siblings': [{'rfilename': 'animation-helper.safetensors'}],
+            },
+            {
+                'id': 'ByteDance/AnimateDiff-Lightning',
+                'modelId': 'ByteDance/AnimateDiff-Lightning',
+                'tags': ['stable-diffusion'],
+                'siblings': [{'rfilename': 'animatediff.safetensors'}],
+            },
+        ]
+        with patch('scripts.browser_sources.huggingface.requests.get') as mock_get:
+            mock_get.return_value = self._make_response(search_response)
+            result = self.src.search(query='anima', content_type='Checkpoint', page_size=10)
+
+        self.assertEqual(len(result['items']), 1)
+        self.assertEqual(result['items'][0]['browserSourceId'], 'owner/real-anima')
+        self.assertEqual(result['items'][0]['baseModel'], 'Anima')
+
+    def test_non_base_model_query_keeps_text_search_results(self):
+        search_response = [{
+            'id': 'owner/anime-style',
+            'modelId': 'owner/anime-style',
+            'tags': ['stable-diffusion', 'base_model:runwayml/stable-diffusion-v1-5'],
+            'siblings': [{'rfilename': 'anime-style.safetensors'}],
+        }]
+        with patch('scripts.browser_sources.huggingface.requests.get') as mock_get:
+            mock_get.return_value = self._make_response(search_response)
+            result = self.src.search(query='anime', content_type='Checkpoint', page_size=10)
+
+        self.assertEqual(len(result['items']), 1)
+        self.assertEqual(result['items'][0]['browserSourceId'], 'owner/anime-style')
 
     def test_search_fetches_enough_rows_for_client_side_pagination(self):
         search_response = []
@@ -524,6 +622,26 @@ class TestHuggingFaceAdapter(unittest.TestCase):
             'resolve/main/v1-5-pruned-emaonly.safetensors',
             files[0]['downloadUrl'],
         )
+
+    def test_checkpoint_search_discards_auxiliary_component_only_repos(self):
+        search_response = [{
+            'id': 'owner/gguf-with-vae-only',
+            'modelId': 'owner/gguf-with-vae-only',
+            'tags': ['text-to-video', 'base_model:Wan-AI/Wan2.2-T2V-A14B'],
+            'pipeline_tag': 'text-to-video',
+            'siblings': [
+                {'rfilename': 'HighNoise/model.Q4_K_M.gguf'},
+                {'rfilename': 'VAE/Wan2.1_VAE.safetensors'},
+                {'rfilename': 'clip_vision_h_fp16.safetensors'},
+                {'rfilename': 'umt5xxl_fp8_e4m3fn_scaled.safetensors'},
+                {'rfilename': 'wan2.2_i2v_lite_lora_high_noise.safetensors'},
+            ],
+        }]
+        with patch('scripts.browser_sources.huggingface.requests.get') as mock_get:
+            mock_get.return_value = self._make_response(search_response)
+            result = self.src.search(query='wan', content_type='Checkpoint', page_size=10)
+
+        self.assertEqual(result['items'], [])
 
     def test_get_model_fetches_repo_detail_and_files(self):
         repo_detail = {
