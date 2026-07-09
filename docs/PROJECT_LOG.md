@@ -22,6 +22,19 @@
 
 ## Linha do Tempo
 
+### 2026-07-09 — External file size metadata fallback
+
+**O que mudou (pt-BR):** Corrigido novo crash ao clicar em card do Hugging Face quando o arquivo externo vinha com `sizeKB=None`. O detail panel legado multiplicava `None * 1024`; agora o cálculo de tamanho aceita `None`, string numérica e valores inválidos com fallback seguro para `0`.
+**Integração:** Criados helpers internos `_file_size_kb()` e `_file_size_bytes()` em `civitai_api.py`; `update_model_info()` e `update_file_info()` passaram a usar esses helpers nos pontos que exibem o file dropdown e calculam tamanho para detecção de Textual Inversion/PickleTensor.
+**Arquivos alterados:** `scripts/civitai_api.py`, `tests/test_civitai_model_ids.py`, `docs/PROJECT_LOG.md`.
+**Validação:** Testes focados `tests/test_civitai_model_ids.py tests/test_browser_sources.py` passaram com **43 passed**; `py_compile scripts/civitai_api.py` e `git diff --check` ficaram limpos.
+**Próximos passos / Next steps:**
+- Atualizar a extensão remota e repetir: Hugging Face → browse/base Anima → clicar em card.
+- Se o detail panel abrir, validar file dropdown e iniciar um download pequeno/seguro.
+- Observar se algum outro campo externo opcional (`metadata`, `hashes`, `images`) ainda assume o shape CivitAI completo.
+
+---
+
 ### 2026-07-09 — External browser source string model IDs
 
 **O que mudou (pt-BR):** Corrigido o crash ao clicar em cards do Hugging Face, causado por `extract_model_info()` converter sempre o ID do dropdown para `int`. Fontes externas como Hugging Face usam IDs string no formato `owner/repo`, então o parser agora mantém IDs CivitAI numéricos como `int` e preserva IDs externos como `str`.

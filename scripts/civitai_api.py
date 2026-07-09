@@ -1726,6 +1726,22 @@ def model_id_matches(left, right):
     right_value = parse_model_id(right)
     return left_value == right_value
 
+def _file_size_bytes(file_info):
+    """Return file size in bytes, accepting missing or string ``sizeKB`` values."""
+    return _file_size_kb(file_info) * 1024
+
+def _file_size_kb(file_info):
+    """Return file size in KiB, accepting missing or string ``sizeKB`` values."""
+    if not isinstance(file_info, dict):
+        return 0
+    size_kb = file_info.get('sizeKB')
+    if size_kb in (None, ''):
+        return 0
+    try:
+        return float(size_kb)
+    except (TypeError, ValueError):
+        return 0
+
 def update_model_info(model_string=None, model_version=None, only_html=False, input_id=None, json_input=None, from_preview=False, prefer_cached_images=False):
     video_playback = getattr(opts, 'video_playback', True)
     meta_btn = getattr(opts, 'individual_meta_btn', True)
@@ -1862,15 +1878,17 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                     size = file_metadata.get('size', 'Unknown')
                     format = file_metadata.get('format') or file.get('format') or 'Unknown'
                     fp = file_metadata.get('fp', 'Unknown')
-                    sizeKB = file.get('sizeKB', 0) * 1024
-                    filesize = _download.convert_size(sizeKB)
+                    size_kb = _file_size_kb(file)
+                    size_bytes = size_kb * 1024
+                    filesize = _download.convert_size(size_bytes)
 
                     unique_file_name = f"{size} {format} {fp} ({filesize})"
                     is_primary = file.get('primary', False)
                     file_list.append(unique_file_name)
                     file_dict.append({
                         'format': format,
-                        'sizeKB': sizeKB
+                        'sizeKB': size_kb,
+                        'sizeB': size_bytes,
                     })
                     if is_primary:
                         default_file = unique_file_name
@@ -2551,7 +2569,7 @@ def update_file_info(model_string, model_version, file_metadata):
                             file_size = metadata.get('size', 'Unknown')
                             file_format = metadata.get('format', 'Unknown')
                             file_fp = metadata.get('fp', 'Unknown')
-                            sizeKB = file.get('sizeKB', 0)
+                            sizeKB = _file_size_kb(file)
                             sizeB = sizeKB * 1024
                             filesize = _download.convert_size(sizeB)
 

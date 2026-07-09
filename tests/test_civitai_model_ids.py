@@ -82,6 +82,13 @@ class TestModelIdParsing(unittest.TestCase):
         self.assertTrue(self.api.model_id_matches("cagliostrolab/animagine-xl-3.1", "cagliostrolab/animagine-xl-3.1"))
         self.assertFalse(self.api.model_id_matches("owner/repo-a", "owner/repo-b"))
 
+    def test_file_size_helpers_tolerate_missing_and_string_values(self):
+        self.assertEqual(self.api._file_size_kb({"sizeKB": None}), 0)
+        self.assertEqual(self.api._file_size_bytes({"sizeKB": None}), 0)
+        self.assertEqual(self.api._file_size_kb({"sizeKB": "1.5"}), 1.5)
+        self.assertEqual(self.api._file_size_bytes({"sizeKB": "1.5"}), 1536)
+        self.assertEqual(self.api._file_size_kb({"sizeKB": "not-a-number"}), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
