@@ -22,6 +22,19 @@
 
 ## Linha do Tempo
 
+### 2026-07-08 — Documentação pública do Multi-Source Browser
+
+**O que mudou (pt-BR):** O `README.md` passou a documentar o estado atual da fundação Multi-Source Browser na branch `revamp`: selector de fonte, adapters CivitAI/CivArchive/Hugging Face/Arc en Ciel, proveniência de fontes externas, normalização defensiva de metadata e filtros de compatibilidade do Hugging Face.
+**Escopo público:** A documentação foi escrita como **revamp preview**, não como release estável da `main`. CivitAI continua descrita como fonte primária de verdade para metadata, previews, permissões e validação por SHA256.
+**Decisões:** `Deleted from CivitAI` permanece documentado como filtro exclusivo do CivArchive e semanticamente separado do futuro `Not found on CivitAI`. GGUF foi documentado como suportado pelo Forge Neo, mas ainda bloqueado no Browser Neo até download, organização, revisão local, sidecars e metadata reconhecerem `.gguf` de forma segura.
+**Arquivos alterados:** `README.md`, `docs/PROJECT_LOG.md`, `AGENTS.local.md`.
+**Próximos passos / Next steps:**
+- Validar runtime no Forge Neo: Hugging Face (`<browse>`, `anima`, `wan`, LoRA), CivArchive `Deleted from CivitAI`, e Arc en Ciel.
+- Se a validação runtime fechar, decidir se a documentação de `revamp preview` vira changelog formal de `Revamp v0.1.0`.
+- Implementar suporte GGUF somente como fluxo explícito, não como simples liberação de extensão no adapter HF.
+
+---
+
 ### 2026-07-08 — Hugging Face live browse e diagnóstico de resultados vazios
 
 **O que mudou (pt-BR):** O adapter **Hugging Face** deixou de retornar lista vazia silenciosa quando a busca vem sem termo. Agora o modo `<browse>` consulta o endpoint público com `sort=downloads`, `direction=-1`, `full=true` e o filtro HF equivalente ao content type quando aplicável (ex.: `Checkpoint` → `stable-diffusion`). A paginação client-side foi ajustada para buscar uma janela maior (`page * page_size`, com cap) antes do slice, evitando página 2 vazia por falta de offset no endpoint HF.
@@ -955,7 +968,7 @@ Três mudanças implementadas nos dois repositórios:
 
 ## Resumo para README (próximo release)
 
-### What's New — v0.10.0 (Revamp)
+### What's New — Revamp v0.1.0
 
 - **LoraDex — curadoria visual de LoRAs**  
   Nova sub-aba dentro de *Local Models* para revisar e ajustar a categoria de cada LoRA instalada. Lista compacta com mini-thumbnail (zoom no hover), nome do modelo CivitAI, base model, versão instalada e dropdown de categoria. Alterações pendentes são destacadas em amarelo e podem ser aplicadas individualmente ou em lote.

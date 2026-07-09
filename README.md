@@ -22,6 +22,7 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 - [What's New](#-whats-new)
 - [Changelog](#-changelog)
+- [Revamp Preview](#-revamp-preview)
 - [Roadmap](#️-roadmap)
 - [Features](#-features)
 - [Installation](#-installation)
@@ -177,6 +178,22 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ---
 
+## 🧪 Revamp Preview
+
+### Revamp v0.1.0 preview — Multi-Source Browser foundation
+
+- **Browser Source selector** — the Browser can route searches through source adapters instead of being hardwired to CivitAI only.
+- **CivArchive adapter** — browse mirrored CivitAI records, including a source-specific **Deleted from CivitAI** filter for models marked as removed in CivArchive.
+- **Hugging Face adapter** — browse public Hugging Face model repositories, normalize them into Browser cards, and download compatible model files through `/resolve/main/` URLs.
+- **Arc en Ciel adapter** — initial adapter foundation for arcenciel.io, pending final runtime validation.
+- **External-source provenance** — non-CivitAI cards and detail panels can show the origin source, source URL, mirror/status notes, and download provenance.
+- **Safer external metadata normalization** — external source files/images are normalized to the same legacy Browser shape expected by detail panels, downloads, sidecars, and preview saving.
+- **Hugging Face result filtering** — checkpoint search now prefers real model artifacts, avoids auxiliary Diffusers components, separates LoRA results from checkpoint results, and uses video pipeline filters for video model families such as Wan.
+
+> This is active work on the `revamp` branch. CivitAI remains the primary source of truth for metadata and SHA256 validation. External-source search/download is being added incrementally and should be runtime-tested in Forge Neo before release.
+
+---
+
 ## 🗺️ Roadmap
 
 ### v0.7.0 — Forge Neo Compatibility *(complete)* ✅
@@ -199,7 +216,14 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ### v0.9.0 — CivitAI Domain Support, Update Mode Isolation & Download Resilience *(complete)* ✅
 
-### v0.10.0 — Advanced Curation *(planned)*
+### Revamp v0.1.0 — Advanced Curation *(planned)*
+- **Multi-Source Browser**: direct adapters for CivitAI, CivArchive, Hugging Face, and Arc en Ciel.
+- **Deleted from CivitAI filter** for CivArchive, based on CivArchive's `is_deleted`/`deleted_at` data.
+- **External-source provenance** in cards and detail panels so downloaded models keep their origin visible.
+- **Hugging Face curated catalog foundation** for safer discovery of Forge-compatible repositories.
+- **Cross-source SHA256 double-check** against CivitAI metadata when external sources provide or allow resolving a file hash.
+- **Not found on CivitAI filter** as a separate future state from "Deleted from CivitAI".
+- **Explicit GGUF support** after Browser download, organization, local review, and metadata flows handle `.gguf` safely.
 - Saved search presets
 - Favorites in creator/user search
 - Additional browser quality-of-life improvements
@@ -219,6 +243,7 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 ### 🔍 Browse & Search
 
 - Browse CivitAI directly inside the WebUI — no tab switching
+- Select a Browser source adapter: CivitAI, CivArchive, Hugging Face, and Arc en Ciel *(revamp preview)*
 - Search by model name, tag, or username
 - Filter by content type: Checkpoint, LORA, VAE, ControlNet, Upscaler, TextualInversion, Wildcards, Workflows, and more
 - Filter by base model: SD 1.x, SDXL, Pony, Illustrious, FLUX, Wan, Qwen, NoobAI, Lumina, and more — list auto-updated from CivitAI at startup ⭐
@@ -227,6 +252,21 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 - NSFW toggle, liked-only filter, hide installed models, hide banned creators
 - Exact search mode
 - Search settings persist across restarts ⭐
+
+### 🌐 Browser Sources *(revamp preview)*
+
+| Source | Current role | Notes |
+|---|---|---|
+| CivitAI | Primary catalog and metadata source | Full native support, API key support, SHA256 validation, previews, permissions, and update checks. |
+| CivArchive | Backup/mirror source for CivitAI records | Supports the source-specific **Deleted from CivitAI** filter. Pagination is currently client-side over the public search window returned by CivArchive. |
+| Hugging Face | Public repository discovery and direct file download | Public search only for now. The adapter filters by compatible pipeline/content type, avoids auxiliary Diffusers components, and excludes `.gguf` until Browser-side GGUF support is complete. |
+| Arc en Ciel | Initial external-source adapter | Adapter foundation exists; final Forge Neo runtime validation is still pending. |
+
+Source-specific behavior:
+- **Deleted from CivitAI** only applies to CivArchive. It means CivArchive marks the model as removed from CivitAI; it does not mean "exclusive to another platform".
+- **Not found on CivitAI** is planned separately. It requires a SHA256 double-check against CivitAI and must not be conflated with deleted records.
+- **GGUF** is supported by Forge Neo as a checkpoint format, but Browser Neo does not expose GGUF downloads yet. Support will be added only after local metadata, organization, review, and sidecar flows understand `.gguf`.
+- Future adapters should prefer direct official/public APIs when available instead of scraping pages.
 
 ### 📥 Download
 
