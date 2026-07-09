@@ -81,12 +81,14 @@ class ArcencielSource(BrowserSource):
         **kwargs: Any,
     ) -> dict:
         """Search arcenciel.io models and return canonical results."""
-        debug_print(f"[Arc en Ciel] search query='{query}' page={page} page_size={page_size}")
-        if not query or not query.strip():
-            debug_print("[Arc en Ciel] empty query, returning empty result")
-            return paginated_result([], current_page=page, page_size=page_size, source=self.name)
+        clean_query = query.strip() if isinstance(query, str) else ""
+        debug_print(f"[Arc en Ciel] search query='{clean_query}' page={page} page_size={page_size}")
 
-        params: dict[str, Any] = {"q": query.strip(), "limit": page_size}
+        params: dict[str, Any] = {"limit": page_size}
+        if clean_query:
+            params["q"] = clean_query
+        else:
+            debug_print("[Arc en Ciel] empty query, using browse mode")
         if page > 1:
             params["page"] = page
 
@@ -99,20 +101,32 @@ class ArcencielSource(BrowserSource):
             debug_print(f"[Arc en Ciel] unexpected search response type: {type(data)}")
             return paginated_result([], current_page=page, page_size=page_size, source=self.name)
 
-        items = [self._normalize_model(item) for item in data.get("data", []) if isinstance(item, dict)]
-        debug_print(f"[Arc en Ciel] search returned {len(items)} model(s)")
+        items = [
+            model
+            for item in data.get("data", [])
+            if isinstance(item, dict)
+            for model in [self._normalize_model(item)]
+            if model is not None
+        ]
+        debug_print(
+            f"[Arc en Ciel] search returned {len(items)} model(s) "
+            f"(total_count={data.get('totalCount')}, total_pages={data.get('totalPages')})"
+        )
 
-        # arcenciel returns page/limit in the response; estimate total pages.
+        # arcenciel returns page/limit plus totalCount/totalPages when available.
         current_page = data.get("page", page)
         limit = data.get("limit", page_size)
         has_more = len(items) >= limit
-        total_pages = current_page if not has_more else current_page + 1
+        total_items = data.get("totalCount", len(items))
+        total_pages = data.get("totalPages")
+        if not total_pages:
+            total_pages = current_page if not has_more else current_page + 1
 
         return paginated_result(
             items,
             current_page=current_page,
             page_size=limit,
-            total_items=len(items),
+            total_items=total_items,
             total_pages=total_pages,
             source=self.name,
         )
@@ -223,7 +237,7 @@ class ArcencielSource(BrowserSource):
             )
 
             activation_tags = v.get("activationTags") or []
-            trained_words = [t for t in activation_tags if isinstance(t, str)]
+            trained_words = self._normalize_activation_tags(activation_tags)
 
             images = self._build_images(v.get("images", []) or [])
 
@@ -268,6 +282,14 @@ class ArcencielSource(BrowserSource):
                 raw={"file_path": file_path, "variants": variants},
             ))
         return result[:9]
+
+    def _normalize_activation_tags(self, activation_tags: Any) -> list[str]:
+        """Normalize arcenciel activationTags into a list of trigger words."""
+        if isinstance(activation_tags, str):
+            return [tag.strip() for tag in re.split(r"[,;\n]+", activation_tags) if tag.strip()]
+        if isinstance(activation_tags, list):
+            return [tag.strip() for tag in activation_tags if isinstance(tag, str) and tag.strip()]
+        return []
 
     def _image_url(self, file_path: str) -> str:
         """Build a media URL from an arcenciel file path."""

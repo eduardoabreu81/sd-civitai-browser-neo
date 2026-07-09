@@ -115,6 +115,27 @@ class TestCivitaiAdapter(unittest.TestCase):
         self.assertIn('sort=Highest%20Rated', url)
         self.assertIn('page=1', url)
 
+    def test_empty_search_builds_browse_url_without_query_param(self):
+        url = self.src._create_api_url(
+            query='',
+            search_type='Model name',
+            content_type=['Checkpoint'],
+            base_filter=['Anima'],
+            sort='Highest Rated',
+            period='Month',
+            nsfw=False,
+            exact=True,
+            page_size=20,
+            only_liked=False,
+            page=1,
+        )
+
+        self.assertNotIn('query=', url)
+        self.assertIn('types=Checkpoint', url)
+        self.assertIn('baseModels=Anima', url)
+        self.assertIn('limit=20', url)
+        self.assertIn('page=1', url)
+
     def test_create_api_url_rebuilds_for_mismatched_page(self):
         url = self.src._create_api_url(
             query='anima',
@@ -765,6 +786,8 @@ class TestArcencielAdapter(unittest.TestCase):
         search_response = {
             'page': 1,
             'limit': 20,
+            'totalCount': 1,
+            'totalPages': 1,
             'data': [{
                 'id': 123,
                 'title': 'Cool Arcenciel LoRA',
@@ -791,6 +814,8 @@ class TestArcencielAdapter(unittest.TestCase):
             result = self.src.search(query='cool', page_size=20)
 
         self.assertEqual(result['metadata']['source'], 'arcenciel')
+        self.assertEqual(result['metadata']['totalItems'], 1)
+        self.assertEqual(result['metadata']['totalPages'], 1)
         self.assertEqual(len(result['items']), 1)
         model = result['items'][0]
         self.assertEqual(model['browserSource'], 'arcenciel')
@@ -802,6 +827,45 @@ class TestArcencielAdapter(unittest.TestCase):
         self.assertEqual(version['trainedWords'], ['cooltag'])
         self.assertEqual(version['files'][0]['name'], 'cool.safetensors')
         self.assertIn('uploads.arcenciel.io/api/models/123/versions/456/download', version['files'][0]['downloadUrl'])
+
+    def test_empty_search_browses_arcenciel(self):
+        search_response = {
+            'page': 1,
+            'limit': 10,
+            'totalCount': 342,
+            'totalPages': 35,
+            'data': [{
+                'id': 14686,
+                'title': 'AdAstra [Anima]',
+                'description': 'desc',
+                'type': 'CHECKPOINT',
+                'uploader': {'id': 132, 'username': 'Garbo'},
+                'versionOrder': [16445],
+                'versions': [{
+                    'id': 16445,
+                    'versionName': 'v10',
+                    'fileName': 'Adastra_Anima_V10.safetensors',
+                    'fileSizeKb': 4084210,
+                    'sha256': 'b' * 64,
+                    'baseModel': 'Anima',
+                    'activationTags': 'masterpiece, best quality\nadastra',
+                    'downloadCount': 18,
+                }],
+            }],
+        }
+        with patch('scripts.browser_sources.arcenciel.requests.get') as mock_get:
+            mock_get.return_value = self._make_response(search_response)
+            result = self.src.search(query='', page_size=10)
+
+        requested_url = mock_get.call_args_list[0].args[0]
+        self.assertNotIn('q=', requested_url)
+        self.assertIn('limit=10', requested_url)
+        self.assertEqual(result['metadata']['source'], 'arcenciel')
+        self.assertEqual(result['metadata']['totalItems'], 342)
+        self.assertEqual(result['metadata']['totalPages'], 35)
+        self.assertEqual(len(result['items']), 1)
+        version = result['items'][0]['modelVersions'][0]
+        self.assertEqual(version['trainedWords'], ['masterpiece', 'best quality', 'adastra'])
 
     def test_get_download_url_builds_direct_url(self):
         file_info = {

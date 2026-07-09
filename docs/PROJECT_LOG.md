@@ -22,6 +22,19 @@
 
 ## Linha do Tempo
 
+### 2026-07-09 — Arc en Ciel empty browse mode
+
+**O que mudou (pt-BR):** Corrigido o adapter **Arc en Ciel** para tratar busca vazia como modo browse. Antes, `query=''` retornava imediatamente uma lista vazia; agora o adapter chama `https://arcenciel.io/api/models/search?limit=...` sem `q`, preserva paginação e usa `totalCount`/`totalPages` quando a API retorna esses campos.
+**Compatibilidade:** O payload real da API mostrou `activationTags` como string em alguns modelos; o adapter agora normaliza strings separadas por vírgula, ponto-e-vírgula ou quebra de linha para evitar trigger words quebradas caractere por caractere.
+**Arquivos alterados:** `scripts/browser_sources/arcenciel.py`, `tests/test_browser_sources.py`, `docs/PROJECT_LOG.md`.
+**Validação:** Chamada real em 2026-07-09 para `https://arcenciel.io/api/models/search?limit=3` retornou `data`, `totalCount` e `totalPages`. Teste focado `tests/test_browser_sources.py` passou com **38 passed** e `git diff --check` ficou limpo.
+**Próximos passos / Next steps:**
+- Atualizar a extensão remota e validar Arc en Ciel no Forge Neo: busca vazia, clique em card, Next/Prev e download.
+- Se o detail panel abrir corretamente, validar sidecars e preview pós-download.
+- Depois disso, decidir se Arc en Ciel sai de “adapter foundation” para “runtime validated” na documentação pública.
+
+---
+
 ### 2026-07-08 — Documentação pública do Multi-Source Browser
 
 **O que mudou (pt-BR):** O `README.md` passou a documentar o estado atual da fundação Multi-Source Browser na branch `revamp`: selector de fonte, adapters CivitAI/CivArchive/Hugging Face/Arc en Ciel, proveniência de fontes externas, normalização defensiva de metadata e filtros de compatibilidade do Hugging Face.
