@@ -46,6 +46,22 @@ class ArcencielSource(BrowserSource):
         "STYLE": "LORA",
     }
 
+    CONTENT_TYPE_ALIASES = {
+        "CHECKPOINT": "Checkpoint",
+        "LORA": "LORA",
+        "LORAS": "LORA",
+        "LOCON": "LoCon",
+        "DORA": "DoRA",
+        "TEXTUALINVERSION": "TextualInversion",
+        "TEXTUAL_INVERSION": "TextualInversion",
+        "VAE": "VAE",
+        "UPSCALER": "Upscaler",
+        "CONTROLNET": "ControlNet",
+        "CONTROLNETS": "ControlNet",
+        "MOTIONMODULE": "MotionModule",
+        "MOTION_MODULE": "MotionModule",
+    }
+
     def __init__(self) -> None:
         super().__init__("arcenciel", "Arc en Ciel")
 
@@ -81,15 +97,25 @@ class ArcencielSource(BrowserSource):
         **kwargs: Any,
     ) -> dict:
         """Search arcenciel.io models and return canonical results."""
+        page = max(1, int(page or 1))
+        page_size = max(1, int(page_size or 20))
         clean_query = query.strip() if isinstance(query, str) else ""
-        debug_print(f"[Arc en Ciel] search query='{clean_query}' page={page} page_size={page_size}")
+        target_content_types = self._resolve_content_type_filter(content_type)
+        target_base_models = self._resolve_base_model_filter(base_filter)
+        use_local_filters = bool(target_content_types or target_base_models)
+        fetch_limit = min(max(page * page_size * 4, page_size), 300) if use_local_filters else page_size
+        debug_print(
+            f"[Arc en Ciel] search query='{clean_query or '<browse>'}' page={page} "
+            f"page_size={page_size} fetch_limit={fetch_limit} "
+            f"content_filter={target_content_types or '<any>'} base_filter={target_base_models or '<any>'}"
+        )
 
-        params: dict[str, Any] = {"limit": page_size}
+        params: dict[str, Any] = {"limit": fetch_limit}
         if clean_query:
             params["q"] = clean_query
         else:
             debug_print("[Arc en Ciel] empty query, using browse mode")
-        if page > 1:
+        if page > 1 and not use_local_filters:
             params["page"] = page
 
         url = f"{self.API_URL}/models/search?{self._encode_params(params)}"
@@ -101,26 +127,49 @@ class ArcencielSource(BrowserSource):
             debug_print(f"[Arc en Ciel] unexpected search response type: {type(data)}")
             return paginated_result([], current_page=page, page_size=page_size, source=self.name)
 
-        items = [
+        raw_items = [item for item in data.get("data", []) if isinstance(item, dict)]
+        normalized_items = [
             model
-            for item in data.get("data", [])
-            if isinstance(item, dict)
+            for item in raw_items
             for model in [self._normalize_model(item)]
             if model is not None
         ]
-        debug_print(
-            f"[Arc en Ciel] search returned {len(items)} model(s) "
-            f"(total_count={data.get('totalCount')}, total_pages={data.get('totalPages')})"
-        )
+        filtered_items = [
+            model
+            for model in normalized_items
+            if self._matches_content_type_filter(model, target_content_types)
+            and self._matches_base_model_filter(model, target_base_models)
+        ]
+        if target_base_models:
+            filtered_items = [
+                self._with_filtered_versions(model, target_base_models)
+                for model in filtered_items
+            ]
+            filtered_items = [model for model in filtered_items if model.get("modelVersions")]
 
-        # arcenciel returns page/limit plus totalCount/totalPages when available.
-        current_page = data.get("page", page)
-        limit = data.get("limit", page_size)
-        has_more = len(items) >= limit
-        total_items = data.get("totalCount", len(items))
-        total_pages = data.get("totalPages")
-        if not total_pages:
-            total_pages = current_page if not has_more else current_page + 1
+        if use_local_filters:
+            start = (page - 1) * page_size
+            items = filtered_items[start:start + page_size]
+            current_page = page
+            limit = page_size
+            total_items = len(filtered_items)
+            total_pages = max(1, (total_items + page_size - 1) // page_size)
+        else:
+            items = filtered_items
+            # arcenciel returns page/limit plus totalCount/totalPages when available.
+            current_page = data.get("page", page)
+            limit = data.get("limit", page_size)
+            total_items = data.get("totalCount", len(items))
+            total_pages = data.get("totalPages")
+            if not total_pages:
+                has_more = len(items) >= limit
+                total_pages = current_page if not has_more else current_page + 1
+
+        debug_print(
+            f"[Arc en Ciel] raw_items={len(raw_items)} normalized_models={len(normalized_items)} "
+            f"filtered_models={len(filtered_items)} page_items={len(items)} "
+            f"current_page={current_page} total_pages={total_pages}"
+        )
 
         return paginated_result(
             items,
@@ -290,6 +339,68 @@ class ArcencielSource(BrowserSource):
         if isinstance(activation_tags, list):
             return [tag.strip() for tag in activation_tags if isinstance(tag, str) and tag.strip()]
         return []
+
+    def _resolve_content_type_filter(self, content_type: Optional[str | list[str]]) -> list[str]:
+        """Normalize UI content type values into canonical Arc en Ciel model types."""
+        if not content_type:
+            return []
+        values = content_type if isinstance(content_type, list) else [content_type]
+        result: list[str] = []
+        for value in values:
+            key = re.sub(r"[^A-Z0-9]+", "_", str(value).upper()).strip("_")
+            mapped = self.CONTENT_TYPE_ALIASES.get(key) or self.CONTENT_TYPE_ALIASES.get(key.replace("_", ""))
+            if mapped and mapped not in result:
+                result.append(mapped)
+        return result
+
+    def _resolve_base_model_filter(self, base_filter: Optional[str | list[str]]) -> list[str]:
+        """Normalize UI base model values for case-insensitive matching."""
+        if not base_filter:
+            return []
+        values = base_filter if isinstance(base_filter, list) else [base_filter]
+        result: list[str] = []
+        for value in values:
+            normalized = str(value or "").strip()
+            if normalized and normalized != "All":
+                result.append(normalized)
+        return result
+
+    def _matches_content_type_filter(self, model: dict, target_content_types: list[str]) -> bool:
+        if not target_content_types:
+            return True
+        model_type = str(model.get("type", "")).lower()
+        return any(model_type == str(target).lower() for target in target_content_types)
+
+    def _matches_base_model_filter(self, model: dict, target_base_models: list[str]) -> bool:
+        if not target_base_models:
+            return True
+        versions = model.get("modelVersions") or []
+        return any(
+            self._base_matches(version.get("baseModel"), target)
+            for version in versions
+            for target in target_base_models
+        )
+
+    def _with_filtered_versions(self, model: dict, target_base_models: list[str]) -> dict:
+        """Return a shallow copy with only versions matching the selected base model."""
+        versions = [
+            version
+            for version in (model.get("modelVersions") or [])
+            if any(self._base_matches(version.get("baseModel"), target) for target in target_base_models)
+        ]
+        model_copy = dict(model)
+        model_copy["modelVersions"] = versions
+        if versions:
+            model_copy["baseModel"] = versions[0].get("baseModel")
+        return model_copy
+
+    @staticmethod
+    def _base_matches(value: Any, target: str) -> bool:
+        value_text = str(value or "").lower()
+        target_text = str(target or "").lower()
+        if not value_text or not target_text:
+            return False
+        return value_text == target_text or target_text in value_text
 
     def _image_url(self, file_path: str) -> str:
         """Build a media URL from an arcenciel file path."""

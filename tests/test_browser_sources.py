@@ -867,6 +867,73 @@ class TestArcencielAdapter(unittest.TestCase):
         version = result['items'][0]['modelVersions'][0]
         self.assertEqual(version['trainedWords'], ['masterpiece', 'best quality', 'adastra'])
 
+    def test_search_filters_arcenciel_content_type_and_base_model_locally(self):
+        search_response = {
+            'page': 1,
+            'limit': 40,
+            'totalCount': 3,
+            'totalPages': 1,
+            'data': [
+                {
+                    'id': 1,
+                    'title': 'Anima LoRA',
+                    'type': 'LORA',
+                    'versions': [{
+                        'id': 11,
+                        'versionName': 'v1',
+                        'fileName': 'anima-lora.safetensors',
+                        'baseModel': 'Anima',
+                    }],
+                },
+                {
+                    'id': 2,
+                    'title': 'Mixed Checkpoint',
+                    'type': 'CHECKPOINT',
+                    'versionOrder': [22, 21],
+                    'versions': [
+                        {
+                            'id': 21,
+                            'versionName': 'Illustrious',
+                            'fileName': 'mixed-illustrious.safetensors',
+                            'baseModel': 'Illustrious',
+                        },
+                        {
+                            'id': 22,
+                            'versionName': 'Anima',
+                            'fileName': 'mixed-anima.safetensors',
+                            'baseModel': 'Anima',
+                        },
+                    ],
+                },
+                {
+                    'id': 3,
+                    'title': 'Illustrious Checkpoint',
+                    'type': 'CHECKPOINT',
+                    'versions': [{
+                        'id': 31,
+                        'versionName': 'v1',
+                        'fileName': 'illustrious.safetensors',
+                        'baseModel': 'Illustrious',
+                    }],
+                },
+            ],
+        }
+        with patch('scripts.browser_sources.arcenciel.requests.get') as mock_get:
+            mock_get.return_value = self._make_response(search_response)
+            result = self.src.search(query='', content_type='Checkpoint', base_filter=['Anima'], page_size=10)
+
+        requested_url = mock_get.call_args_list[0].args[0]
+        self.assertIn('limit=40', requested_url)
+        self.assertNotIn('type=', requested_url)
+        self.assertEqual(result['metadata']['source'], 'arcenciel')
+        self.assertEqual(result['metadata']['totalItems'], 1)
+        self.assertEqual(len(result['items']), 1)
+        model = result['items'][0]
+        self.assertEqual(model['name'], 'Mixed Checkpoint')
+        self.assertEqual(model['type'], 'Checkpoint')
+        self.assertEqual(model['baseModel'], 'Anima')
+        self.assertEqual([version['baseModel'] for version in model['modelVersions']], ['Anima'])
+
     def test_get_download_url_builds_direct_url(self):
         file_info = {
             'name': 'cool.safetensors',

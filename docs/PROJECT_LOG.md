@@ -22,6 +22,19 @@
 
 ## Linha do Tempo
 
+### 2026-07-09 — Arc en Ciel local content/base filters
+
+**O que mudou (pt-BR):** Corrigido o adapter **Arc en Ciel** para respeitar os filtros do Browser por `content_type` e `base_filter`. A API pública aceita parâmetros desconhecidos sem erro, mas testes live mostraram que `type=CHECKPOINT`, `type=LORA`, `modelClassId`, `modelClassIds` e `baseModel` não filtram de forma confiável; por isso o adapter agora busca uma janela maior e filtra localmente.
+**Comportamento:** Se o usuário selecionar `Checkpoint`, LoRAs deixam de aparecer. Se selecionar uma base como `Anima`, o adapter mantém apenas modelos/versões compatíveis com essa base e remove versões de outras bases do dropdown. Sem filtro de base ativo, o browse volta a mostrar o default geral da plataforma.
+**Arquivos alterados:** `scripts/browser_sources/arcenciel.py`, `tests/test_browser_sources.py`, `docs/PROJECT_LOG.md`.
+**Validação:** Teste focado `tests/test_browser_sources.py` passou com **40 passed**; `py_compile scripts/browser_sources/arcenciel.py` e `git diff --check` ficaram limpos. Probes live em 2026-07-09 confirmaram que a API Arc en Ciel ignora os filtros nativos de tipo/base testados.
+**Próximos passos / Next steps:**
+- Atualizar a extensão remota e validar Arc en Ciel com Base Model vazio + content type Checkpoint/LORA.
+- Validar Arc en Ciel com Base Model Anima e confirmar que o dropdown de versões só mantém versões Anima.
+- Se a API Arc en Ciel publicar filtros oficiais depois, trocar o filtro local por parâmetros nativos.
+
+---
+
 ### 2026-07-09 — External file size metadata fallback
 
 **O que mudou (pt-BR):** Corrigido novo crash ao clicar em card do Hugging Face quando o arquivo externo vinha com `sizeKB=None`. O detail panel legado multiplicava `None * 1024`; agora o cálculo de tamanho aceita `None`, string numérica e valores inválidos com fallback seguro para `0`.
