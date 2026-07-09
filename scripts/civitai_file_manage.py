@@ -479,13 +479,10 @@ def delete_model(delete_finish=None, model_filename=None, model_string=None, lis
     elif model_id is not None:
         items = gl.json_data.get('items', []) if isinstance(gl.json_data, dict) else []
         for item in items:
-            try:
-                if int(item['id']) == int(model_id):
-                    selected_content_type = item['type']
-                    desc = item['description']
-                    break
-            except (TypeError, ValueError, KeyError):
-                continue
+            if _api.model_id_matches(item.get('id'), model_id):
+                selected_content_type = item['type']
+                desc = item['description']
+                break
 
     # Resolve which folders to search. When the content type is unknown — e.g. the
     # model isn't in the Browser's current json_data, which is common on the isolated

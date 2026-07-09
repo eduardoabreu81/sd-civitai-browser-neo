@@ -1717,7 +1717,7 @@ def on_ui_tabs():
             if model_id and gl.json_data:
                 # Find the current model in the API data
                 for item in gl.json_data.get('items', []):
-                    if int(item.get('id', 0)) == int(model_id):
+                    if _api.model_id_matches(item.get('id'), model_id):
                         debug_print(f"Using existing API data for model {model_id}")
                         # Ensure preview_html is a string
                         if not isinstance(preview_html, str):

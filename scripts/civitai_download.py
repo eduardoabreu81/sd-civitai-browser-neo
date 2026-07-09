@@ -160,8 +160,6 @@ class TimeOutFunction(Exception):
 
 def create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch=False, old_file_path=None, version_id=None, origin='browser'):
     global dl_manager_count
-    if model_id:
-        model_id = int(model_id)
     if model_sha256:
         model_sha256 = model_sha256.upper()
     if model_sha256 == 'UNKNOWN':
@@ -171,7 +169,7 @@ def create_model_item(dl_url, model_filename, install_path, model_name, version_
     main_folder = None
 
     for item in _all_known_items():
-        if int(item['id']) == int(model_id):
+        if _api.model_id_matches(item.get('id'), model_id):
             filtered_items.append(item)
             content_type = item['type']
             desc = item['description']
@@ -409,7 +407,7 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
         model_name, model_id = _api.extract_model_info(model_string)
         item_found = None
         for item in known_items:
-            if int(item['id']) == int(model_id):
+            if _api.model_id_matches(item.get('id'), model_id):
                 item_found = item
                 break
 
@@ -480,7 +478,11 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
                         # Honor any manual category saved on an existing installed file,
                         # and fall back to persisted modelTags if the API response has none.
                         manual_category = None
-                        installed_paths = _batch_index.get('by_model_id', {}).get(int(model_id), []) if _batch_index else []
+                        installed_paths = (
+                            _batch_index.get('by_model_id', {}).get(int(model_id), [])
+                            if _batch_index and str(model_id).lstrip('-').isdigit()
+                            else []
+                        )
                         for installed_path in installed_paths:
                             manual_category = get_lora_category_from_sidecar(installed_path)
                             if manual_category:
@@ -531,7 +533,7 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
             if not keep_installed:
                 if gl.update_items:
                     for _upd in gl.update_items:
-                        if _upd.get('model_id') == int(model_id):
+                        if _api.model_id_matches(_upd.get('model_id'), model_id):
                             upd_family = (_upd.get('family') or '').upper()
                             new_family = (output_basemodel or '').upper()
                             if not upd_family or not new_family or upd_family == new_family:
@@ -758,7 +760,6 @@ def download_start(download_start, dl_url, model_filename, install_path, model_s
 
 def download_finish(model_filename, version, model_id):
     if model_id:
-        model_id = int(model_id)
         model_versions = _api.update_model_versions(model_id)
     else:
         model_versions = None
@@ -867,7 +868,7 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
         # Find the model item in the download queue (by model_id and file_name)
         early_access = False
         for item in gl.download_queue:
-            if int(item.get('model_id', -1)) == int(model_id):
+            if _api.model_id_matches(item.get('model_id'), model_id):
                 model_json = item.get('model_json', {})
                 items = model_json.get('items', [])
                 if items and 'modelVersions' in items[0]:
@@ -1315,14 +1316,11 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
             if len(candidates) > 1:
                 match = False
                 for c in candidates:
-                    try:
-                        if int(c.get('modelId', -1)) == int(item.get('model_id', -1)):
-                            # prefer candidate that matches the queued model id
-                            item['dl_url'] = c.get('downloadUrl') or item['dl_url']
-                            match = True
-                            break
-                    except Exception:
-                        continue
+                    if _api.model_id_matches(c.get('modelId'), item.get('model_id')):
+                        # prefer candidate that matches the queued model id
+                        item['dl_url'] = c.get('downloadUrl') or item['dl_url']
+                        match = True
+                        break
 
                 if not match:
                     try:

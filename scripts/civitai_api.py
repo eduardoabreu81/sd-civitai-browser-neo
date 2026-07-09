@@ -1524,7 +1524,7 @@ def update_model_versions(model_id, json_input=None, base_filter=None, installed
         return None
 
     for item in api_json['items']:
-        if int(item['id']) == int(model_id):
+        if model_id_matches(item.get('id'), model_id):
             content_type = item['type']
             desc = item.get('description', 'None')
 
@@ -1707,7 +1707,24 @@ def extract_model_info(input_string):
     name = input_string[:last_open_parenthesis].strip()
     id_number = input_string[last_open_parenthesis + 1:last_close_parenthesis]
 
-    return name, int(id_number)
+    return name, parse_model_id(id_number)
+
+def parse_model_id(model_id):
+    """Return numeric CivitAI ids as int and external source ids as strings."""
+    if model_id is None:
+        return None
+    model_id = str(model_id).strip()
+    if re.fullmatch(r'-?\d+', model_id):
+        return int(model_id)
+    return model_id
+
+def model_id_matches(left, right):
+    """Compare model ids without assuming every browser source uses integers."""
+    if left is None or right is None:
+        return False
+    left_value = parse_model_id(left)
+    right_value = parse_model_id(right)
+    return left_value == right_value
 
 def update_model_info(model_string=None, model_version=None, only_html=False, input_id=None, json_input=None, from_preview=False, prefer_cached_images=False):
     video_playback = getattr(opts, 'video_playback', True)
@@ -1771,7 +1788,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                 gr.update(choices=None, value=None, interactive=False)
             )
         for item in api_data['items']:
-            if int(item['id']) == int(model_id):
+            if model_id_matches(item.get('id'), model_id):
                 is_local_only = bool(item.get('local_only'))
                 content_type = item['type']
                 if content_type == 'LORA':
@@ -2436,13 +2453,13 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
 
         if gl.isDownloading:
             item = gl.download_queue[0]
-            if int(model_id) == int(item['model_id']):
+            if model_id_matches(model_id, item.get('model_id')):
                 BtnDel = False
         BtnDownTxt = 'Download model'
         if len(gl.download_queue) > 0:
             BtnDownTxt = 'Add to queue'
             for item in gl.download_queue:
-                if item['version_name'] == model_version and int(item['model_id']) == int(model_id):
+                if item['version_name'] == model_version and model_id_matches(item.get('model_id'), model_id):
                     BtnDownInt = False
                     break
 
@@ -2506,7 +2523,7 @@ def update_file_info(model_string, model_version, file_metadata):
         model_version = model_version.replace(' [Installed]', '')
     if model_id and model_version:
         for item in gl.json_data['items']:
-            if int(item['id']) == int(model_id):
+            if model_id_matches(item.get('id'), model_id):
                 content_type = item['type']
                 if content_type == 'LORA':
                     is_LORA = True

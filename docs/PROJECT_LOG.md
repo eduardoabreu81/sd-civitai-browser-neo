@@ -22,6 +22,19 @@
 
 ## Linha do Tempo
 
+### 2026-07-09 — External browser source string model IDs
+
+**O que mudou (pt-BR):** Corrigido o crash ao clicar em cards do Hugging Face, causado por `extract_model_info()` converter sempre o ID do dropdown para `int`. Fontes externas como Hugging Face usam IDs string no formato `owner/repo`, então o parser agora mantém IDs CivitAI numéricos como `int` e preserva IDs externos como `str`.
+**Integração:** Adicionado helper `model_id_matches()` para comparar IDs sem assumir formato numérico. O Browser detail panel, version dropdown, file list, download queue, early-access check, save-images e delete flow passaram a usar comparação segura nos pontos que podem receber dados de fontes externas.
+**Arquivos alterados:** `scripts/civitai_api.py`, `scripts/civitai_download.py`, `scripts/civitai_file_manage.py`, `scripts/civitai_gui.py`, `tests/test_civitai_model_ids.py`, `docs/PROJECT_LOG.md`.
+**Validação:** Testes focados `tests/test_browser_sources.py tests/test_civitai_model_ids.py` passaram com **42 passed**; `py_compile` dos módulos alterados e `git diff --check` ficaram limpos.
+**Próximos passos / Next steps:**
+- Atualizar a extensão remota e repetir: Hugging Face → browse/base Anima → clicar em card.
+- Se o detail panel abrir, validar version dropdown, file dropdown e download de um item pequeno/seguro.
+- Confirmar se o pós-download externo salva sidecars e preview sem novos casts numéricos.
+
+---
+
 ### 2026-07-09 — Arc en Ciel empty browse mode
 
 **O que mudou (pt-BR):** Corrigido o adapter **Arc en Ciel** para tratar busca vazia como modo browse. Antes, `query=''` retornava imediatamente uma lista vazia; agora o adapter chama `https://arcenciel.io/api/models/search?limit=...` sem `q`, preserva paginação e usa `totalCount`/`totalPages` quando a API retorna esses campos.
