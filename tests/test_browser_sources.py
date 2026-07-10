@@ -8,7 +8,7 @@ Forge Neo or a network connection.
 import sys
 import types
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 # We patch sys.modules so these isolated tests don't replace the real extension
 # modules globally and break other test files that import them.
@@ -57,9 +57,11 @@ class TestCivitaiAdapter(unittest.TestCase):
             sys.path.remove('.')
 
     def test_source_registered(self):
-        self.assertEqual(self.bs.source_choices(), ['CivitAI', 'CivArchive', 'Hugging Face', 'Arc en Ciel'])
+        # Hugging Face is hidden from the dropdown but remains registered for direct URLs.
+        self.assertEqual(self.bs.source_choices(), ['CivitAI', 'CivArchive', 'Arc en Ciel'])
         self.assertEqual(self.bs.get_browser_source('civitai').display_name, 'CivitAI')
         self.assertEqual(self.bs.get_browser_source('huggingface').display_name, 'Hugging Face')
+        self.assertFalse(self.bs.get_browser_source('huggingface').visible_in_dropdown)
         self.assertEqual(self.bs.get_browser_source('arcenciel').display_name, 'Arc en Ciel')
 
     def test_canonical_file_includes_legacy_metadata(self):
@@ -941,6 +943,104 @@ class TestArcencielAdapter(unittest.TestCase):
         }
         url = self.src.get_download_url(file_info)
         self.assertEqual(url, 'https://uploads.arcenciel.io/api/models/123/versions/456/download')
+
+
+class TestUrlParser(unittest.TestCase):
+    """Tests for the direct-URL parser used by the Browser's URL search mode."""
+
+    def setUp(self):
+        self._patch = patch.dict(sys.modules, _MODULE_OVERRIDES, clear=False)
+        self._patch.start()
+        sys.path.insert(0, '.')
+
+        from scripts.browser_sources.url_parser import parse_model_url
+        self.parse_model_url = parse_model_url
+
+    def tearDown(self):
+        self._patch.stop()
+        if '.' in sys.path:
+            sys.path.remove('.')
+
+    def _make_mock_adapter(self, model_name, source_name):
+        adapter = MagicMock()
+        adapter.name = source_name
+        adapter.get_model.return_value = {
+            'id': 'parsed-id',
+            'name': model_name,
+            'type': 'LORA',
+            'browserSource': source_name,
+            'browserSourceId': 'parsed-id',
+            'modelVersions': [],
+        }
+        return adapter
+
+    def test_invalid_url_returns_error(self):
+        self.assertEqual(self.parse_model_url(''), 'invalid_url')
+        self.assertEqual(self.parse_model_url('not-a-url'), 'invalid_url')
+        self.assertEqual(self.parse_model_url('https://example.com/models/123'), 'invalid_url')
+
+    def test_huggingface_url_parses_repo_id(self):
+        
+        with patch('scripts.browser_sources.url_parser.get_browser_source') as mock_get:
+            mock_get.return_value = self._make_mock_adapter('HF Model', 'huggingface')
+            result = self.parse_model_url('https://huggingface.co/owner/cool-lora')
+
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result['metadata']['totalItems'], 1)
+        mock_get.assert_called_once_with('huggingface')
+        mock_get.return_value.get_model.assert_called_once_with('owner/cool-lora')
+
+    def test_huggingface_url_strips_branch_and_trailing_slash(self):
+        
+        with patch('scripts.browser_sources.url_parser.get_browser_source') as mock_get:
+            mock_get.return_value = self._make_mock_adapter('HF Model', 'huggingface')
+            self.parse_model_url('https://huggingface.co/owner/cool-lora/tree/main/')
+            mock_get.return_value.get_model.assert_called_once_with('owner/cool-lora')
+
+    def test_civitai_model_url_extracts_id(self):
+        
+        with patch('scripts.browser_sources.url_parser.get_browser_source') as mock_get:
+            mock_get.return_value = self._make_mock_adapter('CivitAI Model', 'civitai')
+            self.parse_model_url('https://civitai.com/models/12345-model-name')
+            mock_get.return_value.get_model.assert_called_once_with('12345')
+
+    def test_civitai_download_url_resolves_version_to_model(self):
+        
+        with patch('scripts.browser_sources.url_parser.get_browser_source') as mock_get, \
+             patch('scripts.browser_sources.url_parser._api.request_civit_api') as mock_api:
+            mock_api.return_value = {'modelId': 99999}
+            mock_get.return_value = self._make_mock_adapter('CivitAI Model', 'civitai')
+            self.parse_model_url('https://civitai.com/api/download/models/67890')
+            mock_get.return_value.get_model.assert_called_once_with('99999')
+
+    def test_civarchive_url_extracts_id(self):
+        
+        with patch('scripts.browser_sources.url_parser.get_browser_source') as mock_get:
+            mock_get.return_value = self._make_mock_adapter('CivArchive Model', 'civarchive')
+            self.parse_model_url('https://civarchive.com/models/12345')
+            mock_get.return_value.get_model.assert_called_once_with('12345')
+
+    def test_arcenciel_url_extracts_id(self):
+        
+        with patch('scripts.browser_sources.url_parser.get_browser_source') as mock_get:
+            mock_get.return_value = self._make_mock_adapter('Arc Model', 'arcenciel')
+            self.parse_model_url('https://arcenciel.io/models/12345')
+            mock_get.return_value.get_model.assert_called_once_with('12345')
+
+    def test_not_found_adapter_returns_error(self):
+        
+        with patch('scripts.browser_sources.url_parser.get_browser_source') as mock_get:
+            mock_get.return_value = None
+            self.assertEqual(self.parse_model_url('https://huggingface.co/owner/cool-lora'), 'error')
+
+    def test_model_not_found_returns_not_found(self):
+        
+        with patch('scripts.browser_sources.url_parser.get_browser_source') as mock_get:
+            adapter = MagicMock()
+            adapter.name = 'huggingface'
+            adapter.get_model.return_value = None
+            mock_get.return_value = adapter
+            self.assertEqual(self.parse_model_url('https://huggingface.co/owner/cool-lora'), 'not_found')
 
 
 if __name__ == '__main__':

@@ -99,7 +99,7 @@ class HuggingFaceSource(BrowserSource):
     }
 
     def __init__(self) -> None:
-        super().__init__("huggingface", "Hugging Face")
+        super().__init__("huggingface", "Hugging Face", visible_in_dropdown=False)
 
     # ------------------------------------------------------------------
     # Metadata

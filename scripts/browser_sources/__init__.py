@@ -16,6 +16,7 @@ from .registry import (
     source_display_names,
     source_name_from_display,
 )
+from .url_parser import parse_model_url
 
 # Register built-in sources. Keep CivitAI first so it remains the default.
 from . import civitai
@@ -32,4 +33,5 @@ __all__ = [
     "source_display_names",
     "source_name_from_display",
     "default_source",
+    "parse_model_url",
 ]

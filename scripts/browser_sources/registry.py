@@ -43,7 +43,7 @@ def source_display_names() -> dict[str, str]:
 
 def source_choices() -> list[str]:
     """Return display names in registration order for Gradio dropdowns."""
-    return [source.display_name for source in _REGISTRY.values()]
+    return [source.display_name for source in _REGISTRY.values() if source.visible_in_dropdown]
 
 
 def source_name_from_display(display_name: str) -> Optional[str]:

@@ -30,9 +30,10 @@ class BrowserSource(abc.ABC):
         Human-readable label shown in the UI dropdown.
     """
 
-    def __init__(self, name: str, display_name: str) -> None:
+    def __init__(self, name: str, display_name: str, visible_in_dropdown: bool = True) -> None:
         self.name = name
         self.display_name = display_name
+        self.visible_in_dropdown = visible_in_dropdown
 
     # ------------------------------------------------------------------
     # Metadata

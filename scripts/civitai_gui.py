@@ -349,7 +349,7 @@ def on_ui_tabs():
                             elem_id='browserSource'
                         )
                     with gr.Row():
-                        use_search_term = gr.Radio(label='Search type:', choices=['Model name', 'User name', 'Tag', 'SHA256'], value=_browser_defaults.get('search_type', 'Model name'), elem_id='searchType')
+                        use_search_term = gr.Radio(label='Search type:', choices=['Model name', 'User name', 'Tag', 'SHA256', 'URL'], value=_browser_defaults.get('search_type', 'Model name'), elem_id='searchType')
                     with gr.Row():
                         content_type = gr.Dropdown(label='Content type:', choices=content_choices, value=_browser_defaults.get('content_type', None), type='value', multiselect=True, elem_id='centerText')
                     with gr.Row():
@@ -381,7 +381,7 @@ def on_ui_tabs():
                         tile_count_slider = gr.Slider(label='Tile count:', minimum=1, maximum=100, value=_browser_defaults.get('tile_count', 27), step=1)
                     with gr.Row(elem_id='save_set_box'):
                         save_settings = gr.Button(value='Save settings as default', elem_id='save_set_btn')
-                search_term = gr.Textbox(label='', placeholder='Enter model name, or paste a CivitAI link', elem_id='searchBox')
+                search_term = gr.Textbox(label='', placeholder='Enter model name, or paste a model URL (CivitAI, CivArchive, Hugging Face, Arc en Ciel)', elem_id='searchBox')
                 refresh = gr.Button(value='', elem_id=refreshbtn, icon='placeholder')
             with gr.Row(elem_id=header):
                 with gr.Row(elem_id='pageBox'):

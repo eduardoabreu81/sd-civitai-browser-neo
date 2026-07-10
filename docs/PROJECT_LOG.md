@@ -22,6 +22,20 @@
 
 ## Linha do Tempo
 
+### 2026-07-10 — Browser "Paste model URL" search mode + Hugging Face removed from dropdown
+
+**O que mudou (pt-BR):** Adicionado um novo modo de busca **URL** na aba Browser. O usuário pode colar uma URL direta de CivitAI, CivArchive, Hugging Face ou Arc en Ciel; o extension detecta o provider, busca o modelo, renderiza um único card e popula o model panel para download. Como consequência, o **Hugging Face foi removido do dropdown de Browser Source**; o adapter continua registrado, mas só é acessível via URL direta.
+**Motivação:** A busca direta no Hugging Face retorna muito ruído (componentes Diffusers, repos sem arquivo baixável, falta de suporte a GGUF). Colar a URL é mais prático e alinhado com o produto até termos uma curadoria melhor.
+**Arquitetura:** Criado `scripts/browser_sources/url_parser.py` com parser/dispatcher de URLs; adicionado atributo `visible_in_dropdown` em `BrowserSource` para controlar quais adapters aparecem no dropdown; ramo `use_search_term == 'URL'` em `initial_model_page` reaproveita todo o fluxo existente de cards/detail/download.
+**Arquivos alterados:** `scripts/browser_sources/base.py`, `scripts/browser_sources/registry.py`, `scripts/browser_sources/huggingface.py`, `scripts/browser_sources/url_parser.py` (novo), `scripts/browser_sources/__init__.py`, `scripts/civitai_api.py`, `scripts/civitai_gui.py`, `tests/test_browser_sources.py`, `docs/PROJECT_LOG.md`.
+**Validação:** `py_compile` dos módulos alterados limpo; testes `tests/test_browser_sources.py` passaram com **49 passed**; suite completa `tests/` passou com **142 passed**. Validação runtime no Forge Neo pendente — será testada junto com a validação do Arc en Ciel.
+**Próximos passos / Next steps:**
+- Validar no Forge Neo: colar URL do Hugging Face, clicar no card, popular o model panel e enfileirar download.
+- Validar URLs de CivitAI (`/models/<id>` e `/api/download/models/<version_id>`), CivArchive e Arc en Ciel.
+- Testar URL inválida e confirmar mensagem de erro no grid.
+
+---
+
 ### 2026-07-09 — Arc en Ciel local content/base filters
 
 **O que mudou (pt-BR):** Corrigido o adapter **Arc en Ciel** para respeitar os filtros do Browser por `content_type` e `base_filter`. A API pública aceita parâmetros desconhecidos sem erro, mas testes live mostraram que `type=CHECKPOINT`, `type=LORA`, `modelClassId`, `modelClassIds` e `baseModel` não filtram de forma confiável; por isso o adapter agora busca uma janela maior e filtra localmente.

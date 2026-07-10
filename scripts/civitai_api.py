@@ -1243,6 +1243,10 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
                 if gl.json_data is None:
                     gl.json_data = 'sha256_not_found'
                 gl.url_list = {1: f"sha256_search_{search_term.strip().upper()}" if isinstance(gl.json_data, dict) else 'error'}
+            elif use_search_term == 'URL' and search_term:
+                debug_print(f"[Browser] Parsing pasted model URL: {search_term}")
+                gl.json_data = _browser_sources.parse_model_url(search_term.strip())
+                gl.url_list = {1: f"url_search_{search_term.strip()}"}
             else:
                 gl.json_data = _call_browser_source(
                     source_adapter,
