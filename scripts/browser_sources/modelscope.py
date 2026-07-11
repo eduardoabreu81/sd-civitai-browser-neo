@@ -210,6 +210,17 @@ class ModelScopeSource(BrowserSource):
         target_content_types = self._resolve_content_type_filter(content_type)
         target_base_models = self._resolve_base_model_filter(base_filter, clean_query)
 
+        # ModelScope browse (empty Name) returns a fixed list of popular models
+        # that is not pre-filtered by content type or base model. When the user
+        # selected filters but left the search box empty, derive a textual query
+        # from the filters so the API returns relevant results.
+        derived_query = self._derive_search_query(
+            clean_query, target_content_types, target_base_models
+        )
+        if derived_query != clean_query:
+            clean_query = derived_query
+            target_base_models = self._resolve_base_model_filter(base_filter, clean_query)
+
         body = {
             "PageSize": normalized_page_size,
             "PageNumber": normalized_page,
@@ -722,6 +733,43 @@ class ModelScopeSource(BrowserSource):
             return hint in text
 
         return bool(re.search(rf"(?<![a-z0-9]){re.escape(hint)}(?![a-z0-9])", text))
+
+    @staticmethod
+    def _derive_search_query(
+        query: str,
+        target_content_types: list[str],
+        target_base_models: list[str],
+    ) -> str:
+        """Return a textual query for ModelScope when the user left the box empty.
+
+        ModelScope's empty-name browse returns a fixed popular-model list that
+        is not pre-filtered. Combining base-model and content-type keywords in
+        the Name field gives results that actually match the selected filters.
+        """
+        if query:
+            return query
+        if not target_content_types and not target_base_models:
+            return query
+
+        parts: list[str] = []
+        # Base models first (e.g. "Anima", "Wan").
+        parts.extend(str(b).strip() for b in target_base_models if str(b).strip())
+        # Then content-type hints that work well as search terms.
+        for ctype in target_content_types:
+            term = {
+                "checkpoint": "checkpoint",
+                "lora": "lora",
+                "locon": "lora",
+                "dora": "lora",
+                "textualinversion": "textual inversion",
+                "vae": "vae",
+                "upscaler": "upscaler",
+                "controlnet": "controlnet",
+                "motionmodule": "motion module",
+            }.get(ctype)
+            if term and term not in parts:
+                parts.append(term)
+        return " ".join(parts)
 
     def _resolve_content_type_filter(self, content_type: Optional[str | list[str]]) -> list[str]:
         """Return canonical model type names requested by the Browser."""

@@ -1240,6 +1240,36 @@ class TestModelScopeAdapter(unittest.TestCase):
         self.assertEqual(result['items'][0]['baseModel'], 'Anima')
         self.assertEqual(result['items'][0]['type'], 'Checkpoint')
 
+    def test_empty_search_derives_query_from_filters(self):
+        search_response = {
+            'Code': 200,
+            'Data': {
+                'Model': {
+                    'Models': [{
+                        'Id': 1,
+                        'Name': 'Anima-LoRA',
+                        'Path': 'owner',
+                        'Tags': ['lora'],
+                        'Libraries': ['safetensors', 'pytorch'],
+                        'BaseModel': ['circlestone-labs/Anima'],
+                        'Tasks': [{'Name': 'text-to-image-synthesis'}],
+                        'MuseInfo': None,
+                        'ModelInfos': None,
+                    }],
+                },
+            },
+        }
+        with patch('scripts.browser_sources.modelscope.requests.put') as mock_put:
+            mock_put.return_value = self._make_response(search_response)
+            result = self.src.search(query='', content_type='LORA', base_filter=['Anima'], page_size=10)
+
+        request_body = mock_put.call_args_list[0].kwargs.get('json')
+        self.assertIsNotNone(request_body)
+        self.assertEqual(request_body.get('Name'), 'Anima lora')
+        self.assertEqual(len(result['items']), 1)
+        self.assertEqual(result['items'][0]['type'], 'LORA')
+        self.assertEqual(result['items'][0]['baseModel'], 'Anima')
+
 
 class TestUrlParser(unittest.TestCase):
     """Tests for the direct-URL parser used by the Browser's URL search mode."""
