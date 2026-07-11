@@ -193,8 +193,14 @@ class CivitAISource(BrowserSource):
             "limit": page_size,
             "sort": self.SORT_MAP.get(sort, sort),
             "period": self.PERIOD_MAP.get(period, period.replace(" ", "") if period else None),
-            "page": page,
         }
+
+        # CivitAI search with a query term uses cursor-based pagination and
+        # rejects the "page" parameter. Only add page for browse/filter-only
+        # requests (no query), where offset pagination is allowed.
+        has_query = bool(query and str(query).strip())
+        if not has_query:
+            params["page"] = page
 
         if content_type:
             params["types"] = content_type

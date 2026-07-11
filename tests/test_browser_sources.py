@@ -97,7 +97,7 @@ class TestCivitaiAdapter(unittest.TestCase):
         self.assertEqual(video['type'], 'video')
         self.assertEqual(video['nsfwLevel'], 0)
 
-    def test_create_api_url_matches_original_shape(self):
+    def test_create_api_url_omits_page_for_query_search(self):
         url = self.src._create_api_url(
             query='anima',
             search_type='Model name',
@@ -117,9 +117,10 @@ class TestCivitaiAdapter(unittest.TestCase):
         self.assertIn('baseModels=Anima', url)
         self.assertIn('limit=20', url)
         self.assertIn('sort=Highest%20Rated', url)
-        self.assertIn('page=1', url)
+        # CivitAI rejects page param with query search (cursor-based pagination).
+        self.assertNotIn('page=', url)
 
-    def test_empty_search_builds_browse_url_without_query_param(self):
+    def test_empty_search_builds_browse_url_with_page_param(self):
         url = self.src._create_api_url(
             query='',
             search_type='Model name',
@@ -141,8 +142,9 @@ class TestCivitaiAdapter(unittest.TestCase):
         self.assertIn('page=1', url)
 
     def test_create_api_url_rebuilds_for_mismatched_page(self):
+        # Pagination with page param only applies to browse/filter-only requests.
         url = self.src._create_api_url(
-            query='anima',
+            query='',
             search_type='Model name',
             content_type=['Checkpoint'],
             base_filter=None,
