@@ -23,6 +23,7 @@ from . import civitai
 from . import civarchive
 from . import huggingface
 from . import arcenciel
+from . import modelscope
 
 __all__ = [
     "BrowserSource",

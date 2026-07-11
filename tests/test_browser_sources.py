@@ -58,11 +58,13 @@ class TestCivitaiAdapter(unittest.TestCase):
 
     def test_source_registered(self):
         # Hugging Face is hidden from the dropdown but remains registered for direct URLs.
-        self.assertEqual(self.bs.source_choices(), ['CivitAI', 'CivArchive', 'Arc en Ciel'])
+        self.assertEqual(self.bs.source_choices(), ['CivitAI', 'CivArchive', 'Arc en Ciel', 'ModelScope'])
         self.assertEqual(self.bs.get_browser_source('civitai').display_name, 'CivitAI')
         self.assertEqual(self.bs.get_browser_source('huggingface').display_name, 'Hugging Face')
         self.assertFalse(self.bs.get_browser_source('huggingface').visible_in_dropdown)
         self.assertEqual(self.bs.get_browser_source('arcenciel').display_name, 'Arc en Ciel')
+        self.assertEqual(self.bs.get_browser_source('modelscope').display_name, 'ModelScope')
+        self.assertTrue(self.bs.get_browser_source('modelscope').visible_in_dropdown)
 
     def test_canonical_file_includes_legacy_metadata(self):
         file_info = self.canonical_file(
@@ -945,6 +947,216 @@ class TestArcencielAdapter(unittest.TestCase):
         self.assertEqual(url, 'https://uploads.arcenciel.io/api/models/123/versions/456/download')
 
 
+class TestModelScopeAdapter(unittest.TestCase):
+    def setUp(self):
+        self._patch = patch.dict(sys.modules, _MODULE_OVERRIDES, clear=False)
+        self._patch.start()
+        sys.path.insert(0, '.')
+
+        from scripts.browser_sources.modelscope import ModelScopeSource
+        self.src = ModelScopeSource()
+
+    def tearDown(self):
+        self._patch.stop()
+        if '.' in sys.path:
+            sys.path.remove('.')
+
+    def _make_response(self, json_data, status_code=200):
+        resp = unittest.mock.MagicMock()
+        resp.status_code = status_code
+        resp.json.return_value = json_data
+        return resp
+
+    def test_supported_search_types(self):
+        self.assertEqual(self.src.supported_search_types(), ['Model name'])
+
+    def test_supports_pagination(self):
+        self.assertTrue(self.src.supports_pagination())
+
+    def test_search_normalizes_muse_model(self):
+        search_response = {
+            'Code': 200,
+            'Data': {
+                'Model': {
+                    'TotalCount': 1,
+                    'Models': [{
+                        'Id': 143351,
+                        'Name': 'Qwen-Image-Edit-2511-Multiple-Angles-LoRA',
+                        'Path': 'fal',
+                        'Tags': ['text-to-image'],
+                        'Libraries': ['safetensors', 'pytorch'],
+                        'Downloads': 109,
+                        'Stars': 5,
+                        'Description': 'A LoRA for Qwen Image',
+                        'MuseInfo': {
+                            'model': {
+                                'modelType': 'LoRA',
+                                'stableDiffusionVersion': 'QWEN_IMAGE_20_B',
+                            },
+                            'versions': [{
+                                'id': 843075,
+                                'coverImages': [
+                                    {'url': 'https://resources.modelscope.cn/cover-images/preview.png'},
+                                ],
+                                'modelVersion': {
+                                    'id': 843075,
+                                    'versionName': '20260617081836',
+                                    'triggerWords': ['qwen image edit'],
+                                },
+                                'stats': {
+                                    'fileList': ['qwen-image-edit-2511-multiple-angles-lora.safetensors'],
+                                    'fileSizes': [134],
+                                    'totalSize': 134,
+                                },
+                            }],
+                        },
+                    }],
+                },
+            },
+        }
+        with patch('scripts.browser_sources.modelscope.requests.put') as mock_put:
+            mock_put.return_value = self._make_response(search_response)
+            result = self.src.search(query='qwen lora', page_size=10)
+
+        self.assertEqual(result['metadata']['source'], 'modelscope')
+        self.assertEqual(len(result['items']), 1)
+        model = result['items'][0]
+        self.assertEqual(model['browserSource'], 'modelscope')
+        self.assertEqual(model['browserSourceId'], 'fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA')
+        self.assertEqual(model['type'], 'LORA')
+        self.assertEqual(model['baseModel'], 'Qwen Image')
+        version = model['modelVersions'][0]
+        self.assertEqual(version['name'], '20260617081836')
+        self.assertEqual(version['trainedWords'], ['qwen image edit'])
+        self.assertEqual(version['files'][0]['name'], 'qwen-image-edit-2511-multiple-angles-lora.safetensors')
+        self.assertTrue(version['files'][0]['primary'])
+        self.assertIn('resolve/master/qwen-image-edit-2511-multiple-angles-lora.safetensors', version['files'][0]['downloadUrl'])
+        self.assertEqual(len(version['images']), 1)
+        self.assertEqual(version['images'][0]['url'], 'https://resources.modelscope.cn/cover-images/preview.png')
+
+    def test_search_filters_modelscope_content_type_and_base_model(self):
+        search_response = {
+            'Code': 200,
+            'Data': {
+                'Model': {
+                    'Models': [
+                        {
+                            'Id': 1,
+                            'Name': 'Anima-LoRA',
+                            'Path': 'silverlong',
+                            'Tags': [],
+                            'Libraries': ['safetensors'],
+                            'MuseInfo': {
+                                'model': {'modelType': 'LoRA', 'stableDiffusionVersion': 'ANIMA'},
+                                'versions': [{
+                                    'modelVersion': {'versionName': 'v1'},
+                                    'stats': {'fileList': ['anima-lora.safetensors']},
+                                }],
+                            },
+                        },
+                        {
+                            'Id': 2,
+                            'Name': 'Flux-Checkpoint',
+                            'Path': 'owner',
+                            'Tags': [],
+                            'Libraries': ['safetensors'],
+                            'MuseInfo': {
+                                'model': {'modelType': 'Checkpoint', 'stableDiffusionVersion': 'FLUX_1_D'},
+                                'versions': [{
+                                    'modelVersion': {'versionName': 'v1'},
+                                    'stats': {'fileList': ['flux.safetensors']},
+                                }],
+                            },
+                        },
+                    ],
+                },
+            },
+        }
+        with patch('scripts.browser_sources.modelscope.requests.put') as mock_put:
+            mock_put.return_value = self._make_response(search_response)
+            result = self.src.search(query='', content_type='Checkpoint', base_filter=['FLUX.1'], page_size=10)
+
+        self.assertEqual(len(result['items']), 1)
+        self.assertEqual(result['items'][0]['browserSourceId'], 'owner/Flux-Checkpoint')
+        self.assertEqual(result['items'][0]['type'], 'Checkpoint')
+        self.assertEqual(result['items'][0]['baseModel'], 'FLUX.1')
+
+    def test_search_uses_model_infos_when_muse_missing(self):
+        search_response = {
+            'Code': 200,
+            'Data': {
+                'Model': {
+                    'Models': [{
+                        'Id': 653643,
+                        'Name': 'Anima',
+                        'Path': 'circlestone-labs',
+                        'Tags': ['diffusion-single-file'],
+                        'Libraries': ['safetensors', 'pytorch'],
+                        'BaseModel': ['circlestone-labs/Anima'],
+                        'ModelInfos': {
+                            'safetensor': {
+                                'files': [
+                                    {'name': 'split_files/diffusion_models/anima-aesthetic-v1.0.safetensors', 'size': 4182230656, 'sha256': 'abc'},
+                                ],
+                            },
+                        },
+                    }],
+                },
+            },
+        }
+        with patch('scripts.browser_sources.modelscope.requests.put') as mock_put:
+            mock_put.return_value = self._make_response(search_response)
+            result = self.src.search(query='anima', page_size=10)
+
+        self.assertEqual(len(result['items']), 1)
+        version = result['items'][0]['modelVersions'][0]
+        self.assertEqual(version['files'][0]['name'], 'anima-aesthetic-v1.0.safetensors')
+        self.assertEqual(version['files'][0]['sizeBytes'], 4182230656)
+        self.assertEqual(version['files'][0]['sha256'], 'ABC')
+
+    def test_get_model_fetches_repo_detail(self):
+        repo_detail = {
+            'Code': 200,
+            'Data': {
+                'Id': 653643,
+                'Name': 'Anima',
+                'Path': 'circlestone-labs',
+                'Tags': ['diffusion-single-file'],
+                'Libraries': ['safetensors', 'pytorch'],
+                'BaseModel': ['Anima'],
+                'ModelInfos': {
+                    'safetensor': {
+                        'files': [
+                            {'name': 'anima.safetensors', 'size': 1024000},
+                        ],
+                    },
+                },
+            },
+        }
+        with patch('scripts.browser_sources.modelscope.requests.get') as mock_get:
+            mock_get.return_value = self._make_response(repo_detail)
+            model = self.src.get_model('circlestone-labs/Anima')
+
+        self.assertEqual(model['browserSource'], 'modelscope')
+        self.assertEqual(model['browserSourceId'], 'circlestone-labs/Anima')
+        self.assertEqual(model['type'], 'Checkpoint')
+        version = model['modelVersions'][0]
+        self.assertEqual(len(version['files']), 1)
+        self.assertEqual(version['files'][0]['sizeBytes'], 1024000)
+
+    def test_get_download_url_builds_resolve_url(self):
+        file_info = {
+            'name': 'anima.safetensors',
+            'browserSourceFileRaw': {
+                'repo_id': 'circlestone-labs/Anima',
+                'path': 'anima.safetensors',
+                'revision': 'master',
+            },
+        }
+        url = self.src.get_download_url(file_info)
+        self.assertEqual(url, 'https://www.modelscope.cn/models/circlestone-labs/Anima/resolve/master/anima.safetensors')
+
+
 class TestUrlParser(unittest.TestCase):
     """Tests for the direct-URL parser used by the Browser's URL search mode."""
 
@@ -1026,6 +1238,20 @@ class TestUrlParser(unittest.TestCase):
             mock_get.return_value = self._make_mock_adapter('Arc Model', 'arcenciel')
             self.parse_model_url('https://arcenciel.io/models/12345')
             mock_get.return_value.get_model.assert_called_once_with('12345')
+
+    def test_modelscope_url_extracts_repo_id(self):
+        
+        with patch('scripts.browser_sources.url_parser.get_browser_source') as mock_get:
+            mock_get.return_value = self._make_mock_adapter('MS Model', 'modelscope')
+            self.parse_model_url('https://www.modelscope.cn/models/owner/cool-lora')
+            mock_get.return_value.get_model.assert_called_once_with('owner/cool-lora')
+
+    def test_modelscope_url_strips_summary_and_files(self):
+        
+        with patch('scripts.browser_sources.url_parser.get_browser_source') as mock_get:
+            mock_get.return_value = self._make_mock_adapter('MS Model', 'modelscope')
+            self.parse_model_url('https://www.modelscope.cn/models/owner/cool-lora/summary')
+            mock_get.return_value.get_model.assert_called_once_with('owner/cool-lora')
 
     def test_not_found_adapter_returns_error(self):
         

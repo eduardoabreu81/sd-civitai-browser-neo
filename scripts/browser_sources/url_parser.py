@@ -80,6 +80,26 @@ def _extract_arcenciel_model_id(url: str) -> Optional[str]:
     return None
 
 
+def _extract_modelscope_repo_id(url: str) -> Optional[str]:
+    """Return a ModelScope repo_id (owner/repo) from a model page URL, or None."""
+    parsed = urlparse(url)
+    path = parsed.path or ""
+    # Remove summary/files/svelte fragments and trailing slashes.
+    path = re.sub(r"/summary.*$", "", path)
+    path = re.sub(r"/files.*$", "", path)
+    path = re.sub(r"/tree/.*$", "", path)
+    path = re.sub(r"/blob/.*$", "", path)
+    path = re.sub(r"/resolve/.*$", "", path)
+    path = path.strip("/")
+    parts = [p for p in path.split("/") if p]
+    # Expected path: models/{owner}/{repo}
+    if len(parts) >= 3 and parts[0] == "models":
+        return "/".join(parts[1:3])
+    if len(parts) >= 2:
+        return "/".join(parts[:2])
+    return None
+
+
 def _resolve_civitai_version_to_model(version_id: str) -> Optional[str]:
     """Fetch a CivitAI model version and return its parent model id."""
     domain = _api.get_civitai_domain()
@@ -183,6 +203,26 @@ def parse_model_url(url: str) -> dict | str:
         if adapter is None:
             return "error"
         model = adapter.get_model(model_id)
+        if model is None:
+            return "not_found"
+        return paginated_result(
+            [model],
+            current_page=1,
+            page_size=1,
+            total_items=1,
+            total_pages=1,
+            source=adapter.name,
+        )
+
+    # ModelScope
+    if netloc in ("modelscope.cn", "www.modelscope.cn"):
+        repo_id = _extract_modelscope_repo_id(url)
+        if not repo_id:
+            return "invalid_url"
+        adapter = get_browser_source("modelscope")
+        if adapter is None:
+            return "error"
+        model = adapter.get_model(repo_id)
         if model is None:
             return "not_found"
         return paginated_result(

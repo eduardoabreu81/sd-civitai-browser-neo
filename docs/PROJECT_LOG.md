@@ -22,17 +22,47 @@
 
 ## Linha do Tempo
 
+### 2026-07-10 — Fix: Local Models outdated-card checkbox selection
+
+**O que mudou (pt-BR):** Corrigido bug na aba Local Models em que os checkboxes dos cards **outdated** (laranja) não respondiam ao clique quando o usuário filtrava "Only models with updates". O problema era que o JavaScript detectava o checkbox como se fosse do Browser, atualizava os textboxes errados (`#selected_model_list`) e disparava um erro do Gradio (`Attempted to select a non-interactive or hidden tab`). A seleção em lote para **"Update selected"** agora funciona corretamente.
+**Causa:** A detecção `_isLocalCheckbox(el)` usava apenas `el.closest('#local_list_html')`; no Gradio 4 o conteúdo HTML do Local Models é embrulhado de forma que essa ancestralidade falha.
+**Solução:** Os checkboxes renderizados para `target='local'` agora carregam o marcador `data-local="true"`, e `_isLocalCheckbox()` verifica esse marcador antes de recorrer ao `closest()`.
+**Arquivos alterados:** `scripts/civitai_api.py`, `javascript/civitai-html.js`.
+**Validação:** `py_compile` limpo; suite `tests/` passou com **142 passed**; validação runtime no Forge Neo confirmou que checkboxes de outdated cards agora marcam e o botão "Update selected" enfileira o update.
+**Próximos passos / Next steps:**
+- Monitorar se a mesma detecção precisa ser aplicada a outros elementos do Local Models que usam `closest('#local_list_html')`.
+
+### 2026-07-11 — Investigação: Update selected não enfileirou modelo da segunda página (não reproduzível)
+
+**O que foi reportado:** Após aplicar o fix do checkbox, o usuário conseguiu atualizar 2 modelos outdated via "Update selected", mas um terceiro modelo localizado na **segunda página** da paginação do Local Models não foi baixado. No terminal apareceu apenas `[CivitAI Browser Neo] - [local refresh] download_finish → model_string=''` e nenhuma ação foi tomada. O bug **não foi reproduzível** em tentativas seguintes.
+**Hipóteses levantadas:**
+1. Checkbox da página 2 detectado como Browser em vez de Local (rotação errada), fazendo o item ir para `selectedModels` em vez de `selectedModelsLocal`.
+2. Seleção Local perdida durante a re-renderização da paginação.
+3. Race condition no Gradio 4: `update_selected_trigger` disparou antes do JS atualizar o valor.
+4. Cache de JS antigo sem o fix `data-local` (a extensão foi recém-instalada/atualizada via GitHub).
+**Ação tomada:** Adicionados **logs defensivos** para capturar a causa sem depender de reprodução manual:
+- `javascript/civitai-html.js`: `multi_model_select` agora loga `isLocal`, nome do modelo, estado do checkbox e contadores das listas; também loga um warning se `data-local=true` não for detectado como local.
+- `javascript/civitai-html.js`: `updateSelectedLocalModels` loga o array completo antes de disparar o trigger.
+- `scripts/civitai_download.py`: `update_selected_models` loga o valor bruto recebido, remove entradas vazias com warning e loga a lista final enfileirada.
+**Arquivos alterados:** `javascript/civitai-html.js`, `scripts/civitai_download.py`.
+**Validação:** `py_compile` limpo; suite `tests/` passou com **142 passed**.
+**Próximos passos / Next steps:**
+- Monitorar logs no console do navegador e no terminal do Forge Neo nas próximas atualizações em lote que envolvam múltiplas páginas.
+- Se o bug voltar e os logs indicarem rotação errada, reforçar a detecção local (ex.: usar atributo no card em vez de confiar em `closest`).
+- Se os logs indicarem race condition no trigger, adicionar delay/sequenciamento entre o JS e o evento Python.
+
+---
+
 ### 2026-07-10 — Browser "Paste model URL" search mode + Hugging Face removed from dropdown
 
 **O que mudou (pt-BR):** Adicionado um novo modo de busca **URL** na aba Browser. O usuário pode colar uma URL direta de CivitAI, CivArchive, Hugging Face ou Arc en Ciel; o extension detecta o provider, busca o modelo, renderiza um único card e popula o model panel para download. Como consequência, o **Hugging Face foi removido do dropdown de Browser Source**; o adapter continua registrado, mas só é acessível via URL direta.
 **Motivação:** A busca direta no Hugging Face retorna muito ruído (componentes Diffusers, repos sem arquivo baixável, falta de suporte a GGUF). Colar a URL é mais prático e alinhado com o produto até termos uma curadoria melhor.
 **Arquitetura:** Criado `scripts/browser_sources/url_parser.py` com parser/dispatcher de URLs; adicionado atributo `visible_in_dropdown` em `BrowserSource` para controlar quais adapters aparecem no dropdown; ramo `use_search_term == 'URL'` em `initial_model_page` reaproveita todo o fluxo existente de cards/detail/download.
 **Arquivos alterados:** `scripts/browser_sources/base.py`, `scripts/browser_sources/registry.py`, `scripts/browser_sources/huggingface.py`, `scripts/browser_sources/url_parser.py` (novo), `scripts/browser_sources/__init__.py`, `scripts/civitai_api.py`, `scripts/civitai_gui.py`, `tests/test_browser_sources.py`, `docs/PROJECT_LOG.md`.
-**Validação:** `py_compile` dos módulos alterados limpo; testes `tests/test_browser_sources.py` passaram com **49 passed**; suite completa `tests/` passou com **142 passed**. Validação runtime no Forge Neo pendente — será testada junto com a validação do Arc en Ciel.
+**Validação:** `py_compile` dos módulos alterados limpo; testes `tests/test_browser_sources.py` passaram com **49 passed**; suite completa `tests/` passou com **142 passed**. Validação runtime no Forge Neo **concluída** — URL do Hugging Face, CivitAI, CivArchive e Arc en Ciel renderizaram cards, populararam o model panel e permitiram enfileirar download; URL inválida retornou mensagem de erro no grid.
 **Próximos passos / Next steps:**
-- Validar no Forge Neo: colar URL do Hugging Face, clicar no card, popular o model panel e enfileirar download.
-- Validar URLs de CivitAI (`/models/<id>` e `/api/download/models/<version_id>`), CivArchive e Arc en Ciel.
-- Testar URL inválida e confirmar mensagem de erro no grid.
+- Monitorar uso real do modo URL e coletar feedback sobre quais providers/padrões de URL ainda faltam.
+- Quando o catálogo curado Hugging Face estiver pronto, reavaliar se HF volta ao dropdown.
 
 ---
 
@@ -41,11 +71,10 @@
 **O que mudou (pt-BR):** Corrigido o adapter **Arc en Ciel** para respeitar os filtros do Browser por `content_type` e `base_filter`. A API pública aceita parâmetros desconhecidos sem erro, mas testes live mostraram que `type=CHECKPOINT`, `type=LORA`, `modelClassId`, `modelClassIds` e `baseModel` não filtram de forma confiável; por isso o adapter agora busca uma janela maior e filtra localmente.
 **Comportamento:** Se o usuário selecionar `Checkpoint`, LoRAs deixam de aparecer. Se selecionar uma base como `Anima`, o adapter mantém apenas modelos/versões compatíveis com essa base e remove versões de outras bases do dropdown. Sem filtro de base ativo, o browse volta a mostrar o default geral da plataforma.
 **Arquivos alterados:** `scripts/browser_sources/arcenciel.py`, `tests/test_browser_sources.py`, `docs/PROJECT_LOG.md`.
-**Validação:** Teste focado `tests/test_browser_sources.py` passou com **40 passed**; `py_compile scripts/browser_sources/arcenciel.py` e `git diff --check` ficaram limpos. Probes live em 2026-07-09 confirmaram que a API Arc en Ciel ignora os filtros nativos de tipo/base testados.
+**Validação:** Teste focado `tests/test_browser_sources.py` passou com **40 passed**; `py_compile scripts/browser_sources/arcenciel.py` e `git diff --check` ficaram limpos. Probes live em 2026-07-09 confirmaram que a API Arc en Ciel ignora os filtros nativos de tipo/base testados. Validação runtime no Forge Neo em 2026-07-10 **concluída** — busca vazia, filtro por content type/base model e paginação funcionaram conforme esperado.
 **Próximos passos / Next steps:**
-- Atualizar a extensão remota e validar Arc en Ciel com Base Model vazio + content type Checkpoint/LORA.
-- Validar Arc en Ciel com Base Model Anima e confirmar que o dropdown de versões só mantém versões Anima.
-- Se a API Arc en Ciel publicar filtros oficiais depois, trocar o filtro local por parâmetros nativos.
+- Monitorar se a API Arc en Ciel publica filtros oficiais de tipo/base para trocar o filtro local por parâmetros nativos.
+- Observar comportamento de download e sidecars em uso real com modelos Arc en Ciel.
 
 ---
 
@@ -1001,6 +1030,21 @@ Três mudanças implementadas nos dois repositórios:
 - Validar runtime: paginação (Per page/Prev/Next/sort entre páginas) e borda verde do Animosity.
 - Considerar cache do `collect_existing_files` se a troca de página ficar lenta.
 - Fechar o **Release Candidate** do `revamp` após validar o acumulado 06-17→06-24.
+
+### 2026-07-11 — Fase E: Browser source adapter para ModelScope
+
+**O que mudou (pt-BR):**
+**[Feat] Adapter ModelScope no multi-browser:** novo source `ModelScope` registrado no dropdown do Browser, permitindo buscar modelos diretamente em `www.modelscope.cn`.
+**API utilizada:** busca por `PUT /api/v1/dolphin/models` com payload JSON (`Name`, `PageSize`, `PageNumber`); detalhe por `GET /api/v1/models/{owner}/{repo}`; downloads via endpoint HF-compatible `https://www.modelscope.cn/models/{owner}/{repo}/resolve/master/{path}`.
+**Normalização:** modelos são convertidos para o formato canônico da extensão. Content type e base model são inferidos de `MuseInfo.model.modelType`/`stableDiffusionVersion` quando disponível; caso contrário usa heurística por tags, libraries e nome do repo (mesma família de hints do HF). Arquivos reais vêm de `MuseInfo.versions[].stats.fileList` na busca ou de `ModelInfos.safetensor.files` no detalhe, com fallback para card renderizável quando ainda não há file list.
+**URL paste:** URLs de modelos do ModelScope (`modelscope.cn/models/{owner}/{repo}`) são parseadas e redirecionadas para o novo adapter, populando o model panel para download.
+**Arquivos alterados:** `scripts/browser_sources/modelscope.py` (novo), `scripts/browser_sources/__init__.py`, `scripts/browser_sources/url_parser.py`, `tests/test_browser_sources.py`.
+**Decisões:** ModelScope aparece no dropdown (ao contrário do HF, que ficou URL-only). GGUF e catálogo curado Hugging Face foram postergados por complexidade; a entrega imediata é navegação/download direto no ModelScope.
+**Pontos sensíveis:** `MuseInfo` só está presente para modelos de geração de imagem cadastrados no Muse; repos sem MuseInfo retornam arquivo sintético no search, mas o detalhe (`get_model`) carrega a file list real. Tamanhos de `MuseInfo.stats.fileSizes` usam heurística bytes/KB; `ModelInfos.safetensor.files[].size` é tratado como bytes.
+**Testes:** `pytest tests/test_browser_sources.py` passando (58/58), incluindo busca Muse, detalhe com ModelInfos, filtros de content type/base model, build de download URL e parsing de URL.
+**Próximos passos / Next steps:**
+- Validar runtime no Forge Neo: dropdown ModelScope, busca, paginação, clique em card e download de arquivo.
+- Após validação, atualizar README.md (What's New) e fechar/release da branch `revamp`.
 
 ---
 
