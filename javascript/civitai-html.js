@@ -954,8 +954,12 @@ var selectedModelsLocal = [];
 var selectedTypesLocal = [];
 
 // True when the toggled checkbox element lives in the Local Models grid.
+// Gradio 4 may wrap HTML content in ways that break el.closest('#local_list_html'),
+// so we also rely on an explicit data-local marker stamped by the Python renderer.
 function _isLocalCheckbox(el) {
-    return !!(el && el.closest && el.closest('#local_list_html'));
+    if (!el) return false;
+    if (el.dataset && el.dataset.local === 'true') return true;
+    return !!(el.closest && el.closest('#local_list_html'));
 }
 
 function multi_model_select(modelName, modelType, isChecked, el) {

@@ -896,6 +896,11 @@ def model_list_html(json_data, target=''):
             f'<div class="badges-container">{model_type_badge}{status_badge}{nsfw_badge}{source_badge}</div>'
         )
 
+        # Marker for Local Models checkboxes so JS can detect them without relying
+        # solely on DOM ancestry (Gradio 4 may wrap HTML content in ways that break
+        # el.closest('#local_list_html')).
+        local_checkbox_attr = ' data-local="true"' if target == 'local' else ''
+
         # Show delete button for up-to-date installed models;
         # For outdated: both delete (hidden below tile size 11) + checkbox stacked
         # For non-installed: checkbox only
@@ -923,7 +928,7 @@ def model_list_html(json_data, target=''):
                 f'</svg>'
                 f'</button>'
                 f'<div class="checkbox-container">'
-                f'<input type="checkbox" class="model-checkbox" id="checkbox-{model_string}" '
+                f'<input type="checkbox" class="model-checkbox"{local_checkbox_attr} id="checkbox-{model_string}" '
                 f'onchange="multi_model_select(\'{model_string}\', \'{item["type"]}\', this.checked, this)">'
                 f'<label for="checkbox-{model_string}" class="custom-checkbox">'
                 f'<span class="checkbox-checkmark"></span>'
@@ -935,7 +940,7 @@ def model_list_html(json_data, target=''):
             # Non-installed: checkbox for batch download
             card_html += (
                 f'<div class="checkbox-container">'
-                f'<input type="checkbox" class="model-checkbox" id="checkbox-{model_string}" '
+                f'<input type="checkbox" class="model-checkbox"{local_checkbox_attr} id="checkbox-{model_string}" '
                 f'onchange="multi_model_select(\'{model_string}\', \'{item["type"]}\', this.checked, this)">'
                 f'<label for="checkbox-{model_string}" class="custom-checkbox">'
                 f'<span class="checkbox-checkmark"></span>'
