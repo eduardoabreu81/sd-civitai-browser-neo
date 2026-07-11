@@ -1156,6 +1156,35 @@ class TestModelScopeAdapter(unittest.TestCase):
         url = self.src.get_download_url(file_info)
         self.assertEqual(url, 'https://www.modelscope.cn/models/circlestone-labs/Anima/resolve/master/anima.safetensors')
 
+    def test_search_tolerates_null_libraries(self):
+        search_response = {
+            'Code': 200,
+            'Data': {
+                'Model': {
+                    'Models': [{
+                        'Id': 1,
+                        'Name': 'NullLibs',
+                        'Path': 'owner',
+                        'Tags': None,
+                        'Libraries': None,
+                        'MuseInfo': {
+                            'model': {'modelType': 'LoRA', 'stableDiffusionVersion': 'ANIMA'},
+                            'versions': [{
+                                'modelVersion': {'versionName': 'v1'},
+                                'stats': {'fileList': ['null-libs.safetensors']},
+                            }],
+                        },
+                    }],
+                },
+            },
+        }
+        with patch('scripts.browser_sources.modelscope.requests.put') as mock_put:
+            mock_put.return_value = self._make_response(search_response)
+            result = self.src.search(query='null', page_size=10)
+
+        self.assertEqual(len(result['items']), 1)
+        self.assertEqual(result['items'][0]['type'], 'LORA')
+
 
 class TestUrlParser(unittest.TestCase):
     """Tests for the direct-URL parser used by the Browser's URL search mode."""

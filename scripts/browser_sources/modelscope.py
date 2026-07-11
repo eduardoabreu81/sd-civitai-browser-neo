@@ -300,7 +300,7 @@ class ModelScopeSource(BrowserSource):
         tags = self._extract_tags(item)
         name = item.get("Name") or repo_id.split("/")[-1]
         muse = item.get("MuseInfo") or {}
-        model_type = self._detect_content_type(tags, repo_id, item.get("Libraries", []), muse)
+        model_type = self._detect_content_type(tags, repo_id, item.get("Libraries") or [], muse)
         base_model = self._detect_base_model(tags, repo_id, name, item.get("BaseModel"), muse)
         nsfw = any("nsfw" in t.lower() for t in tags) or "nsfw" in repo_id.lower()
 
@@ -334,7 +334,7 @@ class ModelScopeSource(BrowserSource):
         tags = self._extract_tags(data)
         name = data.get("Name") or repo_id.split("/")[-1]
         muse = data.get("MuseInfo") or {}
-        model_type = self._detect_content_type(tags, repo_id, data.get("Libraries", []), muse)
+        model_type = self._detect_content_type(tags, repo_id, data.get("Libraries") or [], muse)
         base_model = self._detect_base_model(tags, repo_id, name, data.get("BaseModel"), muse)
         nsfw = any("nsfw" in t.lower() for t in tags) or "nsfw" in repo_id.lower()
 
