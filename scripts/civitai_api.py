@@ -1608,7 +1608,7 @@ def update_model_versions(model_id, json_input=None, base_filter=None, installed
                 default_value = None
                 for i, v in enumerate(version_names):
                     version_obj = next((ver for ver in versions if ver['name'] == v), None)
-                    if version_obj and version_obj.get('baseModel', '').lower() in filter_normalized:
+                    if version_obj and (version_obj.get('baseModel') or '').lower() in filter_normalized:
                         default_value = display_version_names[i]
                         break
                 if default_value is None:
