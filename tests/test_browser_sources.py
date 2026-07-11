@@ -1185,6 +1185,59 @@ class TestModelScopeAdapter(unittest.TestCase):
         self.assertEqual(len(result['items']), 1)
         self.assertEqual(result['items'][0]['type'], 'LORA')
 
+    def test_search_detects_checkpoint_from_task_and_base_model_from_repo_id(self):
+        search_response = {
+            'Code': 200,
+            'Data': {
+                'Model': {
+                    'Models': [{
+                        'Id': 653643,
+                        'Name': 'Anima-Loras',
+                        'Path': 'silverlong',
+                        'Tags': [],
+                        'Libraries': ['safetensors', 'pytorch'],
+                        'BaseModel': None,
+                        'Tasks': [{'Name': 'text-to-image-synthesis'}],
+                        'MuseInfo': None,
+                        'ModelInfos': None,
+                    }],
+                },
+            },
+        }
+        with patch('scripts.browser_sources.modelscope.requests.put') as mock_put:
+            mock_put.return_value = self._make_response(search_response)
+            result = self.src.search(query='anima', content_type='Checkpoint', page_size=10)
+
+        self.assertEqual(len(result['items']), 1)
+        self.assertEqual(result['items'][0]['type'], 'Checkpoint')
+
+    def test_search_detects_base_model_from_base_model_repo_id(self):
+        search_response = {
+            'Code': 200,
+            'Data': {
+                'Model': {
+                    'Models': [{
+                        'Id': 9,
+                        'Name': 'Anima-Base-v1.0-Diffusers',
+                        'Path': 'circlestone-labs',
+                        'Tags': [],
+                        'Libraries': ['safetensors', 'diffusers', 'pytorch'],
+                        'BaseModel': ['circlestone-labs/Anima'],
+                        'Tasks': [{'Name': ''}],
+                        'MuseInfo': None,
+                        'ModelInfos': None,
+                    }],
+                },
+            },
+        }
+        with patch('scripts.browser_sources.modelscope.requests.put') as mock_put:
+            mock_put.return_value = self._make_response(search_response)
+            result = self.src.search(query='', content_type='Checkpoint', base_filter=['Anima'], page_size=10)
+
+        self.assertEqual(len(result['items']), 1)
+        self.assertEqual(result['items'][0]['baseModel'], 'Anima')
+        self.assertEqual(result['items'][0]['type'], 'Checkpoint')
+
 
 class TestUrlParser(unittest.TestCase):
     """Tests for the direct-URL parser used by the Browser's URL search mode."""

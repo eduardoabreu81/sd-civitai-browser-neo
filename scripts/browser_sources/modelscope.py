@@ -65,6 +65,19 @@ class ModelScopeSource(BrowserSource):
         "controlnet": "ControlNet",
     }
 
+    # ModelScope task names → extension content type
+    TASK_TYPE_HINTS = {
+        "text-to-image-synthesis": "Checkpoint",
+        "text-to-image": "Checkpoint",
+        "image-to-image": "Checkpoint",
+        "image-to-video": "Checkpoint",
+        "text-to-video": "Checkpoint",
+        "video-to-video": "Checkpoint",
+        "image-deblurring": "Checkpoint",
+        "image-super-resolution": "Upscaler",
+        "image-enhancement": "Upscaler",
+    }
+
     # Filename substrings → extension content type
     FILENAME_TYPE_HINTS = {
         "lora": "LORA",
@@ -108,6 +121,24 @@ class ModelScopeSource(BrowserSource):
         "ltx": "LTX",
         "qwen": "Qwen",
         "qwen-image": "Qwen Image",
+    }
+
+    # ModelScope BaseModel repo_id → extension base model
+    BASE_MODEL_REPO_MAP = {
+        "circlestone-labs/anima": "Anima",
+        "wan-ai/wan2.1": "Wan",
+        "wan-ai/wan2.2": "Wan",
+        "wan-ai/wan2.1-t2v": "Wan",
+        "wan-ai/wan2.1-i2v": "Wan",
+        "wan-ai/wan2.2-t2v": "Wan",
+        "wan-ai/wan2.2-i2v": "Wan",
+        "black-forest-labs/flux.1-dev": "FLUX.1",
+        "black-forest-labs/flux.1-schnell": "FLUX.1",
+        "stabilityai/stable-diffusion-xl-base-1.0": "SDXL",
+        "runwayml/stable-diffusion-v1-5": "SD 1.5",
+        "hunyuanvideo/hunyuan-video": "HunyuanVideo",
+        "lightricks/ltx-video": "LTX",
+        "lightricks/ltxv": "LTX",
     }
 
     # ModelScope MuseInfo stableDiffusionVersion → extension base model
@@ -298,9 +329,10 @@ class ModelScopeSource(BrowserSource):
             return None
 
         tags = self._extract_tags(item)
+        tasks = self._extract_tasks(item)
         name = item.get("Name") or repo_id.split("/")[-1]
         muse = item.get("MuseInfo") or {}
-        model_type = self._detect_content_type(tags, repo_id, item.get("Libraries") or [], muse)
+        model_type = self._detect_content_type(tags, repo_id, item.get("Libraries") or [], tasks, muse)
         base_model = self._detect_base_model(tags, repo_id, name, item.get("BaseModel"), muse)
         nsfw = any("nsfw" in t.lower() for t in tags) or "nsfw" in repo_id.lower()
 
@@ -332,9 +364,10 @@ class ModelScopeSource(BrowserSource):
     def _normalize_repo_detail(self, repo_id: str, data: dict) -> Optional[dict]:
         """Build a canonical model from a full ModelScope repo detail response."""
         tags = self._extract_tags(data)
+        tasks = self._extract_tasks(data)
         name = data.get("Name") or repo_id.split("/")[-1]
         muse = data.get("MuseInfo") or {}
-        model_type = self._detect_content_type(tags, repo_id, data.get("Libraries") or [], muse)
+        model_type = self._detect_content_type(tags, repo_id, data.get("Libraries") or [], tasks, muse)
         base_model = self._detect_base_model(tags, repo_id, name, data.get("BaseModel"), muse)
         nsfw = any("nsfw" in t.lower() for t in tags) or "nsfw" in repo_id.lower()
 
@@ -555,11 +588,25 @@ class ModelScopeSource(BrowserSource):
                     tags.append(tag)
         return tags
 
+    @staticmethod
+    def _extract_tasks(item: dict) -> list[str]:
+        """Return a flat list of task name strings from a ModelScope item."""
+        tasks: list[str] = []
+        for task in item.get("Tasks", []) or []:
+            if isinstance(task, dict):
+                name = task.get("Name")
+                if name:
+                    tasks.append(str(name))
+            elif isinstance(task, str) and task:
+                tasks.append(task)
+        return tasks
+
     def _detect_content_type(
         self,
         tags: list[str],
         repo_id: str,
         libraries: list[str],
+        tasks: list[str],
         muse: Optional[dict],
     ) -> str:
         """Infer extension content type from ModelScope metadata."""
@@ -571,15 +618,35 @@ class ModelScopeSource(BrowserSource):
 
         lower_tags = [t.lower() for t in tags]
         lower_libs = [str(l).lower() for l in libraries if l]
+        lower_tasks = [str(t).lower() for t in tasks if t]
         combined = " ".join(lower_tags + lower_libs) + " " + repo_id.lower()
 
+        # Direct metadata hints from tags and libraries.
         for hint, ctype in self.CONTENT_TYPE_HINTS.items():
-            if hint in lower_tags or hint in lower_libs or hint in repo_id.lower():
+            if hint in lower_tags or hint in lower_libs:
+                return ctype
+
+        # Official tasks are authoritative and override repo-name/filename
+        # heuristics (e.g. a repo named "Anima-Loras" that is actually a
+        # text-to-image synthesis model).
+        for task in lower_tasks:
+            if task in self.TASK_TYPE_HINTS:
+                return self.TASK_TYPE_HINTS[task]
+
+        # Repo id and filename hints are last because they are noisy.
+        for hint, ctype in self.CONTENT_TYPE_HINTS.items():
+            if hint in repo_id.lower():
                 return ctype
 
         for hint, ctype in self.FILENAME_TYPE_HINTS.items():
             if hint in combined:
                 return ctype
+
+        # Image-generation models without explicit tags/tasks often have
+        # safetensors + diffusers libraries; treat them as Checkpoint so they
+        # appear in the browser instead of being discarded as "Other".
+        if "diffusers" in lower_libs and "safetensors" in lower_libs:
+            return "Checkpoint"
 
         return "Other"
 
@@ -601,14 +668,24 @@ class ModelScopeSource(BrowserSource):
             if muse_base:
                 return muse_base
 
+        # ModelScope BaseModel is often a repo_id like "circlestone-labs/Anima".
+        base_values = []
         if isinstance(base_model_field, list):
-            text = " ".join(str(b) for b in base_model_field if b)
-        elif isinstance(base_model_field, str):
-            text = base_model_field
-        else:
-            text = ""
-        text += " " + " ".join(tags).lower() + " " + repo_id.lower() + " " + name.lower()
+            base_values = [str(b) for b in base_model_field if b]
+        elif isinstance(base_model_field, str) and base_model_field:
+            base_values = [base_model_field]
 
+        for base_value in base_values:
+            normalized_repo = base_value.lower().strip().rstrip("/")
+            if normalized_repo in self.BASE_MODEL_REPO_MAP:
+                return self.BASE_MODEL_REPO_MAP[normalized_repo]
+            # Extract the repo name after the slash and run heuristics on it.
+            repo_name = normalized_repo.split("/")[-1] if "/" in normalized_repo else normalized_repo
+            for hint, base in self.BASE_MODEL_HINTS.items():
+                if self._matches_base_model_hint(hint, repo_name):
+                    return base
+
+        text = " ".join(tags).lower() + " " + repo_id.lower() + " " + name.lower()
         for hint, base in self.BASE_MODEL_HINTS.items():
             if self._matches_base_model_hint(hint, text):
                 return base
