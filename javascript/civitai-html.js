@@ -971,6 +971,13 @@ function multi_model_select(modelName, modelType, isChecked, el) {
         return;
     }
     const isLocal = _isLocalCheckbox(el);
+    // Defensive: if the Python renderer stamped data-local="true" but we still
+    // failed to detect it as local, log the mismatch so we can diagnose paginated
+    // selection bugs without needing a live reproduction.
+    const hasLocalMarker = !!(el && el.dataset && el.dataset.local === 'true');
+    if (hasLocalMarker && !isLocal) {
+        console.warn('[CivitAI Browser Neo] checkbox has data-local=true but _isLocalCheckbox returned false', el);
+    }
     const models = isLocal ? selectedModelsLocal : selectedModels;
     const types  = isLocal ? selectedTypesLocal  : selectedTypes;
 
@@ -990,6 +997,8 @@ function multi_model_select(modelName, modelType, isChecked, el) {
         }
     }
 
+    console.log(`[CivitAI Browser Neo] multi_model_select: isLocal=${isLocal} modelName=${modelName} isChecked=${isChecked} localCount=${selectedModelsLocal.length} browserCount=${selectedModels.length}`);
+
     // Local selection is read straight off selectedModelsLocal — no Gradio textbox sync.
     if (isLocal) {
         return;
@@ -1006,16 +1015,20 @@ function multi_model_select(modelName, modelType, isChecked, el) {
     syncUpdateBtn();
 }
 
-// Local Models tab: update only the checked (outdated) cards. Reuses the global
-// selectedModels list (populated by the card checkboxes via multi_model_select)
-// and the existing update_selected_trigger → update_selected_models pipeline.
+// Local Models tab: update only the checked (outdated) cards. Reads the
+// selectedModelsLocal array (populated by the card checkboxes via multi_model_select)
+// and feeds the existing update_selected_trigger → update_selected_models pipeline.
 function updateSelectedLocalModels() {
+    console.log('[CivitAI Browser Neo] updateSelectedLocalModels called:', selectedModelsLocal);
     if (!selectedModelsLocal || selectedModelsLocal.length === 0) {
         alert('Select one or more outdated models (checkbox on the cards) to update.');
         return;
     }
     const trigger = gradioApp().querySelector('#update_selected_trigger textarea');
-    if (!trigger) return;
+    if (!trigger) {
+        console.warn('[CivitAI Browser Neo] updateSelectedLocalModels: #update_selected_trigger textarea not found');
+        return;
+    }
     trigger.value = JSON.stringify(selectedModelsLocal);
     updateInput(trigger);
 }

@@ -609,12 +609,22 @@ def _keep_from_mode(update_mode):
 def update_selected_models(trigger_value, download_start, create_json, current_html, update_mode='Replace installed'):
     """Enqueue only the checked/selected models (by model string list) from Update Mode."""
     keep = _keep_from_mode(update_mode)
+    print(f"[CivitAI Browser Neo] update_selected_models triggered with {trigger_value!r}")
     try:
         model_list = json.loads(trigger_value)  # plain list of "Name (id)" strings
-    except Exception:
+    except Exception as e:
+        print(f"[CivitAI Browser Neo] update_selected_models: failed to parse trigger_value: {e}")
         return update_all_models(download_start, create_json, current_html, keep_installed=keep)
+    # Defensive: reject empty entries so a race/pagination bug doesn't enqueue a
+    # phantom item with an empty model_string.
+    filtered = [s for s in model_list if isinstance(s, str) and s.strip()]
+    if len(filtered) != len(model_list):
+        print(f"[CivitAI Browser Neo] update_selected_models: removed {len(model_list) - len(filtered)} empty entries from {model_list}")
+        model_list = filtered
     if not model_list:
+        print("[CivitAI Browser Neo] update_selected_models: model_list empty after filtering, falling back to update_all_models")
         return update_all_models(download_start, create_json, current_html, keep_installed=keep)
+    print(f"[CivitAI Browser Neo] update_selected_models: enqueuing {len(model_list)} model(s): {model_list}")
     return selected_to_queue(json.dumps(model_list), None, download_start, create_json, current_html, keep_installed=keep, origin='local')
 
 
