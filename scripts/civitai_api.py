@@ -124,6 +124,7 @@ BASE_MODEL_SHORT = {
     'flux.1 kontext':       'F1',
     'flux.1':               'F1',
     'flux':                 'F1',
+    'krea 2':               'Krea',
     'flux.2 d':             'F2',
     'flux.2 klein 4b':      'F2',
     'flux.2 klein 4b-base': 'F2',
@@ -148,6 +149,7 @@ BASE_MODEL_SHORT = {
     'wan video 2.5 i2v':        'I2V',
     'wan video 1.3':            'Wan',
     'wan':                      'Wan',
+    'ltxv':                     'LTX',
     'other':                    'Other',
 }
 
