@@ -3329,6 +3329,8 @@ def get_model_categories():
         'LTX': ['LTXV'],
         'Qwen': ['QWEN'],
         'Z-Image': ['Z-IMAGE', 'ZIMAGE', 'Z IMAGE', 'ZIMAGETURBO', 'ZIMAGEBASE'],
+        'Ernie': ['ERNIE'],
+        'Mugen': ['MUGEN'],
         'Lumina': ['LUMINA'],
         'Anima': ['ANIMA'],
         'Chroma': ['CHROMA'],
