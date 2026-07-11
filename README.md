@@ -184,8 +184,9 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 - **Browser Source selector** — the Browser can route searches through source adapters instead of being hardwired to CivitAI only.
 - **CivArchive adapter** — browse mirrored CivitAI records, including a source-specific **Deleted from CivitAI** filter for models marked as removed in CivArchive.
-- **Paste-model-URL search** — paste a direct link from CivitAI, CivArchive, Hugging Face, or Arc en Ciel into the Browser; the extension detects the provider, fetches the model, and renders a single card ready for download.
-- **Arc en Ciel adapter** — initial external-source adapter for arcenciel.io.
+- **ModelScope adapter** — search and download models from modelscope.cn, with content-type and base-model detection normalized to the Browser card format.
+- **Paste-model-URL search** — paste a direct link from CivitAI, CivArchive, Hugging Face, ModelScope, or Arc en Ciel into the Browser; the extension detects the provider, fetches the model, and renders a single card ready for download.
+- **Arc en Ciel adapter** — external-source adapter for arcenciel.io, validated for search, pagination, detail panel, and download.
 - **External-source provenance** — non-CivitAI cards and detail panels can show the origin source, source URL, mirror/status notes, and download provenance.
 - **Safer external metadata normalization** — external source files/images are normalized to the same legacy Browser shape expected by detail panels, downloads, sidecars, and preview saving.
 - **Hugging Face result filtering** — checkpoint search now prefers real model artifacts, avoids auxiliary Diffusers components, separates LoRA results from checkpoint results, and uses video pipeline filters for video model families such as Wan.
@@ -216,8 +217,8 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ### v0.9.0 — CivitAI Domain Support, Update Mode Isolation & Download Resilience *(complete)* ✅
 
-### Revamp v0.1.0 — Advanced Curation *(planned)*
-- **Multi-Source Browser**: direct adapters for CivitAI, CivArchive, and Arc en Ciel, plus paste-a-URL support for Hugging Face.
+### Revamp v0.1.0 — Advanced Curation *(in progress on `revamp` branch)*
+- **Multi-Source Browser**: direct adapters for CivitAI, CivArchive, ModelScope, and Arc en Ciel, plus paste-a-URL support for Hugging Face.
 - **Deleted from CivitAI filter** for CivArchive, based on CivArchive's `is_deleted`/`deleted_at` data.
 - **External-source provenance** in cards and detail panels so downloaded models keep their origin visible.
 - **Hugging Face curated catalog foundation** for safer discovery of Forge-compatible repositories (until then, HF remains URL-only).
@@ -243,10 +244,10 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 ### 🔍 Browse & Search
 
 - Browse CivitAI directly inside the WebUI — no tab switching
-- Select a Browser source adapter: CivitAI, CivArchive, and Arc en Ciel *(revamp preview)*
+- Select a Browser source adapter: CivitAI, CivArchive, ModelScope, and Arc en Ciel *(revamp preview)*
 - Search by model name, tag, username, or **paste a direct model URL** *(revamp preview)*
 - Filter by content type: Checkpoint, LORA, VAE, ControlNet, Upscaler, TextualInversion, Wildcards, Workflows, and more
-- Filter by base model: SD 1.x, SDXL, Pony, Illustrious, FLUX, Wan, Qwen, NoobAI, Lumina, and more — list auto-updated from CivitAI at startup ⭐
+- Filter by base model: SD 1.x, SDXL, Pony, Illustrious, FLUX, Krea 2, Wan, Qwen, NoobAI, Lumina, LTXV, Ernie, Anima, Chroma, and more — list auto-updated from CivitAI at startup ⭐
 - Sort by: Highest Rated, Most Downloaded, Newest, Most Liked, Most Discussed
 - Filter by time period: Day, Week, Month, Year, All Time
 - NSFW toggle, liked-only filter, hide installed models, hide banned creators
@@ -259,8 +260,9 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 |---|---|---|
 | CivitAI | Primary catalog and metadata source | Full native support, API key support, SHA256 validation, previews, permissions, and update checks. |
 | CivArchive | Backup/mirror source for CivitAI records | Supports the source-specific **Deleted from CivitAI** filter. Pagination is currently client-side over the public search window returned by CivArchive. |
+| ModelScope | Direct search/browse adapter | Search models on modelscope.cn; content type and base model are detected from tags/metadata and normalized to Browser cards. |
 | Hugging Face | Direct URL download only | Browsing Hugging Face search results is too noisy for the current adapter, so discovery has been moved to URL-paste mode. Paste any `huggingface.co/<owner>/<repo>` link to fetch the model. `.gguf` remains excluded until Browser-side GGUF support is complete. |
-| Arc en Ciel | Initial external-source adapter | Adapter foundation exists; final Forge Neo runtime validation is still pending. |
+| Arc en Ciel | External-source adapter | Search, pagination, detail panel, and download validated in Forge Neo. |
 
 Source-specific behavior:
 - **Deleted from CivitAI** only applies to CivArchive. It means CivArchive marks the model as removed from CivitAI; it does not mean "exclusive to another platform".
@@ -404,16 +406,21 @@ Results can be exported as CSV or JSON.
 | Illustrious | Illustrious XL |
 | NoobAI | NoobAI (Illustrious-based) |
 | FLUX | Dev, Krea, Kontext, Klein |
+| Krea 2 | Krea 2 turbo and related variants |
 | Wan | Wan 2.2 — text/image to video |
 | Qwen | Qwen-Image, Qwen-Image-Edit |
 | Z-Image | Z-Image, Z-Image Turbo |
+| LTXV | LTXV video/image model family |
 | Lumina | Lumina-Image 2.0 |
 | Anima | Anima |
 | Chroma | Chroma1-HD |
+| Ernie | Ernie-Image / Ernie-Image-Turbo |
 | Cascade | Stable Cascade |
 | SVD | Stable Video Diffusion |
 | Hunyuan | Hunyuan |
 | Other | Catch-all; fully configurable |
+
+> **Krea 2 note:** the `krea2_turbo_fp8_scaled.safetensors` checkpoint requires the Qwen-Image VAE (`qwen_image_vae.safetensors`) and the Qwen3VL 4B text encoder (`qwen3vl_4b_fp8_scaled.safetensors`) rather than FLUX text encoders. Place both files in the Forge Neo `models/text_encoder/` folder.
 
 Custom categories can be defined in **Settings → Model Organization** using a simple JSON pattern list.
 
