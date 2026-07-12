@@ -190,6 +190,7 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 - **External-source provenance** — non-CivitAI cards and detail panels can show the origin source, source URL, mirror/status notes, and download provenance.
 - **Safer external metadata normalization** — external source files/images are normalized to the same legacy Browser shape expected by detail panels, downloads, sidecars, and preview saving.
 - **Hugging Face result filtering** — checkpoint search now prefers real model artifacts, avoids auxiliary Diffusers components, separates LoRA results from checkpoint results, and uses video pipeline filters for video model families such as Wan.
+- **GGUF installed-model detection** — `.gguf` checkpoints now appear in Local Models and are recognized as installed files by Browser cards, so their sidecars, delete actions, and update checks work the same as `.safetensors`/`.ckpt` files.
 
 > This is active work on the `revamp` branch. CivitAI remains the primary source of truth for metadata and SHA256 validation. External-source search/download is being added incrementally and should be runtime-tested in Forge Neo before release.
 
@@ -224,7 +225,7 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 - **Hugging Face curated catalog foundation** for safer discovery of Forge-compatible repositories (until then, HF remains URL-only).
 - **Cross-source SHA256 double-check** against CivitAI metadata when external sources provide or allow resolving a file hash.
 - **Not found on CivitAI filter** as a separate future state from "Deleted from CivitAI".
-- **Explicit GGUF support** after Browser download, organization, local review, and metadata flows handle `.gguf` safely.
+- ✅ **Explicit GGUF support** — Browser download, organization, local review, and metadata flows handle `.gguf` safely.
 - Saved search presets
 - Favorites in creator/user search
 - Additional browser quality-of-life improvements
