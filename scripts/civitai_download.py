@@ -752,10 +752,71 @@ def gr_progress_threadable():
     return progress
 
 
+def _resolve_auto_organize_path(model_id, install_path):
+    """If auto-organize is enabled and the chosen install path is the raw content-type
+    root (e.g. Stable-diffusion/), fetch the model's baseModel and return the proper
+    subfolder. This guards against race conditions where the detail panel has not yet
+    updated install_path when the user clicks Download."""
+    if not getattr(opts, 'civitai_neo_auto_organize', False):
+        return install_path
+    if not model_id:
+        return install_path
+
+    # Determine which content-type root we are under
+    root_folder = None
+    content_type = None
+    for ct in ['Checkpoint', 'LORA', 'TextualInversion', 'Poses', 'Controlnet', 'VAE', 'Wildcards', 'AestheticGradient', 'MotionModule', 'Workflows', 'Upscaler', 'Detection', 'Other']:
+        folder = _api.contenttype_folder(ct)
+        if folder and os.path.normpath(install_path).lower() == os.path.normpath(folder).lower():
+            root_folder = folder
+            content_type = ct
+            break
+    if not root_folder:
+        return install_path
+
+    # Fetch baseModel from cached API data or a fresh single-model request
+    base_model = None
+    json_data = getattr(gl, 'json_info', None) or {}
+    if isinstance(json_data, dict):
+        for item in json_data.get('items', []):
+            if _api.model_id_matches(item.get('id'), model_id):
+                for ver in item.get('modelVersions', []):
+                    base_model = ver.get('baseModel')
+                    if base_model:
+                        break
+            if base_model:
+                break
+
+    if not base_model:
+        try:
+            url = f"https://{_api.get_civitai_domain()}/api/v1/models/{model_id}"
+            proxies, ssl = _api.get_proxies()
+            response = requests.get(url, headers=_api.get_headers(), timeout=(15, 15), proxies=proxies, verify=ssl)
+            if response.status_code == 200:
+                data = response.json()
+                for ver in data.get('modelVersions', []):
+                    base_model = ver.get('baseModel')
+                    if base_model:
+                        break
+        except Exception as e:
+            debug_print(f"[auto-organize defense] failed to fetch baseModel for {model_id}: {e}")
+
+    if not base_model:
+        return install_path
+
+    base_folder = _file.normalize_base_model(base_model)
+    if not base_folder:
+        return install_path
+    if not base_folder.startswith(os.sep):
+        base_folder = os.sep + base_folder
+    return str(root_folder) + base_folder
+
+
 def download_start(download_start, dl_url, model_filename, install_path, model_string, version_name, model_sha256, model_id, create_json, current_html):
     global total_count, current_count
     if model_string:
         model_name, _ = _api.extract_model_info(model_string)
+    install_path = _resolve_auto_organize_path(model_id, install_path)
     model_item = create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json)
 
     if model_item:

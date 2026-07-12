@@ -2315,6 +2315,9 @@ def find_and_save(api_response, sha256=None, file_name=None, json_file=None, no_
             if 'sd version' not in content:
                 content['sd version'] = base_model
                 changed = True
+            if 'baseModel' not in content:
+                content['baseModel'] = base_model
+                changed = True
             # Add new fields for model and version information
             if 'modelId' not in content:
                 content['modelId'] = item.get('id')
@@ -2335,6 +2338,7 @@ def find_and_save(api_response, sha256=None, file_name=None, json_file=None, no_
             if save_desc:
                 content['description'] = description
             content['sd version'] = base_model
+            content['baseModel'] = base_model
             # Always update these fields when overwrite is enabled
             content['modelId'] = item.get('id')
             content['modelVersionId'] = model_version.get('id')
