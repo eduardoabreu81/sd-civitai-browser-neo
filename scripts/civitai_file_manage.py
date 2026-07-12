@@ -1268,7 +1268,7 @@ def card_update(gr_components, model_name, list_versions, is_install):
 
 def list_files(folders):
     model_files = []
-    extensions = ['.pt', '.ckpt', '.pth', '.safetensors', '.th', '.zip', '.vae']
+    extensions = ['.pt', '.ckpt', '.pth', '.safetensors', '.th', '.zip', '.vae', '.gguf']
 
     for folder in folders:
         if folder and os.path.exists(folder):

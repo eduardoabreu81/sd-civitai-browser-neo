@@ -566,7 +566,7 @@ def model_list_html(json_data, target=''):
         file_to_path = {}
         sha256_to_path = {}
         version_id_to_path = {}
-        model_extensions = {'.safetensors', '.ckpt', '.pt', '.pth', '.bin'}
+        model_extensions = {'.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.gguf'}
         for folder in model_folders:
             if folder is None:
                 continue
@@ -586,7 +586,8 @@ def model_list_html(json_data, target=''):
                                 # The .json sidecar belongs to a model file with the same stem.
                                 # Store the model path if it exists; otherwise the json path.
                                 model_path = file_to_path.get(file_lower[:-5] + '.safetensors') \
-                                    or file_to_path.get(file_lower[:-5] + '.ckpt')
+                                    or file_to_path.get(file_lower[:-5] + '.ckpt') \
+                                    or file_to_path.get(file_lower[:-5] + '.gguf')
                                 sha256_to_path[sha256] = model_path or full_path
                             vid = json_data.get('modelVersionId')
                             if vid is not None:
