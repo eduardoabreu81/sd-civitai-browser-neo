@@ -261,18 +261,18 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 | CivitAI | Primary catalog and metadata source | Full native support, API key support, SHA256 validation, previews, permissions, and update checks. |
 | CivArchive | Backup/mirror source for CivitAI records | Supports the source-specific **Deleted from CivitAI** filter. Pagination is currently client-side over the public search window returned by CivArchive. |
 | ModelScope | Direct search/browse adapter | Search models on modelscope.cn; content type and base model are detected from tags/metadata and normalized to Browser cards. |
-| Hugging Face | Direct URL download only | Browsing Hugging Face search results is too noisy for the current adapter, so discovery has been moved to URL-paste mode. Paste any `huggingface.co/<owner>/<repo>` link to fetch the model. `.gguf` remains excluded until Browser-side GGUF support is complete. |
+| Hugging Face | Direct URL download only | Browsing Hugging Face search results is too noisy for the current adapter, so discovery has been moved to URL-paste mode. Paste any `huggingface.co/<owner>/<repo>` link to fetch the model. |
 | Arc en Ciel | External-source adapter | Search, pagination, detail panel, and download validated in Forge Neo. |
 
 Source-specific behavior:
 - **Deleted from CivitAI** only applies to CivArchive. It means CivArchive marks the model as removed from CivitAI; it does not mean "exclusive to another platform".
 - **Not found on CivitAI** is planned separately. It requires a SHA256 double-check against CivitAI and must not be conflated with deleted records.
-- **GGUF** is supported by Forge Neo as a checkpoint format, but Browser Neo does not expose GGUF downloads yet. Support will be added only after local metadata, organization, review, and sidecar flows understand `.gguf`.
+- **GGUF** is supported as a checkpoint format. `.gguf` files are detected by Local Models, can be downloaded/organized, and have `.json`/`.api_info.json` sidecars just like `.safetensors`/`.ckpt` files.
 - Future adapters should prefer direct official/public APIs when available instead of scraping pages.
 
 ### 📥 Download
 
-- Download any model, version, and file variant directly
+- Download any model, version, and file variant directly (`.safetensors`, `.ckpt`, `.gguf`, etc.)
 - High-speed multi-connection downloads via Aria2 (optional, on by default)
 - Download queue — multiple downloads run in sequence without blocking the UI
 - Queue persistence — survives session disconnects with one-click restore ⭐
