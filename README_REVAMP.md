@@ -184,13 +184,9 @@ The base-model dropdown, badges, and organization categories are kept in sync wi
 
 ---
 
-## 🔑 Account Integration (MCP)
+## 🔑 Account Badge (MCP)
 
-Experimental account features via `scripts/civitai_mcp.py`:
-
-- **Auto-connected Dashboard badge** showing account status.
-- **Favorite (⭐)** and **Notify (🔔)** buttons in the detail panel.
-- **Following feed** showing new versions from followed creators, with direct links.
+The Dashboard shows a passive account-status badge via `scripts/civitai_mcp.py`. It auto-connects with the saved API key and displays the connected CivitAI username (or a connection warning). No actions are tied to the badge.
 
 ---
 
@@ -234,7 +230,7 @@ Experimental account features via `scripts/civitai_mcp.py`:
 - Preview JPEG format + Aria2 429 retry
 - New base models synced with CivitAI (Krea 2, LTXV, Ernie, Anima, Chroma, Z-Image)
 - Explicit GGUF support
-- Account/MCP integration (favorite, notify, following feed)
+- Passive account badge on the Dashboard via MCP
 
 ### 🚧 In Progress / Planned
 - Cross-source SHA256 double-check

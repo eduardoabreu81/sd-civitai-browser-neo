@@ -11,8 +11,8 @@ streamable HTTP. Probing established three facts that keep this client tiny:
     failures arrive as a JSON-RPC ``error`` object.
 
 Browse tools (search_models, get_model, ...) need no auth. Account/social tools
-(whoami, toggle_favorite_model, notify_model, list_notifications, ...) require a
-Bearer API key (``opts.custom_api_key``) from an onboarded account.
+(whoami, toggle_follow_user, ...) require a Bearer API key (``opts.custom_api_key``)
+from an onboarded account.
 
 Every public function returns a result envelope so callers never see exceptions:
     {'ok': True,  'data': <structuredContent or text>, 'text': <human text>}
@@ -176,39 +176,9 @@ def whoami(use_cache=True):
     return res
 
 
-def set_model_favorite(model_id, favorite, model_version_id=None):
-    """Add/remove a model from favorites. ``setTo`` is an explicit bool."""
-    args = {'modelId': int(model_id), 'setTo': bool(favorite)}
-    if model_version_id is not None:
-        args['modelVersionId'] = int(model_version_id)
-    return call_tool('toggle_favorite_model', args, authed=True)
-
-
-def toggle_notify_model(model_id, notify_type=None):
-    """Toggle 'notify me of new versions' for a model (no explicit setTo upstream)."""
-    args = {'modelId': int(model_id)}
-    if notify_type is not None:
-        args['type'] = notify_type
-    return call_tool('notify_model', args, authed=True)
-
-
 def toggle_follow_user(user):
     """Toggle following a creator (numeric id or username)."""
     return call_tool('toggle_follow_user', {'user': user}, authed=True)
-
-
-def list_notifications(unread=None, category=None, limit=None, cursor=None):
-    """List the current user's notifications (paginated via cursor)."""
-    args = {}
-    if unread is not None:
-        args['unread'] = bool(unread)
-    if category is not None:
-        args['category'] = category
-    if limit is not None:
-        args['limit'] = int(limit)
-    if cursor is not None:
-        args['cursor'] = cursor
-    return call_tool('list_notifications', args, authed=True)
 
 
 def check_notifications():

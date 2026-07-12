@@ -446,10 +446,6 @@ def on_ui_tabs():
                 subfolder_selected = gr.Dropdown(label='Sub folder for selected files:', choices=[], interactive=False, visible=False, value=None, allow_custom_value=True)
                 download_selected = gr.Button(value='Download all selected', interactive=False, visible=False, elem_id='download_all_button')
             with gr.Row():
-                # CivitAI account actions (MCP) — shown only when account features are on + a key is set.
-                fav_btn = gr.Button(value='☆ Favorite', interactive=False, visible=False, scale=1, min_width=120, elem_id='civitai_fav_btn')
-                notify_btn = gr.Button(value='\U0001f514 Notify new versions', interactive=False, visible=False, scale=1, min_width=170, elem_id='civitai_notify_btn')
-            with gr.Row():
                 cancel_all_model = gr.Button(value='Cancel all downloads', interactive=False, visible=False)
                 cancel_model = gr.Button(value='Cancel current download', interactive=False, visible=False)
             with gr.Row():
@@ -653,13 +649,6 @@ def on_ui_tabs():
             # is no key or the account feature is disabled — no button, no interaction.
             account_badge_html = gr.HTML(value='', elem_id='civitai_account_badge')
 
-            with gr.Accordion(label='\U0001f514 Following — new versions', open=True, elem_id='civitai_following_box'):
-                gr.Markdown('New-version notifications from the models/creators you follow on CivitAI '
-                            '(needs account features + API key). Complements the local update scan.')
-                with gr.Row():
-                    following_refresh_btn = gr.Button(value='\U0001f504 Check notifications', scale=0)
-                following_feed_html = gr.HTML(value='', elem_id='civitai_following_feed')
-
             gr.Markdown('## 📊 Model Collection Statistics', elem_id='dashboard_header')
             gr.Markdown('View disk usage statistics for your model collection organized by type.')
 
@@ -733,8 +722,6 @@ def on_ui_tabs():
 
         gr.Textbox(elem_id='custom_subfolders_list', visible=False, value=format_custom_subfolders())
         model_id = gr.Textbox(visible=False)
-        fav_state = gr.State(value=False)      # Browser detail: current favorite toggle state
-        notify_state = gr.State(value=False)   # Browser detail: current notify toggle state
         queue_trigger = gr.Textbox(visible=False)
         dl_url = gr.Textbox(visible=False)
         civitai_text2img_output = gr.Textbox(visible=False)
@@ -996,52 +983,6 @@ def on_ui_tabs():
                 gr.update()                                       # Model list HTML
             )
 
-        # ── CivitAI account actions (favorite / notify) — MCP, Browser detail panel only ──
-        def _account_ready():
-            return (bool(getattr(opts, 'account_features_mcp', True))
-                    and bool((getattr(opts, 'custom_api_key', '') or '').strip()))
-
-        def seed_account_buttons(model_id_value):
-            """On model change: show the toggles (when account features are on + a key is
-            set) and SEED the Favorite state from the user's CivitAI favorites (same
-            /models?favorites=true the Browser 'only liked' filter uses, cached per
-            session). Notify can't be seeded (no read endpoint) — it starts off and
-            reflects after the first click."""
-            ready = _account_ready()
-            fav = False
-            if ready and model_id_value:
-                try:
-                    fav = int(model_id_value) in _api.get_favorited_model_ids()
-                except (TypeError, ValueError):
-                    fav = False
-            return (
-                gr.update(value=('⭐ Favorited' if fav else '☆ Favorite'), interactive=ready, visible=ready),
-                gr.update(value='\U0001f514 Notify new versions', interactive=ready, visible=ready),
-                fav,
-                False,
-            )
-
-        def toggle_favorite_click(model_id_value, is_fav):
-            if not model_id_value or not _account_ready():
-                return gr.update(), is_fav
-            new_state = not is_fav
-            res = _mcp.set_model_favorite(model_id_value, new_state)  # explicit setTo — safe/idempotent
-            if not res.get('ok'):
-                print(f"[Account] favorite failed: {res.get('error')}")
-                return gr.update(value='☆ Favorite (failed)'), is_fav
-            _api.set_favorited_cache(model_id_value, new_state)
-            return gr.update(value=('⭐ Favorited' if new_state else '☆ Favorite')), new_state
-
-        def toggle_notify_click(model_id_value, is_notif):
-            if not model_id_value or not _account_ready():
-                return gr.update(), is_notif
-            res = _mcp.toggle_notify_model(model_id_value)  # server-side toggle
-            if not res.get('ok'):
-                print(f"[Account] notify failed: {res.get('error')}")
-                return gr.update(value='\U0001f514 Notify (failed)'), is_notif
-            new_state = not is_notif
-            return gr.update(value=('\U0001f514 Notifying ✓' if new_state else '\U0001f514 Notify new versions')), new_state
-
         model_select.change(
             fn=update_models_dropdown,
             inputs=[model_select, base_filter],
@@ -1064,15 +1005,7 @@ def on_ui_tabs():
                 save_info,
                 list_html_input
             ]
-        ).then(
-            fn=seed_account_buttons,
-            inputs=[model_id],
-            outputs=[fav_btn, notify_btn, fav_state, notify_state],
-            show_progress='hidden'
         )
-
-        fav_btn.click(fn=toggle_favorite_click, inputs=[model_id, fav_state], outputs=[fav_btn, fav_state], show_progress='hidden')
-        notify_btn.click(fn=toggle_notify_click, inputs=[model_id, notify_state], outputs=[notify_btn, notify_state], show_progress='hidden')
 
         # ── Local Models Browser bindings ──
         _local_empty = (
@@ -2274,83 +2207,6 @@ def on_ui_tabs():
             outputs=[account_badge_html]
         )
 
-        def refresh_following_feed():
-            """Dashboard 'Following — new versions': pull the account's notifications
-            via the MCP (list_notifications) and render them. Renders the MCP's
-            human-readable text (robust to the exact item shape); a structured count
-            header is added when available. Filtering to the new-version category will
-            be tightened once the live payload's category value is confirmed."""
-            from html import escape
-            if not (getattr(opts, 'account_features_mcp', True)
-                    and (getattr(opts, 'custom_api_key', '') or '').strip()):
-                return ('<div style="opacity:0.7;font-size:13px;">Account features are off or no '
-                        'API key is set — enable them in Settings to use this.</div>')
-            res = _mcp.list_notifications(limit=100)
-            if not res.get('ok'):
-                return ('<div style="padding:10px;border-radius:6px;background:rgba(229,115,115,0.15);'
-                        f'border:1px solid #e57373;">❌ {escape(str(res.get("error", "")))}</div>')
-
-            box = ('white-space:pre-wrap;word-break:break-word;font-size:12px;'
-                   'background:var(--block-background-fill);border:1px solid var(--border-color-primary);'
-                   'border-radius:6px;padding:10px;margin:0;')
-
-            def _text_fallback(note=''):
-                # Show only the new-model-version lines from the human text (drops the
-                # reaction/thread/article/follow noise) when structured details aren't usable.
-                lines = [ln for ln in (res.get('text') or '').splitlines() if 'new-model-version' in ln]
-                body = escape('\n'.join(lines) or 'No new-version notifications.')
-                return f'{note}<div style="{box}">{body}</div>'
-
-            data = res.get('data')
-            notifs = None
-            if isinstance(data, dict):
-                notifs = data.get('notifications') or data.get('items') or data.get('results')
-            if not isinstance(notifs, list):
-                return _text_fallback()
-
-            # Diagnostic (one line) so the structured shape can be confirmed/refined.
-            try:
-                if notifs:
-                    print(f"[Following feed] sample notification: {json.dumps(notifs[0])[:500]}")
-            except Exception:
-                pass
-
-            rows = []
-            for n in notifs:
-                if not isinstance(n, dict) or (n.get('type') or '') != 'new-model-version':
-                    continue
-                det = n.get('details') if isinstance(n.get('details'), dict) else {}
-                model_id = det.get('modelId') or det.get('id') or n.get('modelId')
-                version_id = det.get('modelVersionId') or det.get('versionId') or n.get('modelVersionId')
-                name = det.get('modelName') or det.get('name') or det.get('model') or ''
-                version = det.get('version') or det.get('versionName') or ''
-                unread = (n.get('read') is False) or (n.get('viewed') is False)
-                dot = '🔵 ' if unread else ''
-                ver_txt = f" <span style=\"opacity:0.7;\">{escape(str(version))}</span>" if version else ''
-                if model_id:
-                    url = f"https://civitai.com/models/{model_id}" + (f"?modelVersionId={version_id}" if version_id else '')
-                    label = escape(str(name)) if name else f"Model {escape(str(model_id))}"
-                    rows.append(f'<div style="padding:3px 0;">{dot}🆕 '
-                                f'<a href="{url}" target="_blank" rel="noopener">{label}</a>{ver_txt}</div>')
-                elif name:
-                    rows.append(f'<div style="padding:3px 0;">{dot}🆕 {escape(str(name))}{ver_txt}</div>')
-
-            if not rows:
-                note = ('<div style="opacity:0.7;font-size:12px;margin-bottom:6px;">Model details aren\'t '
-                        'exposed by the notifications API — showing raw new-version entries.</div>')
-                return _text_fallback(note)
-
-            header = (f'<div style="margin-bottom:6px;font-weight:600;">🆕 {len(rows)} new '
-                      'model version(s) from models you follow</div>')
-            return header + ''.join(rows)
-
-        following_refresh_btn.click(
-            fn=refresh_following_feed,
-            inputs=[],
-            outputs=[following_feed_html],
-            show_progress='full'
-        )
-
     tab_name = 'CivitAI Browser Neo'
     return (civitai_interface, tab_name, 'civitai_interface_neo'),
 
@@ -2393,10 +2249,10 @@ def on_ui_settings():
         'account_features_mcp',
         shared.OptionInfo(
             default=True,
-            label='Account features (favorite, follow, notifications)',
+            label='Account badge (MCP connection)',
             section=browser,
             category_id=cat_id
-        ).info('Connects automatically with your API key (via the CivitAI MCP server) to enable favorites, follows and new-version notifications. Turn off to disable all account features. Requires UI reload')
+        ).info('Connects automatically with your API key to show the CivitAI account badge on the Dashboard. Turn off to disable the badge. Requires UI reload')
     )
 
     shared.opts.add_option(
