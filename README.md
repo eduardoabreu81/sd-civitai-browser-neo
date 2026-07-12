@@ -180,6 +180,8 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ## 🧪 Revamp Preview
 
+> For the full, detailed revamp documentation see [`README_REVAMP.md`](README_REVAMP.md).
+
 ### Revamp v0.1.0 preview — Multi-Source Browser foundation
 
 - **Browser Source selector** — the Browser can route searches through source adapters instead of being hardwired to CivitAI only.
