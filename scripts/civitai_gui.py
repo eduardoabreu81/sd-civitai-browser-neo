@@ -1178,6 +1178,27 @@ def on_ui_tabs():
             (keeps the dropdown selection intact)."""
             return _build_local_panel(model_string, model_version, set_version=False)
 
+        def update_local_file_info(model_string, model_version, file_label):
+            """File dropdown change → update filename/SHA256/model_id for the selected file."""
+            if not model_string or not model_version or not file_label:
+                return (
+                    gr.update(value=None),
+                    gr.update(value=None),
+                    gr.update(value=None),
+                )
+            info = _api.update_file_info(
+                model_string,
+                model_version,
+                file_label,
+                json_input=gl.local_json_data
+            )
+            filename_update, _, model_id_update, sha256_update = info[:4]
+            return (
+                filename_update,  # local_filename
+                sha256_update,    # local_sha256
+                model_id_update,  # local_model_id
+            )
+
         def trigger_local_update(model_id_value, installed_sha=''):
             """Funnel a local model into the existing single-update pipeline.
 
@@ -1348,6 +1369,14 @@ def on_ui_tabs():
             fn=update_local_version,
             inputs=[local_model_string, local_version],
             outputs=local_detail_outputs,
+            show_progress='hidden'
+        )
+
+        # File dropdown change → update filename/SHA256 for the selected file
+        local_file_list.input(
+            fn=update_local_file_info,
+            inputs=[local_model_string, local_version, local_file_list],
+            outputs=[local_filename, local_sha256, local_model_id],
             show_progress='hidden'
         )
 

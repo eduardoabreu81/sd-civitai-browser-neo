@@ -2541,7 +2541,7 @@ def sub_folder_value(content_type, desc=None):
         return 'None'
     return folder
 
-def update_file_info(model_string, model_version, selected_file_label):
+def update_file_info(model_string, model_version, selected_file_label, json_input=None):
     file_list = []
     is_LORA = False
     embed_check = False
@@ -2551,8 +2551,9 @@ def update_file_info(model_string, model_version, selected_file_label):
 
     if model_version and '[Installed]' in model_version:
         model_version = model_version.replace(' [Installed]', '')
-    if model_id and model_version:
-        for item in gl.json_data['items']:
+    api_data = json_input if json_input is not None else gl.json_data
+    if model_id and model_version and isinstance(api_data, dict) and 'items' in api_data:
+        for item in api_data['items']:
             if model_id_matches(item.get('id'), model_id):
                 content_type = item['type']
                 if content_type == 'LORA':
