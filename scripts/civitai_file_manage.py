@@ -2767,9 +2767,8 @@ def collect_update_items(outdated_set, api_response, file_paths):
 
 def get_content_choices(scan_choices=False):
     content_list = [
-        'AestheticGradient', 'Checkpoint', 'Controlnet', 'Detection', 'LORA',
-        'MotionModule', 'Other', 'Poses', 'TextualInversion', 'Upscaler', 'VAE',
-        'Wildcards', 'Workflows'
+        'Checkpoint', 'TextualInversion', 'LORA', 'Poses', 'Controlnet', 'Detection',
+        'VAE', 'Upscaler', 'Wildcards', 'AestheticGradient', 'MotionModule', 'Workflows', 'Other'
     ]
     if scan_choices:
         content_list.insert(0, 'All')
