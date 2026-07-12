@@ -160,6 +160,8 @@ A new sub-tab inside Local Models for managing LoRA categories.
 - Organize by **base model**, by **LoRA category**, or both.
 - Custom categories can be defined in **Settings → Model Organization** with a JSON pattern list.
 - Wan models can be split into `Wan/I2V/`, `Wan/T2V/`, `Wan/TI2V/` subfolders.
+- `.json` sidecars now persist the raw `baseModel` value (in addition to the legacy `sd version` field) so organization and installed-status detection stay reliable.
+- Auto-organize has a defensive recalculation: if a download is about to land in a content-type root folder because the detail panel has not yet refreshed, the extension fetches the model's `baseModel` and redirects it to the correct subfolder.
 
 ### New supported base models
 
