@@ -2541,7 +2541,7 @@ def sub_folder_value(content_type, desc=None):
         return 'None'
     return folder
 
-def update_file_info(model_string, model_version, file_metadata):
+def update_file_info(model_string, model_version, selected_file_label):
     file_list = []
     is_LORA = False
     embed_check = False
@@ -2585,7 +2585,7 @@ def update_file_info(model_string, model_version, file_metadata):
                             sizeB = sizeKB * 1024
                             filesize = _download.convert_size(sizeB)
 
-                            if f"{file_size} {file_format} {file_fp} ({filesize})" == file_metadata:
+                            if f"{file_size} {file_format} {file_fp} ({filesize})" == selected_file_label:
                                 installed = False
                                 folder_location = 'None'
                                 model_folder = os.path.join(contenttype_folder(content_type, desc))
