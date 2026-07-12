@@ -618,7 +618,7 @@ def _find_model_by_sha256(sha256):
         return None, None, None
 
     sha256_upper = sha256.upper()
-    model_extensions = ['.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.zip', '.vae', '.th']
+    model_extensions = ['.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.zip', '.vae', '.th', '.gguf']
 
     def _sidecar_matches(data):
         """True if the sidecar metadata carries the target SHA256.
@@ -658,7 +658,7 @@ def _find_model_by_sha256(sha256):
     return None, None, None
 
 
-MODEL_FILE_EXTENSIONS = ['.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.zip', '.vae', '.th']
+MODEL_FILE_EXTENSIONS = ['.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.zip', '.vae', '.th', '.gguf']
 
 
 def build_installed_index():
@@ -779,7 +779,7 @@ def delete_installed_by_sha256(sha256, delete_finish=None, model_id=None, model_
     # Fallback 2: locate by on-disk filename base name.
     if not found_filename and model_filename:
         target_base = os.path.splitext(os.path.basename(model_filename))[0]
-        model_extensions = ('.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.zip', '.vae', '.th')
+        model_extensions = ('.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.zip', '.vae', '.th', '.gguf')
         for model_folder in _get_all_model_folders():
             for r, _, files in os.walk(model_folder, followlinks=True):
                 for f in files:
@@ -1439,7 +1439,7 @@ def _save_checkpoint_hash_db(db_data):
 
 def _is_checkpoint_file(file_path):
     ext = os.path.splitext(file_path)[1].lower()
-    return ext in ('.safetensors', '.ckpt')
+    return ext in ('.safetensors', '.ckpt', '.gguf')
 
 
 def _checkpoint_cache_key(file_path):
@@ -1708,7 +1708,7 @@ def model_from_sent(model_name, content_type):
     elif 'detection' in content_type:
         content_type = ['Detection']
 
-    extensions = ('.pt', '.ckpt', '.pth', '.safetensors', '.th', '.zip', '.vae')
+    extensions = ('.pt', '.ckpt', '.pth', '.safetensors', '.th', '.zip', '.vae', '.gguf')
 
     # A card's name is the filename stem, so prefer an EXACT stem match
     # (model_name == file without extension). Only fall back to a prefix match when
@@ -1833,7 +1833,7 @@ def send_to_browser(model_name, content_type, click_first_item):
         content_type = ['Checkpoint']
     elif 'lora' in content_type:
         content_type = ['LORA']
-    extensions = ('.pt', '.ckpt', '.pth', '.safetensors', '.th', '.zip', '.vae')
+    extensions = ('.pt', '.ckpt', '.pth', '.safetensors', '.th', '.zip', '.vae', '.gguf')
 
     # A card's name is the filename stem, so prefer an EXACT stem match
     # (model_name == file without extension). Only fall back to a prefix match when
@@ -2285,7 +2285,7 @@ def find_and_save(api_response, sha256=None, file_name=None, json_file=None, no_
             model_file_path = os.path.join(os.path.dirname(json_file), file_name)
         if not model_file_path and json_file:
             json_stem = os.path.splitext(json_file)[0]
-            for ext in ['.safetensors', '.ckpt', '.pt', '.bin', '.pth']:
+            for ext in ['.safetensors', '.ckpt', '.pt', '.bin', '.pth', '.gguf']:
                 candidate = f'{json_stem}{ext}'
                 if os.path.exists(candidate):
                     model_file_path = candidate
@@ -4526,7 +4526,7 @@ def generate_dashboard_statistics(selected_types, hide_empty_categories=True, de
     total_size = 0
     
     # Extensions to scan
-    MODEL_EXTENSIONS = ('.safetensors', '.ckpt', '.pt', '.pth', '.vae', '.zip', '.th')
+    MODEL_EXTENSIONS = ('.safetensors', '.ckpt', '.pt', '.pth', '.vae', '.zip', '.th', '.gguf')
     
     # Process each content type
     for content_type in selected_types:

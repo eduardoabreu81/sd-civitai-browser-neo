@@ -2397,7 +2397,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
 
         # === ANXETY EDIT ===
         installed_model_filename = None
-        extensions = ['.pt', '.ckpt', '.pth', '.safetensors', '.th', '.zip', '.vae']
+        extensions = ['.pt', '.ckpt', '.pth', '.safetensors', '.th', '.zip', '.vae', '.gguf']
 
         for root, dirs, files in os.walk(model_folder, followlinks=True):
             for filename in files:
