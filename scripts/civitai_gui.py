@@ -528,7 +528,8 @@ def on_ui_tabs():
                     with gr.Row():
                         local_base_model = gr.Textbox(label='Base model:', interactive=False, lines=1)
                         local_version = gr.Dropdown(label='Version:', choices=[], interactive=False, value=None)
-                        local_filename = gr.Textbox(label='Model filename:', interactive=False)
+                        local_filename = gr.Textbox(label='Model filename:', interactive=False, scale=2)
+                        local_file_list = gr.Dropdown(label='File:', choices=[], interactive=False, value=None, scale=2, elem_id='localFileList')
                     with gr.Row():
                         local_trained_tags = gr.Textbox(label='Trained tags (if any):', value=None, interactive=False, lines=1, scale=6)
                         local_send_tags_btn = gr.Button(value='➕ Add to prompt', scale=1, min_width=120, interactive=False, visible=False)
@@ -1079,6 +1080,7 @@ def on_ui_tabs():
             gr.update(value=None, choices=[], interactive=False),  # local_version
             gr.update(value=''),                                    # local_base_model
             gr.update(value=''),                                    # local_filename
+            gr.update(value=None, choices=[], interactive=False),  # local_file_list
             gr.update(value=''),                                    # local_sha256
             gr.update(value=''),                                    # local_model_id
             gr.update(value='', interactive=False),                 # local_new_name
@@ -1151,6 +1153,7 @@ def on_ui_tabs():
                 version_out,                                            # local_version
                 base_model_u,                                           # local_base_model
                 model_filename_u,                                       # local_filename
+                _flist,                                                 # local_file_list
                 current_sha256_u,                                       # local_sha256
                 model_id_u,                                             # local_model_id
                 gr.update(value=base_name, interactive=True),           # local_new_name
@@ -1209,10 +1212,10 @@ def on_ui_tabs():
                 return gr.update(value=f"{model_id_value}||[{target_id}]")
             return gr.update(value=f"{model_id_value}||[]")
 
-        def trigger_local_version_download(model_id_value, version_display):
+        def trigger_local_version_download(model_id_value, version_display, file_label):
             """Funnel 'download the version chosen in the dropdown' into the single-update
-            pipeline as model_id||[version_id]. The 'When updating:' radio decides whether
-            the installed version is replaced or kept alongside (same as Update to latest)."""
+            pipeline as model_id||[version_id]||file_label. The 'When updating:' radio decides
+            whether the installed version is replaced or kept alongside (same as Update to latest)."""
             if not model_id_value or not version_display:
                 return gr.update()
             vname = str(version_display).replace(' (Early Access)', '').replace(' [Installed]', '').strip()
@@ -1223,6 +1226,9 @@ def on_ui_tabs():
             if not ver or ver.get('id') is None:
                 debug_print(f"Download selected version: could not resolve '{version_display}' for model {model_id_value}")
                 return gr.update()
+            file_label = (file_label or '').strip()
+            if file_label:
+                return gr.update(value=f"{model_id_value}||[{ver['id']}]||{file_label}")
             return gr.update(value=f"{model_id_value}||[{ver['id']}]")
 
         def refresh_local_after_download(model_string):
@@ -1238,7 +1244,7 @@ def on_ui_tabs():
             return _build_local_panel(model_string, None, set_version=True, force_disk_scan=True)
 
         local_detail_outputs = [
-            local_preview_html, local_version, local_base_model, local_filename,
+            local_preview_html, local_version, local_base_model, local_filename, local_file_list,
             local_sha256, local_model_id, local_new_name,
             local_rename_btn, local_delete_btn, local_update_btn,
             local_trained_tags, local_send_tags_btn, local_model_string,
@@ -1379,10 +1385,10 @@ def on_ui_tabs():
         )
 
         # Download the version chosen in the dropdown → same pipeline, with the version id
-        # forced (model_id||[version_id]); honors the 'When updating:' replace/keep radio.
+        # forced (model_id||[version_id]||file_label); honors the 'When updating:' replace/keep radio.
         local_download_version_btn.click(
             fn=trigger_local_version_download,
-            inputs=[local_model_id, local_version],
+            inputs=[local_model_id, local_version, local_file_list],
             outputs=[update_single_trigger]
         )
 
