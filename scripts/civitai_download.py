@@ -455,7 +455,7 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
                     f_fp = f_metadata.get('fp', 'Unknown')
                     f_size_kb = _api._file_size_kb(f)
                     f_size_b = f_size_kb * 1024
-                    f_filesize = _download.convert_size(f_size_b)
+                    f_filesize = convert_size(f_size_b)
                     if f"{f_size} {f_format} {f_fp} ({f_filesize})" == forced_label:
                         chosen_file = f
                         break
