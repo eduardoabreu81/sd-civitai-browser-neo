@@ -240,13 +240,19 @@ class HuggingFaceSource(BrowserSource):
         )
 
     def get_model(self, source_id: str, **kwargs: Any) -> Optional[dict]:
-        """Fetch a single HF repo by id (repo_id)."""
+        """Fetch a single HF repo by id (repo_id).
+
+        When ``file_path`` is provided, the returned model exposes only that
+        file as its primary downloadable artifact. This supports pasted URLs
+        that point directly to a file inside a subfolder.
+        """
         repo_id = source_id.strip()
+        file_path = kwargs.get("file_path")
         url = f"{self.API_URL}/{repo_id}"
         data = self._request_json(url)
         if isinstance(data, str) or not isinstance(data, dict):
             return None
-        return self._normalize_repo_detail(repo_id, data)
+        return self._normalize_repo_detail(repo_id, data, file_path=file_path)
 
     # ------------------------------------------------------------------
     # Download helpers
@@ -315,22 +321,43 @@ class HuggingFaceSource(BrowserSource):
             raw=repo,
         )
 
-    def _normalize_repo_detail(self, repo_id: str, data: dict) -> Optional[dict]:
+    def _normalize_repo_detail(
+        self,
+        repo_id: str,
+        data: dict,
+        *,
+        file_path: Optional[str] = None,
+    ) -> Optional[dict]:
         """Build a canonical model from a full HF repo detail response."""
         tags = [str(t) for t in data.get("tags", []) if t]
         model_type = self._detect_content_type(tags, repo_id)
         base_model = self._detect_base_model(tags, repo_id, data.get("modelId", ""))
         nsfw = any("nsfw" in t.lower() for t in tags) or "nsfw" in repo_id.lower()
 
-        files = self._fetch_repo_files(repo_id, model_type)
-        if not files:
-            # Fallback: one synthetic file so the card can still render.
+        if file_path:
+            # Direct file link: expose exactly that file as the primary artifact.
+            filename = file_path.split("/")[-1]
+            model_type = self._refine_content_type_by_filename(filename, model_type)
+            size_bytes = self._fetch_file_size(repo_id, file_path)
+            size_kb = size_bytes / 1024 if size_bytes is not None else None
             files = [canonical_file(
-                filename="model.safetensors",
-                download_url=f"{self.BASE_URL}/{quote(repo_id, safe='/')}",
+                filename=filename,
+                size_kb=size_kb,
+                size_bytes=size_bytes,
+                download_url=f"{self.BASE_URL}/{quote(repo_id, safe='/')}/resolve/main/{quote(file_path, safe='/')}",
                 primary=True,
-                raw={"repo_id": repo_id, "path": ""},
+                raw={"repo_id": repo_id, "path": file_path},
             )]
+        else:
+            files = self._fetch_repo_files(repo_id, model_type)
+            if not files:
+                # Fallback: one synthetic file so the card can still render.
+                files = [canonical_file(
+                    filename="model.safetensors",
+                    download_url=f"{self.BASE_URL}/{quote(repo_id, safe='/')}",
+                    primary=True,
+                    raw={"repo_id": repo_id, "path": ""},
+                )]
 
         # Try to find a preview image in the repo files.
         images = self._pick_preview_images(repo_id, files)
@@ -419,6 +446,39 @@ class HuggingFaceSource(BrowserSource):
                 images.append(canonical_image(url=url, raw={"repo_id": repo_id, "path": path}))
         # Limit to a reasonable number of previews.
         return images[:9]
+
+    def _fetch_file_size(self, repo_id: str, path: str) -> Optional[int]:
+        """Return the byte size of a specific file via a HEAD request."""
+        url = f"{self.BASE_URL}/{quote(repo_id, safe='/')}/resolve/main/{quote(path, safe='/')}"
+        headers = _api.get_headers()
+        proxies, verify = _api.get_proxies()
+        try:
+            response = requests.head(
+                url,
+                headers=headers,
+                proxies=proxies,
+                verify=verify,
+                timeout=(30, 15),
+                allow_redirects=True,
+            )
+        except requests.exceptions.RequestException as exc:
+            debug_print(f"[HuggingFace] file size HEAD failed: {exc}")
+            return None
+        if response.status_code != 200:
+            return None
+        size = response.headers.get("Content-Length")
+        try:
+            return int(size) if size is not None else None
+        except (ValueError, TypeError):
+            return None
+
+    def _refine_content_type_by_filename(self, filename: str, current_type: str) -> str:
+        """Narrow the content type using a specific filename when available."""
+        lower = filename.lower()
+        for hint, ctype in self.FILENAME_TYPE_HINTS.items():
+            if hint in lower:
+                return ctype
+        return current_type
 
     # ------------------------------------------------------------------
     # Detection helpers

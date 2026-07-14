@@ -70,6 +70,23 @@ def _extract_hf_repo_id(url: str) -> Optional[str]:
     return None
 
 
+def _extract_hf_repo_and_path(url: str) -> tuple[Optional[str], Optional[str]]:
+    """Return a Hugging Face repo_id and optional file path from a URL.
+
+    Supports both repo roots and direct file links such as
+    ``https://huggingface.co/owner/repo/blob/main/sub/folder/file.safetensors``.
+    """
+    parsed = urlparse(url)
+    path = parsed.path or ""
+    parts = [p for p in path.split("/") if p]
+    if len(parts) < 2:
+        return None, None
+    repo_id = "/".join(parts[:2])
+    match = re.search(r"/(?:tree|blob|resolve)/main/(.+)$", path)
+    file_path = match.group(1) if match else None
+    return repo_id, file_path
+
+
 def _extract_arcenciel_model_id(url: str) -> Optional[str]:
     """Return an Arc en Ciel model id from a model page URL, or None."""
     parsed = urlparse(url)
@@ -176,13 +193,13 @@ def parse_model_url(url: str) -> dict | str:
 
     # Hugging Face
     if netloc in ("huggingface.co", "hf.co"):
-        repo_id = _extract_hf_repo_id(url)
+        repo_id, file_path = _extract_hf_repo_and_path(url)
         if not repo_id:
             return "invalid_url"
         adapter = get_browser_source("huggingface")
         if adapter is None:
             return "error"
-        model = adapter.get_model(repo_id)
+        model = adapter.get_model(repo_id, file_path=file_path)
         if model is None:
             return "not_found"
         return paginated_result(

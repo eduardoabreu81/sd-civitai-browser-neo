@@ -697,6 +697,47 @@ class TestHuggingFaceAdapter(unittest.TestCase):
         self.assertEqual(len(version['files']), 1)
         self.assertEqual(version['files'][0]['sizeBytes'], 1024000)
 
+    def test_get_model_with_file_path_uses_specific_subfolder_file(self):
+        repo_detail = {
+            'id': 'owner/multi-file-repo',
+            'modelId': 'owner/multi-file-repo',
+            'tags': ['stable-diffusion', 'text-to-image'],
+        }
+
+        def side_effect(url, **kwargs):
+            if '/resolve/main/' in url and kwargs.get('method') == 'HEAD':
+                # requests.head maps to get() with method in kwargs in some mock setups,
+                # but here we patch requests.get, so HEAD calls won't arrive. We patch
+                # _fetch_file_size directly below instead.
+                pass
+            return self._make_response(repo_detail)
+
+        with patch('scripts.browser_sources.huggingface.requests.get') as mock_get:
+            mock_get.side_effect = side_effect
+            with patch.object(self.src, '_fetch_file_size', return_value=2048000):
+                model = self.src.get_model(
+                    'owner/multi-file-repo',
+                    file_path='split_files/diffusion_models/anima-kirazuri-v4-int8-convrot.safetensors',
+                )
+
+        self.assertEqual(model['browserSource'], 'huggingface')
+        self.assertEqual(model['browserSourceId'], 'owner/multi-file-repo')
+        self.assertEqual(model['type'], 'Checkpoint')
+        version = model['modelVersions'][0]
+        self.assertEqual(len(version['files']), 1)
+        file_info = version['files'][0]
+        self.assertEqual(file_info['name'], 'anima-kirazuri-v4-int8-convrot.safetensors')
+        self.assertEqual(file_info['sizeBytes'], 2048000)
+        self.assertTrue(file_info['primary'])
+        self.assertIn(
+            'resolve/main/split_files/diffusion_models/anima-kirazuri-v4-int8-convrot.safetensors',
+            file_info['downloadUrl'],
+        )
+        self.assertEqual(
+            file_info['browserSourceFileRaw']['path'],
+            'split_files/diffusion_models/anima-kirazuri-v4-int8-convrot.safetensors',
+        )
+
     def test_get_download_url_builds_resolve_url(self):
         file_info = {
             'name': 'cool-lora.safetensors',
@@ -1314,14 +1355,24 @@ class TestUrlParser(unittest.TestCase):
         self.assertIsInstance(result, dict)
         self.assertEqual(result['metadata']['totalItems'], 1)
         mock_get.assert_called_once_with('huggingface')
-        mock_get.return_value.get_model.assert_called_once_with('owner/cool-lora')
+        mock_get.return_value.get_model.assert_called_once_with('owner/cool-lora', file_path=None)
 
     def test_huggingface_url_strips_branch_and_trailing_slash(self):
         
         with patch('scripts.browser_sources.url_parser.get_browser_source') as mock_get:
             mock_get.return_value = self._make_mock_adapter('HF Model', 'huggingface')
             self.parse_model_url('https://huggingface.co/owner/cool-lora/tree/main/')
-            mock_get.return_value.get_model.assert_called_once_with('owner/cool-lora')
+            mock_get.return_value.get_model.assert_called_once_with('owner/cool-lora', file_path=None)
+
+    def test_huggingface_file_url_extracts_subfolder_path(self):
+        url = 'https://huggingface.co/owner/cool-lora/blob/main/sub/folder/model.safetensors'
+        with patch('scripts.browser_sources.url_parser.get_browser_source') as mock_get:
+            mock_get.return_value = self._make_mock_adapter('HF Model', 'huggingface')
+            self.parse_model_url(url)
+            mock_get.return_value.get_model.assert_called_once_with(
+                'owner/cool-lora',
+                file_path='sub/folder/model.safetensors',
+            )
 
     def test_civitai_model_url_extracts_id(self):
         
