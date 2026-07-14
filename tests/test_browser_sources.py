@@ -738,6 +738,25 @@ class TestHuggingFaceAdapter(unittest.TestCase):
             'split_files/diffusion_models/anima-kirazuri-v4-int8-convrot.safetensors',
         )
 
+    def test_file_path_infers_content_type_from_folder(self):
+        """When repo tags are ambiguous, the subfolder should decide the type."""
+        repo_detail = {
+            'id': 'owner/ambiguous-repo',
+            'modelId': 'owner/ambiguous-repo',
+            'tags': [],
+        }
+
+        with patch('scripts.browser_sources.huggingface.requests.get') as mock_get:
+            mock_get.return_value = self._make_response(repo_detail)
+            with patch.object(self.src, '_fetch_file_size', return_value=1024000):
+                model = self.src.get_model(
+                    'owner/ambiguous-repo',
+                    file_path='models/loras/style-lora.safetensors',
+                )
+
+        self.assertEqual(model['type'], 'LORA')
+        self.assertEqual(model['modelVersions'][0]['files'][0]['name'], 'style-lora.safetensors')
+
     def test_get_download_url_builds_resolve_url(self):
         file_info = {
             'name': 'cool-lora.safetensors',

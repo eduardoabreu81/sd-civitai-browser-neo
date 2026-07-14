@@ -337,7 +337,7 @@ class HuggingFaceSource(BrowserSource):
         if file_path:
             # Direct file link: expose exactly that file as the primary artifact.
             filename = file_path.split("/")[-1]
-            model_type = self._refine_content_type_by_filename(filename, model_type)
+            model_type = self._refine_content_type_by_path(file_path, model_type)
             size_bytes = self._fetch_file_size(repo_id, file_path)
             size_kb = size_bytes / 1024 if size_bytes is not None else None
             files = [canonical_file(
@@ -472,12 +472,40 @@ class HuggingFaceSource(BrowserSource):
         except (ValueError, TypeError):
             return None
 
-    def _refine_content_type_by_filename(self, filename: str, current_type: str) -> str:
-        """Narrow the content type using a specific filename when available."""
-        lower = filename.lower()
+    def _refine_content_type_by_path(self, file_path: str, current_type: str) -> str:
+        """Narrow the content type using the full file path when available.
+
+        Folder names are often more explicit than filenames in Hugging Face
+        repos (e.g. ``diffusion_models/`` for checkpoints, ``loras/`` for LoRAs).
+        """
+        lower = file_path.lower()
         for hint, ctype in self.FILENAME_TYPE_HINTS.items():
             if hint in lower:
                 return ctype
+
+        # Folder-level hints that commonly appear in curated HF repos.
+        folder_hints = {
+            "diffusion_models": "Checkpoint",
+            "unet": "Checkpoint",
+            "transformer": "Checkpoint",
+            "checkpoints": "Checkpoint",
+            "comfyui_checkpoints": "Checkpoint",
+            "loras": "LORA",
+            "lycoris": "LoCon",
+            "locon": "LoCon",
+            "dora": "DoRA",
+            "textual_inversions": "TextualInversion",
+            "embeddings": "TextualInversion",
+            "vaes": "VAE",
+            "upscalers": "Upscaler",
+            "controlnets": "ControlNet",
+            "motion_modules": "MotionModule",
+        }
+        segments = [s for s in lower.split("/") if s]
+        for segment in segments[:-1]:
+            if segment in folder_hints:
+                return folder_hints[segment]
+
         return current_type
 
     # ------------------------------------------------------------------
