@@ -39,11 +39,12 @@ Switch the Browser search mode to **URL** and paste any supported link:
 - `civitai.com/models/...` or `civitai.red/models/...`
 - `civitai.com/api/...`
 - `civarchive.com/...`
-- `huggingface.co/<owner>/<repo>`
+- `huggingface.co/<owner>/<repo>` (repo root)
+- `huggingface.co/<owner>/<repo>/blob/main/<sub/folder/file.safetensors>` (direct file link, including subfolders)
 - `modelscope.cn/models/...`
 - `arcenciel.io/models/...`
 
-The extension detects the provider, fetches the model, renders a single card, and populates the model panel for download.
+The extension detects the provider, fetches the model, renders a single card, and populates the model panel for download. For Hugging Face file links, the exact file is selected as the primary download and its real size is fetched from the resolve URL.
 
 ### External-source provenance
 
