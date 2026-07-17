@@ -803,6 +803,11 @@ function applyNativeCardTheme(cardDiv, buttonRow, modelName, fontSize) {
         bottom = document.createElement('div');
         bottom.className = 'civitai-neo-bottom';
 
+        // Action buttons sit above the name/version block.
+        const actionsRow = document.createElement('div');
+        actionsRow.className = 'civitai-neo-bottom-actions';
+        bottom.appendChild(actionsRow);
+
         const titleBlock = document.createElement('div');
         titleBlock.className = 'civitai-neo-title-block';
 
@@ -815,10 +820,6 @@ function applyNativeCardTheme(cardDiv, buttonRow, modelName, fontSize) {
         titleBlock.appendChild(versionEl);
 
         bottom.appendChild(titleBlock);
-
-        const actionsRow = document.createElement('div');
-        actionsRow.className = 'civitai-neo-bottom-actions';
-        bottom.appendChild(actionsRow);
 
         cardDiv.appendChild(bottom);
     }
