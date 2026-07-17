@@ -664,6 +664,14 @@ function requestNativeBadgeData() {
     updateInput(trigger);
 }
 
+// Auto-organized LoRAs are indexed both by plain filename and "Subfolder/filename" on the
+// Python side (build_native_card_badge_map), but tries the last path segment too in case
+// WebUI ever displays a nesting depth/format we didn't anticipate.
+function lookupBadgeInfo(modelName) {
+    const badges = window.__civitaiNativeBadges || {};
+    return badges[modelName] || badges[modelName.split('/').pop()];
+}
+
 function isNativeCardThemeActive() {
     return document.body.classList.contains('civitai-neo-card-theme');
 }
@@ -688,7 +696,7 @@ function ensureTriggerButton(buttonRow, fontSize) {
     if (triggerBtn) return triggerBtn;
 
     const modelName = cardDiv?.querySelector('.actions .name')?.textContent.trim();
-    const info = (window.__civitaiNativeBadges || {})[modelName];
+    const info = modelName ? lookupBadgeInfo(modelName) : null;
     if (!info || !info.triggerWords || !info.triggerWords.length) return null;
 
     triggerBtn = document.createElement('div');
@@ -721,7 +729,7 @@ function applyNativeCardBadges(cardDiv, buttonRow, modelName) {
     }
     cardDiv.querySelector('.civitai-neo-top-row')?.remove();
 
-    const info = (window.__civitaiNativeBadges || {})[modelName];
+    const info = lookupBadgeInfo(modelName);
     if (!info) return;
 
     if (info.baseModelShort && !buttonRow.querySelector('.civitai-native-base-badge')) {
@@ -755,7 +763,7 @@ function getCardTypeLabel(parentId) {
 // button-row into our own bottom bar so nothing is left floating at the top/side.
 function applyNativeCardTheme(cardDiv, buttonRow, modelName, fontSize) {
     cardDiv.style.position = cardDiv.style.position || 'relative';
-    const info = (window.__civitaiNativeBadges || {})[modelName] || {};
+    const info = lookupBadgeInfo(modelName) || {};
     const displayName = info.displayName || modelName;
 
     if (!cardDiv.querySelector('.civitai-neo-top-row')) {
@@ -776,6 +784,13 @@ function applyNativeCardTheme(cardDiv, buttonRow, modelName, fontSize) {
             baseBadge.textContent = info.baseModelShort;
             baseBadge.title = info.baseModel || info.baseModelShort;
             topRow.appendChild(baseBadge);
+        }
+
+        if (info.version) {
+            const versionBadge = document.createElement('span');
+            versionBadge.className = 'civitai-neo-badge civitai-neo-badge-version';
+            versionBadge.textContent = info.version;
+            topRow.appendChild(versionBadge);
         }
 
         if (info.loraCategory) {

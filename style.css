@@ -1108,6 +1108,11 @@ body.civitai-neo-card-theme .card .description {
     border-color: rgba(96, 165, 250, 0.6);
 }
 
+.civitai-neo-badge-version {
+    background: rgba(100, 116, 139, 0.85);
+    border-color: rgba(148, 163, 184, 0.6);
+}
+
 .civitai-neo-bottom {
     position: absolute;
     left: 0;
@@ -1124,17 +1129,17 @@ body.civitai-neo-card-theme .card .description {
 .civitai-neo-name {
     color: #ffffff;
     font-weight: 700;
-    font-size: 1em;
-    line-height: 1.2;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: 1.15em;
+    line-height: 1.25;
+    white-space: normal;
+    word-break: break-word;
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
 }
 
 .civitai-neo-bottom-actions {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 10px;
     opacity: 0;
     visibility: hidden;

@@ -5814,17 +5814,28 @@ def build_native_card_badge_map():
                     lora_category = saved_category
 
             display_name = _lora_dex_model_name(file_path)
+            version_name = _lora_dex_version_name(file_path)
 
-            if not base_model and not trigger_words and not lora_category and not display_name:
+            if not base_model and not trigger_words and not lora_category and not display_name and not version_name:
                 continue
 
-            badge_map[stem] = {
+            entry = {
                 'baseModel': base_model,
                 'baseModelShort': _api.get_base_model_short(base_model),
                 'triggerWords': trigger_words,
                 'loraCategory': lora_category or '',
                 'displayName': display_name,
+                'version': version_name,
             }
+            badge_map[stem] = entry
+
+            # Auto-organized LoRAs (Character/Style/... subfolders) are shown by WebUI as
+            # "Subfolder/filename" in the native card's .name element, which wouldn't match
+            # the plain stem key above — index the relative path too so the JS lookup finds
+            # it either way without needing to know which form WebUI picked.
+            rel_stem = os.path.splitext(os.path.relpath(file_path, folder))[0].replace(os.sep, '/')
+            if rel_stem != stem:
+                badge_map[rel_stem] = entry
     return badge_map
 
 
