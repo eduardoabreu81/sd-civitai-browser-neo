@@ -1103,37 +1103,46 @@ body.civitai-neo-card-theme .card .description {
     white-space: nowrap;
 }
 
-.civitai-neo-badge-base {
-    background: rgba(59, 130, 246, 0.85);
-    border-color: rgba(96, 165, 250, 0.6);
-}
-
-.civitai-neo-badge-version {
-    background: rgba(100, 116, 139, 0.85);
-    border-color: rgba(148, 163, 184, 0.6);
-}
-
+/* Bottom stack: three full-width pills (name, version, actions), each carrying its own
+   background so the card's own image provides contrast instead of one big gradient panel. */
 .civitai-neo-bottom {
     position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
     z-index: 5;
     display: flex;
     flex-direction: column;
     gap: 6px;
-    padding: 18px 10px 8px;
-    background: linear-gradient(to top, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.55) 55%, transparent 100%);
+}
+
+.civitai-neo-name,
+.civitai-neo-version,
+.civitai-neo-bottom-actions {
+    background: rgba(15, 23, 42, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(4px);
 }
 
 .civitai-neo-name {
     color: #ffffff;
     font-weight: 700;
-    font-size: 1.15em;
+    font-size: 1.05em;
     line-height: 1.25;
     white-space: normal;
     word-break: break-word;
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+    padding: 8px 14px;
+    border-radius: 14px;
+}
+
+.civitai-neo-version {
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 0.72em;
+    padding: 3px 12px;
+    border-radius: 10px;
+    align-self: flex-start;
 }
 
 .civitai-neo-bottom-actions {
@@ -1141,6 +1150,8 @@ body.civitai-neo-card-theme .card .description {
     align-items: center;
     justify-content: center;
     gap: 10px;
+    padding: 6px 10px;
+    border-radius: 16px;
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.2s ease, visibility 0.2s ease;

@@ -770,27 +770,16 @@ function applyNativeCardTheme(cardDiv, buttonRow, modelName, fontSize) {
         const topRow = document.createElement('div');
         topRow.className = 'civitai-neo-top-row';
 
+        // "Type | BaseModel" combined into one pill (e.g. "Checkpoint | ANI"), mirroring
+        // the .model-type-badge convention already used on our own Browser/Local cards,
+        // rather than two separate pills fighting for space.
         const typeLabel = getCardTypeLabel(cardDiv.parentElement.id);
-        if (typeLabel) {
+        if (typeLabel || info.baseModelShort) {
             const typeBadge = document.createElement('span');
             typeBadge.className = 'civitai-neo-badge civitai-neo-badge-type';
-            typeBadge.textContent = typeLabel;
+            typeBadge.textContent = info.baseModelShort ? `${typeLabel} | ${info.baseModelShort}` : typeLabel;
+            if (info.baseModelShort) typeBadge.title = info.baseModel || info.baseModelShort;
             topRow.appendChild(typeBadge);
-        }
-
-        if (info.baseModelShort) {
-            const baseBadge = document.createElement('span');
-            baseBadge.className = 'civitai-neo-badge civitai-neo-badge-base';
-            baseBadge.textContent = info.baseModelShort;
-            baseBadge.title = info.baseModel || info.baseModelShort;
-            topRow.appendChild(baseBadge);
-        }
-
-        if (info.version) {
-            const versionBadge = document.createElement('span');
-            versionBadge.className = 'civitai-neo-badge civitai-neo-badge-version';
-            versionBadge.textContent = info.version;
-            topRow.appendChild(versionBadge);
         }
 
         if (info.loraCategory) {
@@ -814,6 +803,10 @@ function applyNativeCardTheme(cardDiv, buttonRow, modelName, fontSize) {
         nameEl.className = 'civitai-neo-name';
         bottom.appendChild(nameEl);
 
+        const versionEl = document.createElement('div');
+        versionEl.className = 'civitai-neo-version';
+        bottom.appendChild(versionEl);
+
         const actionsRow = document.createElement('div');
         actionsRow.className = 'civitai-neo-bottom-actions';
         bottom.appendChild(actionsRow);
@@ -824,6 +817,10 @@ function applyNativeCardTheme(cardDiv, buttonRow, modelName, fontSize) {
     const nameEl = bottom.querySelector('.civitai-neo-name');
     nameEl.textContent = displayName;
     nameEl.title = displayName;
+
+    const versionEl = bottom.querySelector('.civitai-neo-version');
+    versionEl.textContent = info.version || '';
+    versionEl.style.display = info.version ? '' : 'none';
 
     // Relocate whatever is currently in button-row (native buttons + ours) into our own
     // bottom bar — runs every scan so buttons that appear later (async-rendered edit/copy
@@ -2134,6 +2131,36 @@ function onPageLoad() {
     setupClickOutsideListener();
     watchNativeBadgeData();
     requestNativeBadgeData();
+    initNativeCardObserver();
+}
+
+// Cards aren't only added at page-load/refresh-click time — Gradio lazily re-renders the
+// Extra Networks grid on tab switches, checkpoint changes, and scroll, and none of those
+// go through addOnClickToButtons's listeners. Without this, buttons/badges only appear
+// after the user manually clicks the native refresh button. Debounced since grid updates
+// can fire many mutations in a row; re-running createCivitAICardButtons() is safe/idempotent
+// since every insertion point already checks whether its element exists first.
+let _nativeCardObserverTimer = null;
+function initNativeCardObserver() {
+    const app = gradioApp();
+    if (!app || app.__civitaiCardObserverAttached) return;
+    app.__civitaiCardObserverAttached = true;
+
+    const observer = new MutationObserver((mutations) => {
+        const hasNewCard = mutations.some((m) =>
+            Array.from(m.addedNodes).some((node) =>
+                node.nodeType === 1 && (node.matches?.('.card') || node.querySelector?.('.card'))
+            )
+        );
+        if (!hasNewCard) return;
+
+        clearTimeout(_nativeCardObserverTimer);
+        _nativeCardObserverTimer = setTimeout(() => {
+            createCivitAICardButtons();
+        }, 250);
+    });
+
+    observer.observe(app, { childList: true, subtree: true });
 }
 
 // The Settings tab's checkbox may not be mounted yet at onUiLoaded time, so poll briefly
