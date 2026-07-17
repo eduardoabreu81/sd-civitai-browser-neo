@@ -1103,8 +1103,13 @@ body.civitai-neo-card-theme .card .description {
     white-space: nowrap;
 }
 
-/* Bottom stack: three full-width pills (name, version, actions), each carrying its own
-   background so the card's own image provides contrast instead of one big gradient panel. */
+.civitai-neo-badge-type {
+    text-transform: uppercase;
+}
+
+/* Bottom stack: title block (name + version, one shared pill) and the action-buttons pill,
+   each carrying its own background so the card's own image provides contrast instead of one
+   big gradient panel. */
 .civitai-neo-bottom {
     position: absolute;
     left: 8px;
@@ -1116,13 +1121,20 @@ body.civitai-neo-card-theme .card .description {
     gap: 6px;
 }
 
-.civitai-neo-name,
-.civitai-neo-version,
+.civitai-neo-title-block,
 .civitai-neo-bottom-actions {
     background: rgba(15, 23, 42, 0.78);
     border: 1px solid rgba(255, 255, 255, 0.18);
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
     backdrop-filter: blur(4px);
+}
+
+.civitai-neo-title-block {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 14px;
+    border-radius: 14px;
 }
 
 .civitai-neo-name {
@@ -1133,25 +1145,22 @@ body.civitai-neo-card-theme .card .description {
     white-space: normal;
     word-break: break-word;
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
-    padding: 8px 14px;
-    border-radius: 14px;
 }
 
 .civitai-neo-version {
-    color: rgba(255, 255, 255, 0.85);
-    font-size: 0.72em;
-    padding: 3px 12px;
-    border-radius: 10px;
-    align-self: flex-start;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.7em;
+    line-height: 1.2;
 }
 
 .civitai-neo-bottom-actions {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-    padding: 6px 10px;
-    border-radius: 16px;
+    gap: 8px;
+    padding: 3px 10px;
+    min-height: 0;
+    border-radius: 14px;
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.2s ease, visibility 0.2s ease;
@@ -1164,9 +1173,15 @@ body.civitai-neo-card-theme .card:hover .civitai-neo-bottom-actions {
 
 .civitai-neo-bottom-actions .card-button {
     position: static !important;
-    width: auto !important;
-    height: auto !important;
+    width: 22px !important;
+    height: 22px !important;
     margin: 0 !important;
+    font-size: 13px !important;
+}
+
+.civitai-neo-bottom-actions .card-button svg {
+    width: 14px !important;
+    height: 14px !important;
 }
 
 /* Custom settings Accordion */

@@ -766,32 +766,36 @@ function applyNativeCardTheme(cardDiv, buttonRow, modelName, fontSize) {
     const info = lookupBadgeInfo(modelName) || {};
     const displayName = info.displayName || modelName;
 
-    if (!cardDiv.querySelector('.civitai-neo-top-row')) {
-        const topRow = document.createElement('div');
+    // Rebuilt (not just created-once) on every scan: badge data (window.__civitaiNativeBadges)
+    // arrives asynchronously, and cards with far more entries than others (typically LoRA,
+    // since libraries usually have many more LoRAs than checkpoints) are more likely to get
+    // their first pass in before the fetch lands. A create-once guard would otherwise lock
+    // that card into an empty badge forever.
+    let topRow = cardDiv.querySelector('.civitai-neo-top-row');
+    if (!topRow) {
+        topRow = document.createElement('div');
         topRow.className = 'civitai-neo-top-row';
+        cardDiv.appendChild(topRow);
+    }
+    topRow.innerHTML = '';
 
-        // "Type | BaseModel" combined into one pill (e.g. "Checkpoint | ANI"), mirroring
-        // the .model-type-badge convention already used on our own Browser/Local cards,
-        // rather than two separate pills fighting for space.
-        const typeLabel = getCardTypeLabel(cardDiv.parentElement.id);
-        if (typeLabel || info.baseModelShort) {
-            const typeBadge = document.createElement('span');
-            typeBadge.className = 'civitai-neo-badge civitai-neo-badge-type';
-            typeBadge.textContent = info.baseModelShort ? `${typeLabel} | ${info.baseModelShort}` : typeLabel;
-            if (info.baseModelShort) typeBadge.title = info.baseModel || info.baseModelShort;
-            topRow.appendChild(typeBadge);
-        }
+    // "Type | BaseModel" combined into one pill (e.g. "Checkpoint | ANI"), mirroring the
+    // .model-type-badge convention already used on our own Browser/Local cards, rather than
+    // two separate pills fighting for space.
+    const typeLabel = getCardTypeLabel(cardDiv.parentElement.id);
+    if (typeLabel || info.baseModelShort) {
+        const typeBadge = document.createElement('span');
+        typeBadge.className = 'civitai-neo-badge civitai-neo-badge-type';
+        typeBadge.textContent = info.baseModelShort ? `${typeLabel} | ${info.baseModelShort}` : typeLabel;
+        if (info.baseModelShort) typeBadge.title = info.baseModel || info.baseModelShort;
+        topRow.appendChild(typeBadge);
+    }
 
-        if (info.loraCategory) {
-            const catBadge = document.createElement('span');
-            catBadge.className = `civitai-neo-badge lora-category-badge ${info.loraCategory.toLowerCase()}`;
-            catBadge.textContent = info.loraCategory;
-            topRow.appendChild(catBadge);
-        }
-
-        if (topRow.children.length) {
-            cardDiv.appendChild(topRow);
-        }
+    if (info.loraCategory) {
+        const catBadge = document.createElement('span');
+        catBadge.className = `civitai-neo-badge lora-category-badge ${info.loraCategory.toLowerCase()}`;
+        catBadge.textContent = info.loraCategory;
+        topRow.appendChild(catBadge);
     }
 
     let bottom = cardDiv.querySelector('.civitai-neo-bottom');
@@ -799,13 +803,18 @@ function applyNativeCardTheme(cardDiv, buttonRow, modelName, fontSize) {
         bottom = document.createElement('div');
         bottom.className = 'civitai-neo-bottom';
 
+        const titleBlock = document.createElement('div');
+        titleBlock.className = 'civitai-neo-title-block';
+
         const nameEl = document.createElement('div');
         nameEl.className = 'civitai-neo-name';
-        bottom.appendChild(nameEl);
+        titleBlock.appendChild(nameEl);
 
         const versionEl = document.createElement('div');
         versionEl.className = 'civitai-neo-version';
-        bottom.appendChild(versionEl);
+        titleBlock.appendChild(versionEl);
+
+        bottom.appendChild(titleBlock);
 
         const actionsRow = document.createElement('div');
         actionsRow.className = 'civitai-neo-bottom-actions';
