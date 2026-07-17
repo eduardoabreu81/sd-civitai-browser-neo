@@ -621,10 +621,10 @@ function createCivitAICardButtons() {
                     event.stopPropagation();
                 });
 
-                if (!buttonRow.querySelector('.goto-civitbrowser.card-button')) {
-                    const modelName = cardDiv.querySelector('.actions .name')?.textContent.trim();
-                    if (!modelName) return;
+                const modelName = cardDiv.querySelector('.actions .name')?.textContent.trim();
+                if (!modelName) return;
 
+                if (!buttonRow.querySelector('.goto-civitbrowser.card-button')) {
                     const newDiv = document.createElement('div');
                     newDiv.className = 'goto-civitbrowser card-button';
                     const svgIcon = createSVGIcon(fontSize);
@@ -633,6 +633,8 @@ function createCivitAICardButtons() {
                     newDiv.onclick = () => modelInfoPopUp(modelName, cardDiv.parentElement.id);
                     buttonRow.insertBefore(newDiv, buttonRow.firstChild);
                 }
+
+                applyNativeCardBadges(cardDiv, buttonRow, modelName, fontSize);
             });
         }
     }, 200);
@@ -640,6 +642,51 @@ function createCivitAICardButtons() {
     setTimeout(() => {
         clearInterval(checkForCardDivs);
     }, 5000);
+}
+
+// === Native card badges/actions (base model, LoRA category, trigger words) ===
+// Data comes from a Python-built map (civitai_file_manage.build_native_card_badge_map),
+// fetched once via requestNativeBadgeData() and cached in window.__civitaiNativeBadges.
+// Only ADDS elements to the card/button-row — never touches WebUI's own native buttons.
+function requestNativeBadgeData() {
+    const trigger = gradioApp().querySelector('#native_badge_trigger textarea');
+    if (!trigger) return;
+    trigger.value = String(Date.now());
+    updateInput(trigger);
+}
+
+function applyNativeCardBadges(cardDiv, buttonRow, modelName, fontSize) {
+    const info = (window.__civitaiNativeBadges || {})[modelName];
+    if (!info) return;
+
+    if (info.baseModelShort && !cardDiv.querySelector('.civitai-native-base-badge')) {
+        cardDiv.style.position = cardDiv.style.position || 'relative';
+        const baseBadge = document.createElement('div');
+        baseBadge.className = 'civitai-native-base-badge';
+        baseBadge.textContent = info.baseModelShort;
+        baseBadge.title = info.baseModel || info.baseModelShort;
+        cardDiv.appendChild(baseBadge);
+    }
+
+    if (info.loraCategory && !cardDiv.querySelector('.civitai-native-lora-ribbon')) {
+        const ribbon = document.createElement('div');
+        ribbon.className = 'lora-category-ribbon civitai-native-lora-ribbon';
+        ribbon.innerHTML = `<div class="lora-category-badge ${info.loraCategory.toLowerCase()}">${info.loraCategory}</div>`;
+        cardDiv.appendChild(ribbon);
+    }
+
+    if (info.triggerWords && info.triggerWords.length && !buttonRow.querySelector('.civitai-native-trigger-btn')) {
+        const triggerBtn = document.createElement('div');
+        triggerBtn.className = 'civitai-native-trigger-btn card-button';
+        triggerBtn.title = 'Send trigger words to prompt';
+        triggerBtn.textContent = '🏷️';
+        triggerBtn.style.fontSize = fontSize;
+        triggerBtn.onclick = (event) => {
+            event.stopPropagation();
+            sendTagsToPrompt(info.triggerWords.join(', '));
+        };
+        buttonRow.appendChild(triggerBtn);
+    }
 }
 
 function createSVGIcon(fontSize) {
@@ -668,6 +715,7 @@ function addOnClickToButtons() {
         if (button) {
             button.addEventListener('click', (event) => {
                 createCivitAICardButtons(button);
+                requestNativeBadgeData();
             });
         }
     });
@@ -678,6 +726,7 @@ function addOnClickToButtons() {
             buttons.forEach((button) => {
                 button.addEventListener('click', (event) => {
                     createCivitAICardButtons(button);
+                    requestNativeBadgeData();
                 });
             });
         }
@@ -1939,6 +1988,28 @@ function onPageLoad() {
     createCivitAICardButtons();
     adjustFilterBoxAndButtons();
     setupClickOutsideListener();
+    watchNativeBadgeData();
+    requestNativeBadgeData();
+}
+
+// Watches the hidden #native_badge_data output textarea for the JSON blob written by
+// civitai_file_manage.get_native_card_badge_json, and re-applies badges once it lands.
+function watchNativeBadgeData() {
+    const output = gradioApp().querySelector('#native_badge_data textarea');
+    if (!output) return;
+
+    const parseAndApply = () => {
+        try {
+            window.__civitaiNativeBadges = JSON.parse(output.value || '{}');
+        } catch (e) {
+            window.__civitaiNativeBadges = {};
+        }
+        createCivitAICardButtons();
+    };
+
+    const observer = new MutationObserver(parseAndApply);
+    observer.observe(output, { attributes: true, childList: true, characterData: true, subtree: true });
+    output.addEventListener('input', parseAndApply);
 }
 
 onUiLoaded(onPageLoad);

@@ -740,6 +740,8 @@ def on_ui_tabs():
         model_select = gr.Textbox(elem_id='model_select', visible=False)
         model_sent = gr.Textbox(elem_id='model_sent', visible=False)
         type_sent = gr.Textbox(elem_id='type_sent', visible=False)
+        native_badge_trigger = gr.Textbox(elem_id='native_badge_trigger', visible=False)
+        native_badge_data = gr.Textbox(elem_id='native_badge_data', visible=False)
         click_first_item = gr.Textbox(visible=False)
         empty = gr.Textbox(value='', visible=False)
         download_start = gr.Textbox(visible=False)
@@ -1399,6 +1401,9 @@ def on_ui_tabs():
             inputs=[loradex_command_state],
             outputs=[loradex_status, loradex_html],
             show_progress='hidden'
+        ).then(
+            fn=None,
+            _js='() => { requestNativeBadgeData(); }'
         )
         loradex_apply_all_btn.click(fn=None, _js='() => loradexApplyAll()')
         loradex_reset_all_btn.click(fn=None, _js='() => loradexResetAll()')
@@ -1407,6 +1412,13 @@ def on_ui_tabs():
             fn=_file.model_from_sent,
             inputs=[model_sent, type_sent],
             outputs=[model_preview_html_input]
+        )
+
+        native_badge_trigger.change(
+            fn=_file.get_native_card_badge_json,
+            inputs=[native_badge_trigger],
+            outputs=[native_badge_data],
+            show_progress='hidden'
         )
 
         send_to_browser.change(

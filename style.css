@@ -1020,6 +1020,36 @@
     fill: red !important;
 }
 
+/* Native Extra Networks card badges/actions (CivitAI Browser+) */
+.civitai-native-base-badge {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    z-index: 12;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 0.68em;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: #ffffff;
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(4px);
+    pointer-events: none;
+}
+
+.civitai-native-trigger-btn.card-button {
+    filter: drop-shadow(2px 2px 3px black);
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.civitai-native-trigger-btn.card-button:hover {
+    transform: scale(1.1);
+}
+
 /* Custom settings Accordion */
 .settings-accordion {
     border: 1px solid var(--block-border-color);

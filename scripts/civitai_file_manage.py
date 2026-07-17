@@ -5742,6 +5742,98 @@ def _lora_dex_tags(file_path):
     return _read_model_tags_from_sidecar(file_path)
 
 
+def _lora_dex_trigger_words(file_path):
+    """Read trigger words from .api_info.json or .json sidecar (direct path, no folder walk).
+
+    Mirrors the group-parsing rules in civitai_api.get_local_trigger_words, but reads the
+    sidecar next to file_path directly instead of searching model_folder — keeps native-card
+    badge lookups tree-walk-free for large libraries (see _lora_dex_base_model).
+    """
+    for suffix in ('.api_info.json', '.json'):
+        sidecar = os.path.splitext(file_path)[0] + suffix
+        if not os.path.exists(sidecar):
+            continue
+        try:
+            data = _api.safe_json_load(sidecar) or {}
+        except Exception:
+            continue
+
+        raw_groups = data.get('activation text groups')
+        if raw_groups is None:
+            raw_groups = data.get('activation_text_groups')
+
+        if isinstance(raw_groups, list):
+            groups = [str(g).strip() for g in raw_groups if str(g).strip()]
+            if groups:
+                return groups
+        elif isinstance(raw_groups, str) and raw_groups.strip():
+            groups = [g.strip() for g in re.split(r'[\n\r]+', raw_groups) if g.strip()]
+            if groups:
+                return groups
+
+        text = data.get('activation text')
+        if text:
+            words = [t.strip() for t in re.split(r'[,;\n\r]+', text) if t.strip()]
+            if words:
+                return words
+
+    return []
+
+
+def build_native_card_badge_map():
+    """Build {model_filename_stem: {baseModel, baseModelShort, triggerWords, loraCategory}}
+    for Checkpoint and LORA files, for the badges/buttons injected onto WebUI's native Extra
+    Networks cards.
+
+    Local-sidecar-only (no API calls, no folder walk) so it's safe to call on every Extra
+    Networks tab load/refresh, and after a LoraDex category edit. Skips update-availability
+    status entirely — that data only exists in memory after the Local Models Browser has
+    scanned against the Civitai API (gl.local_json_data), so faking it here would either be
+    wrong or force an extra API scan.
+    """
+    badge_map = {}
+    typed_folders = [
+        ('Checkpoint', _api.contenttype_folder('Checkpoint')),
+        ('LORA', _api.contenttype_folder('LORA')),
+    ]
+    for content_type, folder in typed_folders:
+        if not folder:
+            continue
+        for file_path in list_files([folder]):
+            stem = os.path.splitext(os.path.basename(file_path))[0]
+            base_model = _lora_dex_base_model(file_path)
+            trigger_words = _lora_dex_trigger_words(file_path)
+
+            # Mirrors the existing Browser/Local card badge (civitai_api.py get_model_card):
+            # only a confirmed manual category shows a badge — 'Auto'/unset stays blank
+            # rather than surfacing an unconfirmed heuristic guess on every card.
+            lora_category = None
+            if content_type == 'LORA':
+                saved_category = get_lora_category_from_sidecar(file_path)
+                if saved_category and str(saved_category).strip().lower() != 'auto':
+                    lora_category = saved_category
+
+            if not base_model and not trigger_words and not lora_category:
+                continue
+
+            badge_map[stem] = {
+                'baseModel': base_model,
+                'baseModelShort': _api.get_base_model_short(base_model),
+                'triggerWords': trigger_words,
+                'loraCategory': lora_category or '',
+            }
+    return badge_map
+
+
+def get_native_card_badge_json(_trigger_value=None):
+    """gr.Textbox.change() handler: returns the native-card badge map as a JSON string."""
+    try:
+        return json.dumps(build_native_card_badge_map())
+    except Exception as e:
+        debug_print(f'[native-card-badges] build failed: {e}')
+        return '{}'
+
+
 def _save_lora_category(file_path, category):
     """Persist the manual LoRA category in the .json sidecar.
 

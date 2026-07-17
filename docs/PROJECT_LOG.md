@@ -1100,3 +1100,166 @@ Três mudanças implementadas nos dois repositórios:
 
 - **Estabilidade**  
   Fix de crash em `download_finish` com fila vazia, resolução exata de arquivo por stem e fallback de `modelTags` no sidecar para organização/LoraDex/download.
+
+### 2026-07-11 — Multi-Source Browser Phase E: ModelScope adapter + Base model sync
+
+**What changed:**
+Implemented the **ModelScope browser adapter** (Multi-Browser Phase E), synced newly added base models against the live CivitAI API, and fixed a version-filter crash. Automated tests still pass (155/155).
+
+**Features:**
+- New `scripts/browser_sources/modelscope.py` with search, card normalization, detail panel, and content-type/base-model detection from ModelScope tags and metadata.
+- Registered the adapter in `scripts/browser_sources/__init__.py` and added ModelScope URL parsing to `scripts/browser_sources/url_parser.py`.
+- Unit tests in `tests/test_browser_sources.py` covering parsing and normalization.
+- Added `Krea 2` and `LTXV` base models to the dropdown, badges (`Krea2`, `LTX`), and organization categories.
+- Added `Ernie` base model (the exact CivitAI value) to the dropdown, badge, and category.
+
+**Fixes:**
+- Fixed `LTXV 2.3` → `LTXV` (CivitAI's exact `baseModel` value is `LTXV`).
+- Fixed `Krea 2` badge to `Krea2` and `Z-Image` badge to `ZIB` (`ZImageTurbo`/`ZImageBase` remain `ZIT`).
+- Removed `Mugen` from the base-model dropdown — it is not an official CivitAI `baseModel` ("Mugen" models are tagged as Pony/Illustrious/SD 1.5/NoobAI).
+- Guarded against `AttributeError` when `version_obj.get('baseModel')` returns `None` during version filtering.
+- Removed the `page` parameter from CivitAI text searches to avoid `400 Bad Request`.
+- ModelScope: tolerate `None` in `Libraries`/`Tags`, improve content-type/base-model detection, and derive search query from filters when the query is empty.
+- Local Models: checkbox detection via `data-local` and defensive logging for multi-page selection debugging.
+
+**Files changed:**
+- `scripts/browser_sources/modelscope.py` — new ModelScope adapter.
+- `scripts/browser_sources/__init__.py` — adapter registration.
+- `scripts/browser_sources/url_parser.py` — ModelScope URL parsing.
+- `scripts/civitai_api.py` — badge mappings, `baseModel` null guard, omit `page` on query search.
+- `scripts/civitai_gui.py` — base-model dropdown.
+- `scripts/civitai_file_manage.py` — organization categories.
+- `tests/test_browser_sources.py` — ModelScope tests.
+- `javascript/civitai-html.js` — checkbox detection + defensive logs.
+
+**Decisions:**
+- **Hugging Face stays URL-only:** the Browser Source dropdown only shows CivitAI, CivArchive, and Arc en Ciel; Hugging Face and ModelScope are reachable through "Paste model URL".
+- **Base models must mirror exact CivitAPI values:** friendly dropdown labels must match what the API returns in `baseModel`/`baseModels`, otherwise search returns `400`.
+- **Krea 2 turbo fp8 on Forge Neo** requires `qwen_image_vae.safetensors` and `qwen3vl_4b_fp8_scaled.safetensors` (Qwen3VL text encoder), not FLUX text encoders.
+
+**Sensitive points:**
+- The ModelScope adapter has not been validated in heavy production use; the ModelScope API may paginate or truncate metadata in unexpected ways.
+- ModelScope content-type/base-model detection is heuristic (tags + repo_id + libraries) and may misclassify unusual models.
+- The `baseModel: null` crash may resurface in other code paths that call `.lower()` directly on API fields; a future sweep is recommended.
+
+**Next steps:**
+- Validate the ModelScope adapter in production with real searches and downloads.
+- Update README.md with Phase E and the current supported base-model list.
+- Document the VAE/text-encoder combination for Krea 2 in the README or a troubleshooting section.
+- Decide whether to move to Phase F (cross-source SHA256 double-check + "Not found on CivitAI" filter) or prioritize GGUF/comfy-catalog work.
+
+### 2026-07-12 — GGUF Local Model Detection Fix
+
+**What changed:**
+Fixed two gaps in **GGUF support** that prevented `.gguf` checkpoints from being fully visible and actionable in the Local Models browser. The files were already supported for download, organization, and sidecar generation, but the *scan* and *installed-file detection* code paths still treated `.gguf` as a non-model extension. This caused GGUF files to disappear from the Local Models grid and broke installed-status resolution in the Browser/detail panel. Also clarified an unrelated user confusion where two similarly-named files were actually two distinct CivitAI model pages.
+
+**Fixes:**
+- Added `.gguf` to the extension list in `list_files()` (`scripts/civitai_file_manage.py`) so Local Models scans include GGUF checkpoints.
+- Updated `collect_existing_files()` (`scripts/civitai_api.py`) to:
+  - Treat `.gguf` as a model file.
+  - Resolve the on-disk `.gguf` path from its `.json` sidecar by stem, enabling installed-status badges, delete actions, and detail-panel lookups.
+- Confirmed the reported "two files from the same page" case (`winnougans10ToesKrea2_v13.gguf` vs `winnougan10ToesINT8_v13.safetensors`) are from **different CivitAI model pages** (`2766027` and `2760322`), so the Browser correctly shows them as separate models.
+
+**Files changed:**
+- `scripts/civitai_file_manage.py` — `list_files()` now includes `.gguf`.
+- `scripts/civitai_api.py` — `collect_existing_files()` now recognizes `.gguf` and resolves its sidecar path.
+- `README.md` — documented the GGUF detection fix under the Revamp v0.1.0 preview section and roadmap.
+
+**Decisions:**
+- **Keep `.gguf` as a first-class checkpoint format** alongside `.safetensors`/`.ckpt`; no special UI treatment is needed beyond scanning and sidecar resolution.
+- **Do not auto-merge distinct CivitAI pages** even when filenames look similar; the `modelId` in the sidecar is the source of truth.
+
+**Sensitive points:**
+- `collect_existing_files()` still relies on stem matching for sidecar→model-file resolution; renaming a `.gguf` away from its sidecar stem will break installed-status detection until SHA256-based recovery kicks in.
+- The Local Models detail panel uses the cached `_local_paths` stamp; if a `.gguf` is moved manually after the grid is rendered, the panel may need a re-scan to find the new path.
+
+**Next steps:**
+- Continue validating the multi-source Browser (ModelScope, Arc en Ciel, URL-paste) in production.
+- Evaluate whether Phase F (cross-source SHA256 double-check + "Not found on CivitAI" filter) should proceed before additional format work.
+- Monitor for any remaining `.gguf` edge cases in Update Models, organization, or LoraDex flows.
+
+### 2026-07-12 — Remove MCP favorite/notify actions and Following feed
+
+**What changed:**
+Removed the **Favorite (⭐)** and **Notify (🔔)** buttons from the Browser detail panel, the **Following — new versions** feed from the Dashboard, and all supporting code. These CivitAI account actions were not adding enough value to justify their UI surface and maintenance. The existing **creator favorite/ban** system (⭐/🚫 on cards) is unchanged and remains the primary curation mechanism. The passive **account badge** on the Dashboard is kept.
+
+**Removed:**
+- `fav_btn`, `notify_btn`, `fav_state`, `notify_state` from `scripts/civitai_gui.py`.
+- `_account_ready()`, `seed_account_buttons()`, `toggle_favorite_click()`, `toggle_notify_click()` from `scripts/civitai_gui.py`.
+- Following feed accordion, `following_refresh_btn`, `following_feed_html`, and `refresh_following_feed()` from `scripts/civitai_gui.py`.
+- `get_favorited_model_ids()` and `set_favorited_cache()` from `scripts/civitai_api.py`.
+- `set_model_favorite()`, `toggle_notify_model()`, and `list_notifications()` from `scripts/civitai_mcp.py`.
+
+**Kept:**
+- Creator favorite/ban buttons on model cards.
+- Passive Dashboard account badge via `_mcp.whoami()`.
+- `toggle_follow_user()` and `check_notifications()` in `scripts/civitai_mcp.py` (unused but harmless; retained for potential future use).
+
+**Files changed:**
+- `scripts/civitai_gui.py` — removed UI components, handlers, and Following feed.
+- `scripts/civitai_api.py` — removed favorite-cache helpers.
+- `scripts/civitai_mcp.py` — removed favorite/notify/list_notifications wrappers.
+- `README_REVAMP.md` — updated Account section and roadmap.
+
+**Decisions:**
+- **Account actions in the detail panel are out of scope** for the revamp; creator-level curation is sufficient.
+- **Following feed is redundant** with the local Update Models scan and adds API surface we do not want to maintain.
+
+**Next steps:**
+- Run the full test suite to ensure no dangling references remain.
+- Commit and push the removal as a single cleanup change.
+- Continue revamp work on the remaining multi-source and organization features.
+
+### 2026-07-12 — Fix auto-organize landing in content-type root
+
+**What changed:**
+Fixed a bug where downloads with **Auto-organize downloads** enabled could still land in the content-type root folder (e.g. `Stable-diffusion/`) instead of the correct base-model subfolder (e.g. `Stable-diffusion/Krea/`). The root cause was twofold: the `.json` sidecar only stored the legacy `sd version` field and left `baseModel` as `null`, and the detail panel could pass a stale root `install_path` if the user clicked Download before it refreshed.
+
+**Fixes:**
+- `find_and_save()` in `scripts/civitai_file_manage.py` now persists the raw `baseModel` value in the `.json` sidecar (alongside the existing `sd version` field).
+- Added `_resolve_auto_organize_path()` in `scripts/civitai_download.py`: when auto-organize is on and the resolved install path equals a content-type root, the extension fetches the model's `baseModel` from cached API data or a fresh `/models/{id}` call and redirects the download to the proper subfolder.
+
+**Files changed:**
+- `scripts/civitai_file_manage.py` — sidecar now stores `baseModel`.
+- `scripts/civitai_download.py` — defensive recalculation of install path for auto-organize.
+- `README_REVAMP.md` — documented the sidecar and auto-organize improvements.
+
+**Validation:**
+- Confirmed the affected model (`moodyKrea2Mix_v40`) has `baseModel: "Krea 2"` in its `.api_info.json` and that the CivitAI API returns the same value.
+- Full test suite passes (`155 passed`).
+
+**Decisions:**
+- Keep the legacy `sd version` field for backward compatibility, but treat `baseModel` as the authoritative field going forward.
+- Do not auto-move already-downloaded files; users can organize them via the Organization tab once the sidecar/baseModel fix is live.
+
+**Next steps:**
+- Monitor the next Krea 2 / new-base-model download to confirm it lands in the correct subfolder.
+- Consider whether the sidecar/baseModel fix also resolves similar misclassification issues in Update Models and LoraDex.
+
+### 2026-07-12 — Fix Hugging Face direct file URLs with subfolders
+
+**What changed:**
+Fixed pasted Hugging Face URLs that point to a specific file inside a subfolder (e.g. `https://huggingface.co/owner/repo/blob/main/sub/folder/model.safetensors`). Previously the parser only extracted the repo id and discarded the file path, so the Browser fell back to listing all repo files and often selected the wrong artifact (or a synthetic `model.safetensors` with 0 bytes).
+
+**Fixes:**
+- `scripts/browser_sources/url_parser.py` now extracts both `repo_id` and `file_path` from `/blob/main/...`, `/tree/main/...`, and `/resolve/main/...` URLs.
+- `scripts/browser_sources/huggingface.py` accepts a `file_path` argument in `get_model()` and `_normalize_repo_detail()`. When provided, the adapter exposes only that file as the primary downloadable artifact, fetches its real byte size via a HEAD request to the resolve URL, and preserves the full subfolder path in `browserSourceFileRaw`.
+- Added `_fetch_file_size()` and `_refine_content_type_by_filename()` helpers to support single-file mode.
+
+**Files changed:**
+- `scripts/browser_sources/url_parser.py` — extract and forward `file_path` for HF URLs.
+- `scripts/browser_sources/huggingface.py` — single-file normalization, size fetch, and content-type refinement.
+- `tests/test_browser_sources.py` — updated existing HF URL tests and added coverage for subfolder file URLs.
+- `README_REVAMP.md` — documented direct HF file links in the Paste model URL section.
+
+**Validation:**
+- Full test suite passes (`157 passed`).
+- New tests verify repo-root URLs still work and direct file URLs correctly select the subfolder artifact.
+
+**Decisions:**
+- Keep Hugging Face hidden from the source dropdown (URL-only curation), but make pasted file links first-class citizens.
+- HEAD request to the resolve URL is the primary size source; if it fails, the file simply shows no size rather than blocking the card.
+
+**Next steps:**
+- Smoke-test a real HF subfolder file URL in Forge Neo to confirm the file dropdown shows the correct name and size.
+- Monitor whether other providers (ModelScope, CivArchive) need similar direct-file URL support.
