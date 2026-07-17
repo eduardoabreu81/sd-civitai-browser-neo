@@ -3487,7 +3487,7 @@ def _fetch_api_info_by_hash(file_path, api_info_file):
         return None
 
 
-def _extract_base_model_from_api_data(data, file_path=None):
+def _extract_base_model_from_api_data(data, file_path=None, quiet=False):
     """
     Extract baseModel string from a CivitAI API response dict.
     Checks fields in priority order:
@@ -3496,33 +3496,38 @@ def _extract_base_model_from_api_data(data, file_path=None):
       3. data['modelVersions']       ← SHA256-matched or first version
       4. data['version']['baseModel']
     Returns the raw baseModel string or '' if not found.
+
+    quiet=True skips all _debug_log calls even when Debug Organization Logs is enabled —
+    used by bulk callers (e.g. build_native_card_badge_map) that run this per-file across
+    an entire library and would otherwise flood the console with one line per file.
     """
     model_name = os.path.basename(file_path) if file_path else '?'
+    log = (lambda _msg: None) if quiet else _debug_log
 
     base_model = data.get('baseModel', '')
     if base_model:
-        _debug_log(f"Found from data['baseModel']: '{base_model}'")
+        log(f"Found from data['baseModel']: '{base_model}'")
         return base_model
 
     base_model = data.get('model', {}).get('baseModel', '')
     if base_model:
-        _debug_log(f"Found from data['model']['baseModel']: '{base_model}'")
+        log(f"Found from data['model']['baseModel']: '{base_model}'")
         return base_model
 
     if 'modelVersions' in data:
         versions = data.get('modelVersions', [])
-        _debug_log(f"Found modelVersions array with {len(versions)} versions")
+        log(f"Found modelVersions array with {len(versions)} versions")
         if versions:
             matched_version = None
             if file_path:
                 file_hash = gen_sha256(file_path)
                 if file_hash:
-                    _debug_log(f"Model SHA256: {file_hash}")
+                    log(f"Model SHA256: {file_hash}")
                     for version in versions:
                         for vfile in version.get('files', []):
                             if vfile.get('hashes', {}).get('SHA256', '').upper() == file_hash.upper():
                                 matched_version = version
-                                _debug_log(f"Found matching version by SHA256: {version.get('name')} (id: {version.get('id')})")
+                                log(f"Found matching version by SHA256: {version.get('name')} (id: {version.get('id')})")
                                 break
                         if matched_version:
                             break
@@ -3530,12 +3535,12 @@ def _extract_base_model_from_api_data(data, file_path=None):
             base_model = target_version.get('baseModel', '')
             if base_model:
                 label = f"MATCHED modelVersion['{target_version.get('name')}']" if matched_version else "modelVersions[0]"
-                _debug_log(f"Found from {label}: '{base_model}'")
+                log(f"Found from {label}: '{base_model}'")
                 return base_model
 
     base_model = data.get('version', {}).get('baseModel', '')
     if base_model:
-        _debug_log(f"Found from data['version']['baseModel']: '{base_model}'")
+        log(f"Found from data['version']['baseModel']: '{base_model}'")
         return base_model
 
     return ''
@@ -5707,13 +5712,17 @@ def _lora_dex_version_name(file_path):
     return ''
 
 
-def _lora_dex_base_model(file_path):
-    """Read baseModel from .api_info.json or .json sidecar."""
+def _lora_dex_base_model(file_path, quiet=False):
+    """Read baseModel from .api_info.json or .json sidecar.
+
+    quiet=True suppresses the per-file Debug Organization Logs output (see
+    _extract_base_model_from_api_data) — pass it when scanning an entire library at once.
+    """
     api_file = os.path.splitext(file_path)[0] + '.api_info.json'
     if os.path.exists(api_file):
         try:
             data = _api.safe_json_load(api_file) or {}
-            base = _extract_base_model_from_api_data(data, file_path)
+            base = _extract_base_model_from_api_data(data, file_path, quiet=quiet)
             if base:
                 return base
         except Exception:
@@ -5801,7 +5810,7 @@ def build_native_card_badge_map():
             continue
         for file_path in list_files([folder]):
             stem = os.path.splitext(os.path.basename(file_path))[0]
-            base_model = _lora_dex_base_model(file_path)
+            base_model = _lora_dex_base_model(file_path, quiet=True)
             trigger_words = _lora_dex_trigger_words(file_path)
 
             # Mirrors the existing Browser/Local card badge (civitai_api.py get_model_card):
@@ -5840,9 +5849,18 @@ def build_native_card_badge_map():
 
 
 def get_native_card_badge_json(_trigger_value=None):
-    """gr.Textbox.change() handler: returns the native-card badge map as a JSON string."""
+    """gr.Textbox.change() handler: returns the native-card badge map as a JSON string.
+
+    Builds it in one bulk pass (see build_native_card_badge_map's quiet=True call), then
+    logs a single summary line instead of the hundreds of per-file lines that would
+    otherwise come out of the underlying baseModel/version/trigger-word sidecar reads on a
+    large library.
+    """
     try:
-        return json.dumps(build_native_card_badge_map())
+        started = time.time()
+        badge_map = build_native_card_badge_map()
+        debug_print(f'[native-card-badges] indexed {len(badge_map)} entries in {time.time() - started:.2f}s')
+        return json.dumps(badge_map)
     except Exception as e:
         debug_print(f'[native-card-badges] build failed: {e}')
         return '{}'
