@@ -624,17 +624,27 @@ function createCivitAICardButtons() {
                 const modelName = cardDiv.querySelector('.actions .name')?.textContent.trim();
                 if (!modelName) return;
 
-                if (!buttonRow.querySelector('.goto-civitbrowser.card-button')) {
-                    const newDiv = document.createElement('div');
-                    newDiv.className = 'goto-civitbrowser card-button';
+                // Searched across the whole card (not just buttonRow): the themed layout
+                // relocates these buttons into .civitai-neo-bottom-actions, so a buttonRow-only
+                // check would miss them there and create duplicates on every re-scan.
+                let gotoBtn = cardDiv.querySelector('.goto-civitbrowser.card-button');
+                if (!gotoBtn) {
+                    gotoBtn = document.createElement('div');
+                    gotoBtn.className = 'goto-civitbrowser card-button';
                     const svgIcon = createSVGIcon(fontSize);
-                    newDiv.appendChild(svgIcon);
+                    gotoBtn.appendChild(svgIcon);
 
-                    newDiv.onclick = () => modelInfoPopUp(modelName, cardDiv.parentElement.id);
-                    buttonRow.insertBefore(newDiv, buttonRow.firstChild);
+                    gotoBtn.onclick = () => modelInfoPopUp(modelName, cardDiv.parentElement.id);
+                    buttonRow.insertBefore(gotoBtn, buttonRow.firstChild);
                 }
 
-                applyNativeCardBadges(cardDiv, buttonRow, modelName, fontSize);
+                const triggerBtn = ensureTriggerButton(buttonRow, fontSize);
+
+                if (isNativeCardThemeActive()) {
+                    applyNativeCardTheme(cardDiv, buttonRow, modelName, fontSize, gotoBtn, triggerBtn);
+                } else {
+                    applyNativeCardBadges(cardDiv, buttonRow, modelName);
+                }
             });
         }
     }, 200);
@@ -647,7 +657,6 @@ function createCivitAICardButtons() {
 // === Native card badges/actions (base model, LoRA category, trigger words) ===
 // Data comes from a Python-built map (civitai_file_manage.build_native_card_badge_map),
 // fetched once via requestNativeBadgeData() and cached in window.__civitaiNativeBadges.
-// Only ADDS elements to the card/button-row — never touches WebUI's own native buttons.
 function requestNativeBadgeData() {
     const trigger = gradioApp().querySelector('#native_badge_trigger textarea');
     if (!trigger) return;
@@ -655,14 +664,63 @@ function requestNativeBadgeData() {
     updateInput(trigger);
 }
 
-function applyNativeCardBadges(cardDiv, buttonRow, modelName, fontSize) {
+function isNativeCardThemeActive() {
+    return document.body.classList.contains('civitai-neo-card-theme');
+}
+
+// Applies the "Settings → CivitAI-style card theme" toggle as a body class so CSS can
+// scope the whole redesign; re-run createCivitAICardButtons() so already-rendered cards
+// pick it up without a full page reload.
+function syncNativeCardThemeSetting() {
+    const checkbox = gradioApp().querySelector('#setting_civitai_native_card_theme input[type=checkbox]');
+    if (!checkbox) return;
+    const apply = () => {
+        document.body.classList.toggle('civitai-neo-card-theme', checkbox.checked);
+        createCivitAICardButtons();
+    };
+    apply();
+    checkbox.addEventListener('change', apply);
+}
+
+function ensureTriggerButton(buttonRow, fontSize) {
+    const cardDiv = buttonRow.closest('.card');
+    let triggerBtn = cardDiv?.querySelector('.civitai-native-trigger-btn');
+    if (triggerBtn) return triggerBtn;
+
+    const modelName = cardDiv?.querySelector('.actions .name')?.textContent.trim();
+    const info = (window.__civitaiNativeBadges || {})[modelName];
+    if (!info || !info.triggerWords || !info.triggerWords.length) return null;
+
+    triggerBtn = document.createElement('div');
+    triggerBtn.className = 'civitai-native-trigger-btn card-button';
+    triggerBtn.title = 'Send trigger words to prompt';
+    triggerBtn.textContent = '🏷️';
+    triggerBtn.style.fontSize = fontSize;
+    triggerBtn.onclick = (event) => {
+        event.stopPropagation();
+        sendTagsToPrompt(info.triggerWords.join(', '));
+    };
+    buttonRow.appendChild(triggerBtn);
+    return triggerBtn;
+}
+
+// Compact mode (theme OFF): small chips inside the existing native button-row.
+function applyNativeCardBadges(cardDiv, buttonRow, modelName) {
+    // Clean up leftovers from a live theme-toggle-off (no page reload) so the two badge
+    // layouts never coexist on the same card. The goto/trigger buttons were MOVED (not
+    // cloned) into .civitai-neo-bottom, so rescue them back into buttonRow before removing
+    // their themed container, or they'd be deleted along with it.
+    const themedBottom = cardDiv.querySelector('.civitai-neo-bottom');
+    if (themedBottom) {
+        themedBottom.querySelectorAll('.goto-civitbrowser.card-button, .civitai-native-trigger-btn')
+            .forEach((btn) => buttonRow.appendChild(btn));
+        themedBottom.remove();
+    }
+    cardDiv.querySelector('.civitai-neo-top-row')?.remove();
+
     const info = (window.__civitaiNativeBadges || {})[modelName];
     if (!info) return;
 
-    // Badges live inside the bottom button-row (not floated over the image): this theme's
-    // native cards already show the filename in a top overlay, and an absolutely-positioned
-    // top badge collides with it. The button-row is a proven-safe area (goto-civitbrowser
-    // already renders correctly there).
     if (info.baseModelShort && !buttonRow.querySelector('.civitai-native-base-badge')) {
         const baseBadge = document.createElement('div');
         baseBadge.className = 'civitai-native-base-badge';
@@ -677,18 +735,74 @@ function applyNativeCardBadges(cardDiv, buttonRow, modelName, fontSize) {
         catBadge.textContent = info.loraCategory;
         buttonRow.insertBefore(catBadge, buttonRow.firstChild);
     }
+}
 
-    if (info.triggerWords && info.triggerWords.length && !buttonRow.querySelector('.civitai-native-trigger-btn')) {
-        const triggerBtn = document.createElement('div');
-        triggerBtn.className = 'civitai-native-trigger-btn card-button';
-        triggerBtn.title = 'Send trigger words to prompt';
-        triggerBtn.textContent = '🏷️';
-        triggerBtn.style.fontSize = fontSize;
-        triggerBtn.onclick = (event) => {
-            event.stopPropagation();
-            sendTagsToPrompt(info.triggerWords.join(', '));
-        };
-        buttonRow.appendChild(triggerBtn);
+function getCardTypeLabel(parentId) {
+    const id = (parentId || '').toLowerCase();
+    if (id.includes('lora')) return 'LoRA';
+    if (id.includes('checkpoint')) return 'Checkpoint';
+    if (id.includes('hypernetwork')) return 'Hypernetwork';
+    if (id.includes('textual') || id.includes('embedding')) return 'Embedding';
+    return '';
+}
+
+// CivitAI-style theme (theme ON): badges top-left, name + our own action buttons in a
+// gradient bar at the bottom — moves (not clones) the existing goto/trigger buttons out of
+// the native button-row into our own bottom bar, so WebUI's native buttons (copy path, edit
+// metadata, refresh) stay exactly where WebUI puts them, untouched.
+function applyNativeCardTheme(cardDiv, buttonRow, modelName, fontSize, gotoBtn, triggerBtn) {
+    cardDiv.style.position = cardDiv.style.position || 'relative';
+    const info = (window.__civitaiNativeBadges || {})[modelName] || {};
+
+    if (!cardDiv.querySelector('.civitai-neo-top-row')) {
+        const topRow = document.createElement('div');
+        topRow.className = 'civitai-neo-top-row';
+
+        const typeLabel = getCardTypeLabel(cardDiv.parentElement.id);
+        if (typeLabel) {
+            const typeBadge = document.createElement('span');
+            typeBadge.className = 'civitai-neo-badge civitai-neo-badge-type';
+            typeBadge.textContent = typeLabel;
+            topRow.appendChild(typeBadge);
+        }
+
+        if (info.baseModelShort) {
+            const baseBadge = document.createElement('span');
+            baseBadge.className = 'civitai-neo-badge civitai-neo-badge-base';
+            baseBadge.textContent = info.baseModelShort;
+            baseBadge.title = info.baseModel || info.baseModelShort;
+            topRow.appendChild(baseBadge);
+        }
+
+        if (info.loraCategory) {
+            const catBadge = document.createElement('span');
+            catBadge.className = `civitai-neo-badge lora-category-badge ${info.loraCategory.toLowerCase()}`;
+            catBadge.textContent = info.loraCategory;
+            topRow.appendChild(catBadge);
+        }
+
+        if (topRow.children.length) {
+            cardDiv.appendChild(topRow);
+        }
+    }
+
+    if (!cardDiv.querySelector('.civitai-neo-bottom')) {
+        const bottom = document.createElement('div');
+        bottom.className = 'civitai-neo-bottom';
+
+        const nameEl = document.createElement('div');
+        nameEl.className = 'civitai-neo-name';
+        nameEl.textContent = modelName;
+        nameEl.title = modelName;
+        bottom.appendChild(nameEl);
+
+        const actionsRow = document.createElement('div');
+        actionsRow.className = 'civitai-neo-bottom-actions';
+        if (gotoBtn) actionsRow.appendChild(gotoBtn);
+        if (triggerBtn) actionsRow.appendChild(triggerBtn);
+        bottom.appendChild(actionsRow);
+
+        cardDiv.appendChild(bottom);
     }
 }
 
@@ -1988,11 +2102,28 @@ function onPageLoad() {
     }
 
     addOnClickToButtons();
+    initNativeCardTheme();
     createCivitAICardButtons();
     adjustFilterBoxAndButtons();
     setupClickOutsideListener();
     watchNativeBadgeData();
     requestNativeBadgeData();
+}
+
+// The Settings tab's checkbox may not be mounted yet at onUiLoaded time, so poll briefly
+// (matches the existing checkSettingsLoad pattern) instead of silently no-op'ing.
+function initNativeCardTheme() {
+    let attempts = 0;
+    const tryInit = setInterval(() => {
+        attempts++;
+        const checkbox = gradioApp().querySelector('#setting_civitai_native_card_theme input[type=checkbox]');
+        if (checkbox) {
+            clearInterval(tryInit);
+            syncNativeCardThemeSetting();
+        } else if (attempts > 25) {
+            clearInterval(tryInit);
+        }
+    }, 200);
 }
 
 // Watches the hidden #native_badge_data output textarea for the JSON blob written by

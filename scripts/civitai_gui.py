@@ -2484,6 +2484,16 @@ def on_ui_settings():
     )
 
     shared.opts.add_option(
+        'civitai_native_card_theme',
+        shared.OptionInfo(
+            default=False,
+            label='CivitAI-style card theme (native Extra Networks cards)',
+            section=browser,
+            category_id=cat_id
+        ).info('Restyles the txt2img/img2img checkpoint & LoRA cards to look like the CivitAI website: type/base-model badges on top, name + our action buttons on the bottom. Purely visual (CSS), safe alongside other UI themes.')
+    )
+
+    shared.opts.add_option(
         'custom_civitai_proxy',
         shared.OptionInfo(
             default=r'',

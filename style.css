@@ -1059,6 +1059,91 @@
     transform: scale(1.1);
 }
 
+/* === CivitAI-style card theme (opt-in, Settings → Browser) ===
+   Scoped entirely under body.civitai-neo-card-theme so it's inert unless enabled, and
+   layers on top of native/other-theme CSS instead of replacing it: native .actions .name
+   is hidden (not removed) so click-to-select keeps working, and .button-row is left alone —
+   only the goto/trigger buttons get physically moved into .civitai-neo-bottom-actions. */
+body.civitai-neo-card-theme .card {
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+body.civitai-neo-card-theme .card .actions .name {
+    display: none !important;
+}
+
+.civitai-neo-top-row {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    z-index: 6;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    pointer-events: none;
+}
+
+.civitai-neo-badge {
+    display: inline-flex;
+    align-items: center;
+    height: 22px;
+    padding: 0 9px;
+    border-radius: 11px;
+    font-size: 0.68em;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: #ffffff;
+    background: rgba(15, 23, 42, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(4px);
+    white-space: nowrap;
+}
+
+.civitai-neo-badge-base {
+    background: rgba(59, 130, 246, 0.85);
+    border-color: rgba(96, 165, 250, 0.6);
+}
+
+.civitai-neo-bottom {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 18px 10px 8px;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.55) 55%, transparent 100%);
+}
+
+.civitai-neo-name {
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 1em;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+}
+
+.civitai-neo-bottom-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.civitai-neo-bottom-actions .card-button {
+    position: static !important;
+    width: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+}
+
 /* Custom settings Accordion */
 .settings-accordion {
     border: 1px solid var(--block-border-color);
