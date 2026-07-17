@@ -1136,6 +1136,14 @@ body.civitai-neo-card-theme .card .description {
     display: flex;
     align-items: center;
     gap: 10px;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+body.civitai-neo-card-theme .card:hover .civitai-neo-bottom-actions {
+    opacity: 1;
+    visibility: visible;
 }
 
 .civitai-neo-bottom-actions .card-button {
