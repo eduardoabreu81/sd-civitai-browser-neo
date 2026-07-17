@@ -1020,23 +1020,32 @@
     fill: red !important;
 }
 
-/* Native Extra Networks card badges/actions (CivitAI Browser+) */
+/* Native Extra Networks card badges/actions (CivitAI Browser+)
+   Both chips live inside the native .button-row (bottom bar) rather than floating over the
+   image/name area — this theme's cards already show the filename in a top overlay, and an
+   absolutely-positioned badge there collides with it. */
 .civitai-native-base-badge {
-    position: absolute;
-    top: 6px;
-    left: 6px;
-    z-index: 12;
-    padding: 2px 8px;
-    border-radius: 6px;
-    font-size: 0.68em;
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    border-radius: 4px;
+    font-size: 0.62em;
     font-weight: 700;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.03em;
     color: #ffffff;
     background: rgba(15, 23, 42, 0.75);
     border: 1px solid rgba(255, 255, 255, 0.18);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
-    backdrop-filter: blur(4px);
     pointer-events: none;
+    white-space: nowrap;
+}
+
+.civitai-native-lora-badge.lora-category-badge {
+    position: static;
+    height: auto;
+    padding: 0 6px;
+    font-size: 0.62em;
+    pointer-events: none;
+    white-space: nowrap;
 }
 
 .civitai-native-trigger-btn.card-button {

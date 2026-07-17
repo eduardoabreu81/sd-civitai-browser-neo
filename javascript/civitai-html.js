@@ -659,20 +659,23 @@ function applyNativeCardBadges(cardDiv, buttonRow, modelName, fontSize) {
     const info = (window.__civitaiNativeBadges || {})[modelName];
     if (!info) return;
 
-    if (info.baseModelShort && !cardDiv.querySelector('.civitai-native-base-badge')) {
-        cardDiv.style.position = cardDiv.style.position || 'relative';
+    // Badges live inside the bottom button-row (not floated over the image): this theme's
+    // native cards already show the filename in a top overlay, and an absolutely-positioned
+    // top badge collides with it. The button-row is a proven-safe area (goto-civitbrowser
+    // already renders correctly there).
+    if (info.baseModelShort && !buttonRow.querySelector('.civitai-native-base-badge')) {
         const baseBadge = document.createElement('div');
         baseBadge.className = 'civitai-native-base-badge';
         baseBadge.textContent = info.baseModelShort;
         baseBadge.title = info.baseModel || info.baseModelShort;
-        cardDiv.appendChild(baseBadge);
+        buttonRow.insertBefore(baseBadge, buttonRow.firstChild);
     }
 
-    if (info.loraCategory && !cardDiv.querySelector('.civitai-native-lora-ribbon')) {
-        const ribbon = document.createElement('div');
-        ribbon.className = 'lora-category-ribbon civitai-native-lora-ribbon';
-        ribbon.innerHTML = `<div class="lora-category-badge ${info.loraCategory.toLowerCase()}">${info.loraCategory}</div>`;
-        cardDiv.appendChild(ribbon);
+    if (info.loraCategory && !buttonRow.querySelector('.civitai-native-lora-badge')) {
+        const catBadge = document.createElement('div');
+        catBadge.className = `civitai-native-lora-badge lora-category-badge ${info.loraCategory.toLowerCase()}`;
+        catBadge.textContent = info.loraCategory;
+        buttonRow.insertBefore(catBadge, buttonRow.firstChild);
     }
 
     if (info.triggerWords && info.triggerWords.length && !buttonRow.querySelector('.civitai-native-trigger-btn')) {
