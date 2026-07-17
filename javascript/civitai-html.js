@@ -638,10 +638,10 @@ function createCivitAICardButtons() {
                     buttonRow.insertBefore(gotoBtn, buttonRow.firstChild);
                 }
 
-                const triggerBtn = ensureTriggerButton(buttonRow, fontSize);
+                ensureTriggerButton(buttonRow, fontSize);
 
                 if (isNativeCardThemeActive()) {
-                    applyNativeCardTheme(cardDiv, buttonRow, modelName, fontSize, gotoBtn, triggerBtn);
+                    applyNativeCardTheme(cardDiv, buttonRow, modelName, fontSize);
                 } else {
                     applyNativeCardBadges(cardDiv, buttonRow, modelName);
                 }
@@ -707,13 +707,16 @@ function ensureTriggerButton(buttonRow, fontSize) {
 // Compact mode (theme OFF): small chips inside the existing native button-row.
 function applyNativeCardBadges(cardDiv, buttonRow, modelName) {
     // Clean up leftovers from a live theme-toggle-off (no page reload) so the two badge
-    // layouts never coexist on the same card. The goto/trigger buttons were MOVED (not
-    // cloned) into .civitai-neo-bottom, so rescue them back into buttonRow before removing
-    // their themed container, or they'd be deleted along with it.
+    // layouts never coexist on the same card. ALL button-row children (native buttons
+    // included) were MOVED (not cloned) into .civitai-neo-bottom-actions, so rescue every
+    // one of them back into buttonRow before removing their themed container, or they'd be
+    // deleted along with it.
     const themedBottom = cardDiv.querySelector('.civitai-neo-bottom');
     if (themedBottom) {
-        themedBottom.querySelectorAll('.goto-civitbrowser.card-button, .civitai-native-trigger-btn')
-            .forEach((btn) => buttonRow.appendChild(btn));
+        const actionsRow = themedBottom.querySelector('.civitai-neo-bottom-actions');
+        if (actionsRow) {
+            Array.from(actionsRow.children).forEach((btn) => buttonRow.appendChild(btn));
+        }
         themedBottom.remove();
     }
     cardDiv.querySelector('.civitai-neo-top-row')?.remove();
@@ -746,13 +749,14 @@ function getCardTypeLabel(parentId) {
     return '';
 }
 
-// CivitAI-style theme (theme ON): badges top-left, name + our own action buttons in a
-// gradient bar at the bottom — moves (not clones) the existing goto/trigger buttons out of
-// the native button-row into our own bottom bar, so WebUI's native buttons (copy path, edit
-// metadata, refresh) stay exactly where WebUI puts them, untouched.
-function applyNativeCardTheme(cardDiv, buttonRow, modelName, fontSize, gotoBtn, triggerBtn) {
+// CivitAI-style theme (theme ON): badges top row, name + ALL action buttons (native ones —
+// copy path, edit metadata, refresh — plus ours — goto-civitbrowser, trigger-word inject) in
+// a gradient bar at the bottom. Buttons are relocated (not cloned) out of the native
+// button-row into our own bottom bar so nothing is left floating at the top/side.
+function applyNativeCardTheme(cardDiv, buttonRow, modelName, fontSize) {
     cardDiv.style.position = cardDiv.style.position || 'relative';
     const info = (window.__civitaiNativeBadges || {})[modelName] || {};
+    const displayName = info.displayName || modelName;
 
     if (!cardDiv.querySelector('.civitai-neo-top-row')) {
         const topRow = document.createElement('div');
@@ -786,24 +790,31 @@ function applyNativeCardTheme(cardDiv, buttonRow, modelName, fontSize, gotoBtn, 
         }
     }
 
-    if (!cardDiv.querySelector('.civitai-neo-bottom')) {
-        const bottom = document.createElement('div');
+    let bottom = cardDiv.querySelector('.civitai-neo-bottom');
+    if (!bottom) {
+        bottom = document.createElement('div');
         bottom.className = 'civitai-neo-bottom';
 
         const nameEl = document.createElement('div');
         nameEl.className = 'civitai-neo-name';
-        nameEl.textContent = modelName;
-        nameEl.title = modelName;
         bottom.appendChild(nameEl);
 
         const actionsRow = document.createElement('div');
         actionsRow.className = 'civitai-neo-bottom-actions';
-        if (gotoBtn) actionsRow.appendChild(gotoBtn);
-        if (triggerBtn) actionsRow.appendChild(triggerBtn);
         bottom.appendChild(actionsRow);
 
         cardDiv.appendChild(bottom);
     }
+
+    const nameEl = bottom.querySelector('.civitai-neo-name');
+    nameEl.textContent = displayName;
+    nameEl.title = displayName;
+
+    // Relocate whatever is currently in button-row (native buttons + ours) into our own
+    // bottom bar — runs every scan so buttons that appear later (async-rendered edit/copy
+    // buttons) still get picked up, not just on first creation.
+    const actionsRow = bottom.querySelector('.civitai-neo-bottom-actions');
+    Array.from(buttonRow.children).forEach((el) => actionsRow.appendChild(el));
 }
 
 function createSVGIcon(fontSize) {

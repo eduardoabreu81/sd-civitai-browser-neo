@@ -5813,7 +5813,9 @@ def build_native_card_badge_map():
                 if saved_category and str(saved_category).strip().lower() != 'auto':
                     lora_category = saved_category
 
-            if not base_model and not trigger_words and not lora_category:
+            display_name = _lora_dex_model_name(file_path)
+
+            if not base_model and not trigger_words and not lora_category and not display_name:
                 continue
 
             badge_map[stem] = {
@@ -5821,6 +5823,7 @@ def build_native_card_badge_map():
                 'baseModelShort': _api.get_base_model_short(base_model),
                 'triggerWords': trigger_words,
                 'loraCategory': lora_category or '',
+                'displayName': display_name,
             }
     return badge_map
 

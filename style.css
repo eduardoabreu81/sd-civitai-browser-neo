@@ -1062,14 +1062,15 @@
 /* === CivitAI-style card theme (opt-in, Settings → Browser) ===
    Scoped entirely under body.civitai-neo-card-theme so it's inert unless enabled, and
    layers on top of native/other-theme CSS instead of replacing it: native .actions .name
-   is hidden (not removed) so click-to-select keeps working, and .button-row is left alone —
-   only the goto/trigger buttons get physically moved into .civitai-neo-bottom-actions. */
+   and .description are hidden (not removed) so click-to-select keeps working — JS relocates
+   every .button-row child (native buttons included) into .civitai-neo-bottom-actions. */
 body.civitai-neo-card-theme .card {
     border-radius: 12px;
     overflow: hidden;
 }
 
-body.civitai-neo-card-theme .card .actions .name {
+body.civitai-neo-card-theme .card .actions .name,
+body.civitai-neo-card-theme .card .description {
     display: none !important;
 }
 
