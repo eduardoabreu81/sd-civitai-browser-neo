@@ -24,6 +24,7 @@ import scripts.civitai_download as _download
 import scripts.civitai_file_manage as _file
 import scripts.civitai_global as gl
 import scripts.civitai_api as _api
+import scripts.browser_sources as _browser_sources
 from scripts.civitai_global import print, debug_print
 
 
@@ -1334,7 +1335,7 @@ def _build_local_fallback_browser_item(file_path):
 
     published_at = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime(mtime))
 
-    return {
+    item = {
         'id': local_id,
         'name': model_name,
         'type': content_type,
@@ -1366,6 +1367,33 @@ def _build_local_fallback_browser_item(file_path):
             }]
         }]
     }
+
+    # If resolve_civarchive_issues() already recovered real CivitAI-style
+    # metadata for this file (removed listing found on CivArchive), use it
+    # to enrich this fallback card instead of the empty stub above — the
+    # synthetic local 'id' and modelVersions[0]['id'] are kept unchanged so
+    # any code matching cards by that id keeps working.
+    api_info_file = os.path.splitext(file_path)[0] + '.api_info.json'
+    if os.path.exists(api_info_file):
+        try:
+            api_data = _api.safe_json_load(api_info_file) or {}
+        except Exception:
+            api_data = {}
+        if api_data.get('source') == 'civarchive':
+            item['description'] = api_data.get('description') or item['description']
+            item['tags'] = api_data.get('tags') or item['tags']
+            if api_data.get('creator'):
+                item['creator'] = api_data['creator']
+            item['civarchive_url'] = api_data.get('archived_url')
+
+            archived_versions = api_data.get('modelVersions') or []
+            if archived_versions:
+                archived_version = archived_versions[0]
+                item['modelVersions'][0]['baseModel'] = archived_version.get('baseModel') or item['modelVersions'][0]['baseModel']
+                item['modelVersions'][0]['trainedWords'] = archived_version.get('trainedWords') or []
+                item['modelVersions'][0]['images'] = archived_version.get('images') or []
+
+    return item
 
 def gen_sha256(file_path):
     json_file = os.path.splitext(file_path)[0] + '.json'
@@ -2103,6 +2131,18 @@ def save_model_info(install_path, file_name, sub_folder, sha256=None, preview_ht
     # Falls back to gl.json_info (full model object) if the hash lookup fails.
     api_info_path = os.path.join(save_path, f'{filename}.api_info.json')
     if not os.path.exists(api_info_path) or overwrite_toggle:
+        # The by-hash endpoint (and gl.json_info, which reflects whatever model
+        # the Browser tab last had loaded) are not scoped to this specific file,
+        # so cross-check against the modelId already cached in the .json sidecar
+        # before trusting either source — otherwise a hash collision on CivitAI's
+        # side, or stale global state, can silently overwrite this file's
+        # .api_info.json with an unrelated model's data.
+        expected_model_id = None
+        if os.path.exists(json_file):
+            existing_sidecar = _api.safe_json_load(json_file)
+            if existing_sidecar:
+                expected_model_id = existing_sidecar.get('modelId')
+
         version_data = None
         try:
             model_file = os.path.join(save_path, file_name)
@@ -2120,8 +2160,25 @@ def save_model_info(install_path, file_name, sub_folder, sha256=None, preview_ht
                             version_data = data
         except Exception as e:
             pass  # fall through to gl.json_info below
-        _api.safe_json_save(api_info_path, version_data if version_data else gl.json_info)
-        print(f"[CivitAI Browser Neo] - API info saved to: {api_info_path}")
+
+        if version_data and expected_model_id is not None:
+            returned_model_id = version_data.get('modelId')
+            if returned_model_id is not None and returned_model_id != expected_model_id:
+                print(f"[CivitAI Browser Neo] ⚠ by-hash returned model {returned_model_id} but expected {expected_model_id} for '{file_name}' — discarding to avoid corrupting cached metadata")
+                version_data = None
+
+        fallback_data = gl.json_info
+        if fallback_data and expected_model_id is not None:
+            fallback_id = fallback_data.get('id')
+            if fallback_id is not None and fallback_id != expected_model_id:
+                fallback_data = None
+
+        final_data = version_data if version_data else fallback_data
+        if final_data:
+            _api.safe_json_save(api_info_path, final_data)
+            print(f"[CivitAI Browser Neo] - API info saved to: {api_info_path}")
+        elif expected_model_id is not None:
+            print(f"[CivitAI Browser Neo] - Skipped writing API info for '{file_name}': no matching data available for model {expected_model_id}")
 
 def find_model_version_by_sha256(api_response, sha256):
     """Find the specific model version that matches the given SHA256 hash"""
@@ -3454,6 +3511,24 @@ def _fetch_api_info_by_hash(file_path, api_info_file):
                 _debug_log(f"API returned error for {model_name}: {data.get('error')}")
                 return None
 
+            # The by-hash lookup is scoped to CivitAI's file hash index, not to this
+            # specific model — if another listing shares the same file (re-upload,
+            # duplicate, or a hash collision left behind by a takedown), the response
+            # can describe a different model entirely. Cross-check against the modelId
+            # already cached in the .json sidecar (if any) before trusting it.
+            json_file = os.path.splitext(file_path)[0] + '.json'
+            expected_model_id = None
+            if os.path.exists(json_file):
+                existing_sidecar = _api.safe_json_load(json_file)
+                if existing_sidecar:
+                    expected_model_id = existing_sidecar.get('modelId')
+
+            returned_model_id = data.get('modelId')
+            if expected_model_id is not None and returned_model_id is not None and returned_model_id != expected_model_id:
+                _debug_log(f"by-hash returned model {returned_model_id} but expected {expected_model_id} for {model_name} — discarding to avoid corrupting cached metadata")
+                print(f"[CivitAI Browser Neo] ⚠ by-hash returned model {returned_model_id} but expected {expected_model_id} for '{model_name}' — skipping .api_info.json write")
+                return None
+
             # 1. Save fresh data as .api_info.json (overwrites any stale/wrong file)
             _api.safe_json_save(api_info_file, data)
             print(f"[CivitAI Browser Neo] ✅ Fetched and saved .api_info.json for: {model_name}")
@@ -3461,17 +3536,15 @@ def _fetch_api_info_by_hash(file_path, api_info_file):
             # 2. Also patch "sd version" in the .json sidecar with the correct raw value
             #    so the .json is also self-consistent and usable offline in the future
             base_model = data.get('baseModel', '')
-            if base_model:
-                json_file = os.path.splitext(file_path)[0] + '.json'
-                if os.path.exists(json_file):
-                    try:
-                        content = _api.safe_json_load(json_file) or {}
-                        if content.get('sd version') != base_model:
-                            content['sd version'] = base_model
-                            _api.safe_json_save(json_file, content)
-                            _debug_log(f"Patched 'sd version' → '{base_model}' in {os.path.basename(json_file)}")
-                    except Exception as patch_err:
-                        _debug_log(f"Could not patch .json for {model_name}: {patch_err}")
+            if base_model and os.path.exists(json_file):
+                try:
+                    content = _api.safe_json_load(json_file) or {}
+                    if content.get('sd version') != base_model:
+                        content['sd version'] = base_model
+                        _api.safe_json_save(json_file, content)
+                        _debug_log(f"Patched 'sd version' → '{base_model}' in {os.path.basename(json_file)}")
+                except Exception as patch_err:
+                    _debug_log(f"Could not patch .json for {model_name}: {patch_err}")
 
             return data
 
@@ -4420,6 +4493,347 @@ def fix_misplaced_files(plan_json, organize_by_base=True, organize_by_category=F
 
     print(f"[CivitAI Browser Neo] fix_misplaced_files: moved {completed}/{total}, errors={len(errors)}")
     yield gr.update(value=result_html), gr.update(visible=False), gr.update(visible=True), '{}'
+
+
+def _bulk_fetch_models_by_ids(ids, progress=None, progress_start=0.0, progress_end=1.0, progress_label='Checking CivitAI...'):
+    """
+    Bulk-fetch model listings from CivitAI for the given modelIds.
+
+    Mirrors the chunked / per-id-retry strategy used by the "check for updates"
+    scan in file_scan(): batches of 100 ids per request, each chunk paginated
+    via nextPage, and any batch that errors out is retried one id at a time so
+    a single broken/huge model (e.g. RealDream) doesn't drop the whole chunk.
+
+    Returns a dict {model_id: item_dict} for every id CivitAI returned data
+    for. Ids with no entry are either delisted or could not be fetched.
+    """
+    if not ids:
+        return {}
+
+    proxies, ssl = _api.get_proxies()
+    base_url = f"https://{_api.get_civitai_domain()}/api/v1/models?limit=100&nsfw=true"
+    id_params = [f"&ids={i}" for i in ids]
+
+    def chunks(lst, n):
+        for i in range(0, len(lst), n):
+            yield lst[i:i + n]
+
+    def fetch_chunk_per_id(chunk_ids):
+        rescued = []
+        for id_param in chunk_ids:
+            try:
+                single = requests.get(f"{base_url}{id_param}", timeout=(60, 30), proxies=proxies, verify=ssl)
+                if single.status_code == 200:
+                    rescued.extend(single.json().get('items', []))
+            except Exception as e:
+                debug_print(f"{id_param.replace('&ids=', 'id ')}: {type(e).__name__} (skipped)")
+        return rescued
+
+    model_chunks = list(chunks(id_params, 100))
+    all_items = []
+    url_count = max(len(model_chunks), 1)
+
+    for url_done, chunk in enumerate(model_chunks):
+        if progress is not None:
+            span = progress_end - progress_start
+            progress(progress_start + span * (url_done / url_count), desc=f"{progress_label} {url_done}/{url_count}")
+        url = f"{base_url}{''.join(chunk)}"
+        while url:
+            try:
+                response = requests.get(url, timeout=(60, 30), proxies=proxies, verify=ssl)
+                if response.status_code == 200:
+                    api_response_json = response.json()
+                    all_items.extend(api_response_json.get('items', []))
+                    metadata = api_response_json.get('metadata', {})
+                    url = metadata.get('nextPage', None)
+                else:
+                    debug_print(f"Bulk model fetch: HTTP {response.status_code} for chunk — retrying one id at a time")
+                    all_items.extend(fetch_chunk_per_id(chunk))
+                    url = None
+            except requests.exceptions.Timeout:
+                debug_print("Bulk model fetch: timed out — retrying one id at a time")
+                all_items.extend(fetch_chunk_per_id(chunk))
+                url = None
+            except requests.exceptions.ConnectionError:
+                debug_print("Bulk model fetch: connection error — CivitAI may be offline")
+                url = None
+            except Exception as e:
+                debug_print(f"Bulk model fetch: unexpected error: {e}")
+                url = None
+
+    return {item['id']: item for item in all_items if 'id' in item}
+
+
+def find_metadata_issues(folders, progress=gr.Progress() if queue else None):
+    """
+    Scan locally tracked models for two kinds of metadata problems:
+      - 'orphaned': the modelId cached in the .json sidecar no longer resolves
+        on CivitAI (the model was delisted/removed).
+      - 'corrupted': the .api_info.json on disk describes a different model
+        than the one cached in the .json sidecar (e.g. from a by-hash
+        collision, possible before the write-time id-validation guard).
+
+    Read-only — does not modify any files. Yields (html_report, resolve_btn
+    update, issues_json_string) so the UI shows a status message immediately
+    while the scan runs.
+    """
+    import json as _json
+
+    if not folders:
+        html = '''<div style="padding:20px;text-align:center;">
+            <strong>No content types selected.</strong><br>
+            <span style="color:var(--body-text-color-subdued);">Select at least one type above.</span>
+        </div>'''
+        yield gr.update(value=html), gr.update(visible=False), '{}'
+        return
+
+    yield (
+        gr.update(value='<div style="padding:12px 15px;border:1px solid var(--border-color-primary);border-radius:8px;margin:6px 0;">'
+                        '🔍 <strong>Checking local models against CivitAI…</strong> This may take a while for large collections.'
+                        '</div>'),
+        gr.update(visible=False),
+        '{}'
+    )
+
+    folders_to_check = []
+    if 'All' in folders:
+        folders = _file.get_content_choices()
+    for item in folders:
+        folder = _api.contenttype_folder('LORA') if item == 'LORA' else _api.contenttype_folder(item)
+        if folder:
+            folders_to_check.append(folder)
+
+    files = list_files(folders_to_check)
+
+    candidates = []  # (file_path, sha256, cached_model_id, model_name)
+    for file_path in files:
+        json_file = os.path.splitext(file_path)[0] + '.json'
+        if not os.path.exists(json_file):
+            continue
+        sidecar = _api.safe_json_load(json_file) or {}
+        model_id = sidecar.get('modelId')
+        if not model_id:
+            continue
+        candidates.append((file_path, sidecar.get('sha256'), model_id, os.path.basename(file_path)))
+
+    if not candidates:
+        html = '''<div style="padding:20px;text-align:center;">
+            <strong>No locally-tracked models with a cached CivitAI ID found.</strong>
+        </div>'''
+        yield gr.update(value=html), gr.update(visible=False), '{}'
+        return
+
+    if progress is not None:
+        progress(0.05, desc="Querying CivitAI for cached model IDs...")
+
+    ids = list({c[2] for c in candidates})
+    found = _bulk_fetch_models_by_ids(ids, progress=progress, progress_start=0.05, progress_end=0.9, progress_label="Checking CivitAI...")
+
+    orphaned = []
+    corrupted = []
+
+    for file_path, sha256, model_id, model_name in candidates:
+        api_info_file = os.path.splitext(file_path)[0] + '.api_info.json'
+
+        if model_id not in found:
+            orphaned.append({'file_path': file_path, 'sha256': sha256, 'model_id': model_id, 'model_name': model_name})
+            continue
+
+        if os.path.exists(api_info_file):
+            api_data = _api.safe_json_load(api_info_file) or {}
+            stored_id = api_data.get('modelId', api_data.get('id'))
+            # CivArchive-resolved files store 'id' as a string; CivitAI-native
+            # ones store ints — compare as strings so a correctly-resolved
+            # file is never re-flagged as corrupted.
+            if stored_id is not None and str(stored_id) != str(model_id):
+                corrupted.append({
+                    'file_path': file_path, 'sha256': sha256, 'model_id': model_id,
+                    'model_name': model_name, 'found_id': stored_id
+                })
+
+    if progress is not None:
+        progress(1, desc="Done.")
+
+    if not orphaned and not corrupted:
+        html = f'''
+        <div style="padding:20px;text-align:center;">
+            <div style="font-size:48px;margin-bottom:12px;">✅</div>
+            <h3 style="margin:0 0 8px 0;color:var(--body-text-color);">All {len(candidates)} checked models look consistent.</h3>
+            <p style="color:var(--body-text-color-subdued);margin:0;">No delisted or mismatched metadata found.</p>
+        </div>'''
+        yield gr.update(value=html), gr.update(visible=False), '{}'
+        return
+
+    def _rows(items, extra_col=False):
+        rows = ''
+        for it in items:
+            extra = f'<td style="padding:6px 10px;text-align:center;color:#e57373;">{it["found_id"]}</td>' if extra_col else ''
+            rows += f'''
+            <tr style="border-bottom:1px solid var(--border-color-primary);">
+                <td style="padding:6px 10px;font-family:monospace;font-size:12px;">{it['model_name']}</td>
+                <td style="padding:6px 10px;text-align:center;">{it['model_id']}</td>
+                {extra}
+            </tr>'''
+        return rows
+
+    html = f'''
+    <div style="padding:15px;border:1px solid var(--border-color-primary);border-radius:8px;margin:10px 0;">
+        <h3 style="margin:0 0 12px 0;">🔍 Local Metadata Verification</h3>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
+            <div style="padding:8px 16px;background:rgba(255,193,7,0.15);border-radius:6px;font-size:14px;">
+                🗄️ <strong>{len(orphaned)}</strong> removed from CivitAI
+            </div>
+            <div style="padding:8px 16px;background:rgba(229,115,115,0.15);border-radius:6px;font-size:14px;">
+                ⚠️ <strong>{len(corrupted)}</strong> mismatched metadata
+            </div>
+        </div>
+        <details open>
+            <summary style="cursor:pointer;padding:8px;background:var(--block-background-fill);border-radius:5px;font-size:13px;margin-bottom:8px;">
+                🗄️ Removed from CivitAI ({len(orphaned)})
+            </summary>
+            <div style="max-height:250px;overflow-y:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                    <thead><tr style="background:var(--background-fill-secondary);">
+                        <th style="padding:6px 10px;text-align:left;">File</th>
+                        <th style="padding:6px 10px;text-align:center;">Expected model ID</th>
+                    </tr></thead>
+                    <tbody>{_rows(orphaned)}</tbody>
+                </table>
+            </div>
+        </details>
+        <details open style="margin-top:10px;">
+            <summary style="cursor:pointer;padding:8px;background:var(--block-background-fill);border-radius:5px;font-size:13px;margin-bottom:8px;">
+                ⚠️ Mismatched .api_info.json ({len(corrupted)})
+            </summary>
+            <div style="max-height:250px;overflow-y:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                    <thead><tr style="background:var(--background-fill-secondary);">
+                        <th style="padding:6px 10px;text-align:left;">File</th>
+                        <th style="padding:6px 10px;text-align:center;">Expected model ID</th>
+                        <th style="padding:6px 10px;text-align:center;">Found in .api_info.json</th>
+                    </tr></thead>
+                    <tbody>{_rows(corrupted, extra_col=True)}</tbody>
+                </table>
+            </div>
+        </details>
+        <div style="margin-top:12px;padding:10px;background:#fff3cd;border-radius:5px;font-size:13px;">
+            💡 Click <strong>Resolve via CivArchive</strong> below to try recovering real metadata for these files from
+            <a href="https://civarchive.com" target="_blank">CivArchive</a>. Files with no CivArchive match are left
+            untouched and keep showing as local-only.
+        </div>
+    </div>'''
+
+    issues = {'orphaned': orphaned, 'corrupted': corrupted}
+    yield gr.update(value=html), gr.update(visible=True, interactive=True), _json.dumps(issues, ensure_ascii=False)
+
+
+def resolve_civarchive_issues(issues_json, progress=gr.Progress() if queue else None):
+    """
+    Attempt to recover real metadata for orphaned/corrupted local models found
+    by find_metadata_issues(), using CivArchive (a mirror of delisted CivitAI
+    listings) looked up by the file's SHA256.
+
+    On a CivArchive hit: writes the canonical model dict to .api_info.json
+    (marked "source": "civarchive"), and adds "resolved_via"/"archived_url"
+    to the .json sidecar without touching its existing fields — the original
+    modelId, modelVersionId, sha256 etc. are preserved.
+
+    On a miss: the file is left completely untouched and keeps falling back
+    to the plain local-only card, exactly as it does today.
+
+    Generator: yields inline HTML progress updates to the UI.
+    """
+    import json as _json
+
+    try:
+        issues = _json.loads(issues_json) if issues_json else {}
+    except Exception:
+        issues = {}
+
+    targets = (issues.get('orphaned') or []) + (issues.get('corrupted') or [])
+    total = len(targets)
+
+    if not total:
+        html = '''<div style="padding:20px;text-align:center;">
+            <strong>Nothing to resolve.</strong> Run "Verify local metadata" first.
+        </div>'''
+        yield gr.update(value=html), gr.update(visible=False), '{}'
+        return
+
+    yield (
+        gr.update(value='<div style="padding:12px 15px;border:1px solid var(--border-color-primary);border-radius:8px;margin:6px 0;">'
+                        '🗄️ <strong>Looking up CivArchive…</strong>'
+                        '</div>'),
+        gr.update(visible=True),
+        '{}'
+    )
+
+    adapter = _browser_sources.get_browser_source('civarchive')
+
+    resolved = 0
+    still_local = 0
+    errors = []
+    model_name = ''
+
+    for i, issue in enumerate(targets):
+        if gl.cancel_status:
+            break
+
+        file_path = issue['file_path']
+        sha256 = issue.get('sha256')
+        model_name = issue.get('model_name', os.path.basename(file_path))
+        expected_model_id = issue.get('model_id')
+
+        if progress is not None:
+            progress((i + 1) / total, desc=f"Resolving: {model_name} ({i + 1}/{total})")
+
+        try:
+            if not sha256 and os.path.exists(file_path):
+                sha256 = gen_sha256(file_path)
+
+            canonical = adapter.get_version_by_hash(sha256) if adapter and sha256 else None
+
+            if isinstance(canonical, dict):
+                canonical = dict(canonical)
+                canonical['source'] = 'civarchive'
+                canonical['archived_url'] = canonical.get('browserSourceUrl')
+
+                api_info_file = os.path.splitext(file_path)[0] + '.api_info.json'
+                _api.safe_json_save(api_info_file, canonical)
+
+                json_file = os.path.splitext(file_path)[0] + '.json'
+                if os.path.exists(json_file):
+                    sidecar = _api.safe_json_load(json_file) or {}
+                    sidecar['resolved_via'] = 'civarchive'
+                    sidecar['archived_url'] = canonical.get('archived_url')
+                    _api.safe_json_save(json_file, sidecar)
+
+                resolved += 1
+                print(f"[CivitAI Browser Neo] ✓ Resolved via CivArchive: {model_name}")
+            else:
+                still_local += 1
+                debug_print(f"No CivArchive match for: {model_name} (model {expected_model_id})")
+        except Exception as e:
+            errors.append(f"{model_name}: {e}")
+            still_local += 1
+            debug_print(f"Error resolving {model_name} via CivArchive: {e}")
+
+        if (i + 1) % 10 == 0 or i == total - 1:
+            yield (
+                gr.update(value=_make_progress_bar_html(i + 1, total, f'🗄️ Resolving: {model_name}')),
+                gr.update(visible=True),
+                '{}'
+            )
+
+    result_html = f'''
+    <div style="padding:20px;text-align:center;">
+        <div style="font-size:48px;margin-bottom:12px;">{'✅' if not errors else '⚠️'}</div>
+        <h3 style="margin:0 0 8px 0;color:var(--body-text-color);">{resolved} resolved via CivArchive, {still_local} still local-only.</h3>
+        <p style="color:var(--body-text-color-subdued);margin:0;font-size:13px;">Local-only files keep working exactly as before — nothing was removed.</p>
+    </div>'''
+
+    print(f"[CivitAI Browser Neo] resolve_civarchive_issues: resolved={resolved}, still_local={still_local}, errors={len(errors)}")
+    yield gr.update(value=result_html), gr.update(visible=False), '{}'
 
 
 def rollback_organization(progress=gr.Progress() if queue else None):

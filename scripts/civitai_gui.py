@@ -621,6 +621,16 @@ def on_ui_tabs():
                 fix_misplaced_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
                 undo_fix_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
 
+            gr.Markdown('**🗄️ Verify local metadata** — check that cached CivitAI IDs still exist and that `.api_info.json` matches; recover data for delisted models from CivArchive.')
+            with gr.Row():
+                verify_metadata_btn = gr.Button(value='🔍 Verify local metadata', interactive=True)
+                resolve_civarchive_btn = gr.Button(value='🗄️ Resolve via CivArchive', interactive=True, visible=False, variant='secondary')
+            with gr.Row():
+                verify_metadata_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+                resolve_civarchive_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+
+            metadata_issues_state = gr.State(value='{}')
+
             # Hidden, kept so existing bindings keep their inputs/outputs intact:
             #  - selected_tags_local: organize/validate scope (Checkpoint/LORA), synced from selected_tags
             #  - *_local toggles: consumed by file_scan_inputs_local
@@ -2100,6 +2110,28 @@ def on_ui_tabs():
             outputs=[
                 undo_fix_progress
             ]
+        )
+
+        verify_metadata_btn.click(
+            fn=_file.find_metadata_issues,
+            inputs=[selected_tags_local],
+            outputs=[
+                verify_metadata_progress,
+                resolve_civarchive_btn,
+                metadata_issues_state
+            ],
+            show_progress="full"
+        )
+
+        resolve_civarchive_btn.click(
+            fn=_file.resolve_civarchive_issues,
+            inputs=[metadata_issues_state],
+            outputs=[
+                resolve_civarchive_progress,
+                resolve_civarchive_btn,
+                metadata_issues_state
+            ],
+            show_progress="full"
         )
 
         def handle_dashboard_selection(selected):

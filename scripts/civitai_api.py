@@ -1930,7 +1930,11 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                 model_main_url = f"https://{get_civitai_domain()}/models/{item['id']}" if not is_local_only else ''
 
                 if is_local_only:
-                    api_version = {'images': []}
+                    # A file resolved via CivArchive (see resolve_civarchive_issues)
+                    # carries real preview images on its version — use those instead
+                    # of the empty state. True local-only files have none, so this
+                    # is a no-op for them.
+                    api_version = {'images': selected_version.get('images', []) or []}
                 elif prefer_cached_images:
                     # Local tab: render purely from the images the grid already cached
                     # in gl.local_json_data — zero network, instant click. The per-image
@@ -2123,12 +2127,22 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
 
                 # Build header block
                 if is_local_only:
-                    model_page = (
-                        '<div class="model-page-line">'
-                            '<span class="page-label">Model Source:</span>'
-                            f'<span>{escape(str(model_name))} (Local file only)</span>'
-                        '</div>'
-                    )
+                    civarchive_url = item.get('civarchive_url')
+                    if civarchive_url:
+                        model_page = (
+                            '<div class="model-page-line">'
+                                '<span class="page-label">Model Source:</span>'
+                                f'<a href="{civarchive_url}" target="_blank">{escape(str(model_name))}</a>'
+                                ' <span style="opacity:0.7;">(recovered via CivArchive)</span>'
+                            '</div>'
+                        )
+                    else:
+                        model_page = (
+                            '<div class="model-page-line">'
+                                '<span class="page-label">Model Source:</span>'
+                                f'<span>{escape(str(model_name))} (Local file only)</span>'
+                            '</div>'
+                        )
                 else:
                     model_page = (
                         '<div class="model-page-line">'

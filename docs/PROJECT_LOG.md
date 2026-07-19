@@ -1263,3 +1263,75 @@ Fixed pasted Hugging Face URLs that point to a specific file inside a subfolder 
 **Next steps:**
 - Smoke-test a real HF subfolder file URL in Forge Neo to confirm the file dropdown shows the correct name and size.
 - Monitor whether other providers (ModelScope, CivArchive) need similar direct-file URL support.
+
+### 2026-07-17 — Native Extra Networks card badges + opt-in CivitAI-style card theme
+
+**O que mudou (pt-BR):**
+O botão único que a extensão já injetava nos cards nativos do Extra Networks (txt2img/img2img)
+ganhou companhia: um mapa de badges construído 100% a partir dos sidecars locais
+(`build_native_card_badge_map()`), sem chamadas de API extra, entregando base model, base
+model curto, categoria LoRA (só quando confirmada manualmente, não heurística), trigger
+words e nome "bonito" do Civitai (em vez do nome do arquivo) pra cada card. Um botão 🏷️ novo
+injeta as trigger words direto no prompt reaproveitando `sendTagsToPrompt()` já existente.
+
+Além disso, foi adicionada uma configuração opt-in **"CivitAI-style card theme"**
+(`civitai_native_card_theme`, desligada por padrão) que reestiliza os cards nativos pra
+parecer com o site do Civitai: pill "TIPO | BASEMODEL" em maiúsculo no topo + badge de
+categoria LoRA, e embaixo uma barra de ações (movida, não clonada, de dentro do
+`.button-row` nativo) acima de um pill único de nome+versão. A barra de ações só aparece no
+hover, igual ao comportamento nativo.
+
+Um `MutationObserver` (`initNativeCardObserver`) foi adicionado pra detectar cards
+renderizados depois do carregamento inicial (troca de aba, troca de checkpoint, scroll) —
+antes disso, os badges só apareciam depois de um clique manual em "reload models".
+
+**Arquivos alterados:**
+- `scripts/civitai_file_manage.py` — `build_native_card_badge_map()`,
+  `get_native_card_badge_json()`, `_lora_dex_trigger_words()`; parâmetro `quiet` em
+  `_extract_base_model_from_api_data()`/`_lora_dex_base_model()` pra não inundar o
+  Debug Organization Logs num scan de biblioteca inteira.
+- `scripts/civitai_gui.py` — textboxes ocultos `native_badge_trigger`/`native_badge_data`,
+  nova opção `civitai_native_card_theme`, LoraDex dispara refresh do badge após aplicar
+  categoria.
+- `javascript/civitai-html.js` — `applyNativeCardBadges` (modo compacto),
+  `applyNativeCardTheme` (tema Civitai-style), `lookupBadgeInfo`,
+  `syncNativeCardThemeSetting`, `initNativeCardObserver`.
+- `style.css` — `.civitai-native-*` (modo compacto) e `.civitai-neo-*` (tema), tudo
+  escopado sob `body.civitai-neo-card-theme` pra não vazar quando desligado.
+
+**Decisões:**
+- **Status de atualização (outdated/installed) ficou fora do escopo** dos badges nativos —
+  esse dado só existe em memória depois que a aba Local Models Browser roda contra a API do
+  Civitai (`gl.local_json_data`); fingir isso nos cards nativos seria errado ou forçaria
+  scans de API extras. Fica como ideia futura separada.
+- **Categoria LoRA só mostra se foi confirmada manualmente** (não 'Auto'/heurística) — espelha
+  exatamente o comportamento já existente em `civitai_api.py`'s `get_model_card`.
+- Novo repo separado **`forge-neo-theme`** (`https://github.com/eduardoabreu81/forge-neo-theme`)
+  foi criado no mesmo dia: fork estrutural do `anxety-theme` (MIT) com um módulo
+  `Extra-Network-Pane.css` escopado sob `body:not(.civitai-neo-card-theme)` — fica inerte
+  automaticamente quando o tema opt-in acima está ligado, sem coordenação manual entre as
+  duas extensões.
+
+**Pontos sensíveis:**
+- **Bug sutil resolvido:** o badge de topo (tipo/base model) só era construído uma vez
+  (`if (!cardDiv.querySelector(...))`) e nunca revisitado, enquanto o bloco de nome/versão
+  embaixo já se reconstruía a cada scan. Como os dados chegam de forma assíncrona e
+  bibliotecas costumam ter muito mais LoRAs que Checkpoints, cards de LoRA tinham
+  estatisticamente mais chance de "nascer" antes do fetch terminar, ficando travados com
+  badge vazio pra sempre. Corrigido fazendo o topo também se reconstruir a cada scan — vale
+  lembrar esse padrão (asymmetric self-healing entre elementos irmãos) se badges "sumirem"
+  de novo no futuro.
+- LoRAs auto-organizadas em subpastas (Character/Style/etc.) aparecem no card nativo como
+  `"Subpasta/arquivo"`, não só `"arquivo"` — o mapa de badges indexa os dois formatos, e o
+  JS tem um fallback pro último segmento do path.
+- Botão de copy-path foi fisicamente realocado (não clonado) pro tema novo; o código que lê
+  `data-clipboard-text` já busca em todo o `.card` (não só `.button-row`), então deveria
+  sobreviver, mas não foi testado ao vivo explicitamente.
+
+**Próximos passos / Next steps:**
+- Testar `forge-neo-theme` instalado ao vivo no Forge (repo criado e enviado, ainda não
+  instalado pelo usuário até o fim da sessão).
+- Confirmar em produção (biblioteca real de 400+ arquivos) que o fix do flood de debug log
+  (`quiet=True`) realmente reduziu o log a uma linha de resumo.
+- Considerar trazer status de atualização (outdated/installed) pros cards nativos numa
+  sessão futura, com uma estratégia de cache que não force scans de API extras.
