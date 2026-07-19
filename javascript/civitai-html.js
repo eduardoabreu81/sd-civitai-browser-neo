@@ -806,6 +806,14 @@ function applyNativeCardTheme(cardDiv, buttonRow, modelName, fontSize) {
         // Action buttons sit above the name/version block.
         const actionsRow = document.createElement('div');
         actionsRow.className = 'civitai-neo-bottom-actions';
+        // buttonRow's own stopPropagation listener (added in createCivitAICardButtons)
+        // stays behind on the native button-row when its children are relocated here —
+        // without re-adding it, clicks on any button (goto-civitbrowser, trigger-word,
+        // native edit/copy/refresh) bubble up to the card's native click handler, which
+        // inserts the LoRA/embedding into the prompt as if the card itself was clicked.
+        actionsRow.addEventListener('click', function (event) {
+            event.stopPropagation();
+        });
         bottom.appendChild(actionsRow);
 
         const titleBlock = document.createElement('div');
