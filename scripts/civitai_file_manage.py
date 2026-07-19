@@ -4504,12 +4504,19 @@ def _bulk_fetch_models_by_ids(ids, progress=None, progress_start=0.0, progress_e
     via nextPage, and any batch that errors out is retried one id at a time so
     a single broken/huge model (e.g. RealDream) doesn't drop the whole chunk.
 
-    Returns a dict {model_id: item_dict} for every id CivitAI returned data
-    for. Ids with no entry are either delisted or could not be fetched.
+    Returns (found, unresolved):
+      found      — dict {model_id: item_dict} for every id CivitAI confirmed exists.
+      unresolved — set of ids that could NOT be checked (timeout/connection/HTTP
+                   error). Callers must not treat these as delisted — we simply
+                   failed to ask CivitAI about them, which is very different from
+                   CivitAI confirming they're gone. An id absent from both dicts
+                   was successfully checked and is genuinely missing from the
+                   response, i.e. confirmed delisted.
     """
     if not ids:
-        return {}
+        return {}, set()
 
+    headers = _api.get_headers()
     proxies, ssl = _api.get_proxies()
     base_url = f"https://{_api.get_civitai_domain()}/api/v1/models?limit=100&nsfw=true"
     id_params = [f"&ids={i}" for i in ids]
@@ -4518,19 +4525,32 @@ def _bulk_fetch_models_by_ids(ids, progress=None, progress_start=0.0, progress_e
         for i in range(0, len(lst), n):
             yield lst[i:i + n]
 
+    def _id_from_param(id_param):
+        try:
+            return int(id_param.replace('&ids=', ''))
+        except ValueError:
+            return id_param.replace('&ids=', '')
+
     def fetch_chunk_per_id(chunk_ids):
         rescued = []
+        failed_ids = set()
         for id_param in chunk_ids:
+            model_id = _id_from_param(id_param)
             try:
-                single = requests.get(f"{base_url}{id_param}", timeout=(60, 30), proxies=proxies, verify=ssl)
+                single = requests.get(f"{base_url}{id_param}", headers=headers, timeout=(60, 30), proxies=proxies, verify=ssl)
                 if single.status_code == 200:
                     rescued.extend(single.json().get('items', []))
+                else:
+                    failed_ids.add(model_id)
+                    debug_print(f"id {model_id}: HTTP {single.status_code} (unresolved, not treated as delisted)")
             except Exception as e:
-                debug_print(f"{id_param.replace('&ids=', 'id ')}: {type(e).__name__} (skipped)")
-        return rescued
+                failed_ids.add(model_id)
+                debug_print(f"id {model_id}: {type(e).__name__} (unresolved, not treated as delisted)")
+        return rescued, failed_ids
 
     model_chunks = list(chunks(id_params, 100))
     all_items = []
+    unresolved = set()
     url_count = max(len(model_chunks), 1)
 
     for url_done, chunk in enumerate(model_chunks):
@@ -4540,7 +4560,7 @@ def _bulk_fetch_models_by_ids(ids, progress=None, progress_start=0.0, progress_e
         url = f"{base_url}{''.join(chunk)}"
         while url:
             try:
-                response = requests.get(url, timeout=(60, 30), proxies=proxies, verify=ssl)
+                response = requests.get(url, headers=headers, timeout=(60, 30), proxies=proxies, verify=ssl)
                 if response.status_code == 200:
                     api_response_json = response.json()
                     all_items.extend(api_response_json.get('items', []))
@@ -4548,20 +4568,27 @@ def _bulk_fetch_models_by_ids(ids, progress=None, progress_start=0.0, progress_e
                     url = metadata.get('nextPage', None)
                 else:
                     debug_print(f"Bulk model fetch: HTTP {response.status_code} for chunk — retrying one id at a time")
-                    all_items.extend(fetch_chunk_per_id(chunk))
+                    rescued, failed_ids = fetch_chunk_per_id(chunk)
+                    all_items.extend(rescued)
+                    unresolved |= failed_ids
                     url = None
             except requests.exceptions.Timeout:
                 debug_print("Bulk model fetch: timed out — retrying one id at a time")
-                all_items.extend(fetch_chunk_per_id(chunk))
+                rescued, failed_ids = fetch_chunk_per_id(chunk)
+                all_items.extend(rescued)
+                unresolved |= failed_ids
                 url = None
             except requests.exceptions.ConnectionError:
-                debug_print("Bulk model fetch: connection error — CivitAI may be offline")
+                debug_print("Bulk model fetch: connection error — CivitAI may be offline; marking chunk unresolved")
+                unresolved |= {_id_from_param(p) for p in chunk}
                 url = None
             except Exception as e:
-                debug_print(f"Bulk model fetch: unexpected error: {e}")
+                debug_print(f"Bulk model fetch: unexpected error: {e} — marking chunk unresolved")
+                unresolved |= {_id_from_param(p) for p in chunk}
                 url = None
 
-    return {item['id']: item for item in all_items if 'id' in item}
+    found = {item['id']: item for item in all_items if 'id' in item}
+    return found, unresolved
 
 
 def find_metadata_issues(folders, progress=gr.Progress() if queue else None):
@@ -4627,13 +4654,30 @@ def find_metadata_issues(folders, progress=gr.Progress() if queue else None):
         progress(0.05, desc="Querying CivitAI for cached model IDs...")
 
     ids = list({c[2] for c in candidates})
-    found = _bulk_fetch_models_by_ids(ids, progress=progress, progress_start=0.05, progress_end=0.9, progress_label="Checking CivitAI...")
+    found, unresolved = _bulk_fetch_models_by_ids(ids, progress=progress, progress_start=0.05, progress_end=0.9, progress_label="Checking CivitAI...")
+
+    if unresolved and len(unresolved) == len(ids):
+        # Every single id failed to resolve — this is a request/connectivity
+        # problem, not 100% of the library being delisted. Bail out with an
+        # explicit error instead of falsely reporting everything as orphaned.
+        html = '''<div style="padding:20px;text-align:center;">
+            <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
+            <h3 style="margin:0 0 8px 0;color:var(--error-text-color);">Could not verify against CivitAI.</h3>
+            <p style="color:var(--body-text-color-subdued);margin:0;font-size:13px;">All requests failed (network/API error) — nothing was flagged. Check your connection/proxy settings and try again.</p>
+        </div>'''
+        yield gr.update(value=html), gr.update(visible=False), '{}'
+        return
 
     orphaned = []
     corrupted = []
 
     for file_path, sha256, model_id, model_name in candidates:
         api_info_file = os.path.splitext(file_path)[0] + '.api_info.json'
+
+        if model_id in unresolved:
+            # Could not check this one specifically — skip it rather than
+            # risk a false "removed from CivitAI" claim.
+            continue
 
         if model_id not in found:
             orphaned.append({'file_path': file_path, 'sha256': sha256, 'model_id': model_id, 'model_name': model_name})
@@ -4654,12 +4698,19 @@ def find_metadata_issues(folders, progress=gr.Progress() if queue else None):
     if progress is not None:
         progress(1, desc="Done.")
 
+    unresolved_note = (
+        f'<p style="color:var(--body-text-color-subdued);margin:8px 0 0 0;font-size:12px;">'
+        f'⚠️ {len(unresolved)} model(s) could not be checked (request failed) and were skipped — re-run to verify them.</p>'
+        if unresolved else ''
+    )
+
     if not orphaned and not corrupted:
         html = f'''
         <div style="padding:20px;text-align:center;">
             <div style="font-size:48px;margin-bottom:12px;">✅</div>
-            <h3 style="margin:0 0 8px 0;color:var(--body-text-color);">All {len(candidates)} checked models look consistent.</h3>
+            <h3 style="margin:0 0 8px 0;color:var(--body-text-color);">All {len(candidates) - len(unresolved)} checked models look consistent.</h3>
             <p style="color:var(--body-text-color-subdued);margin:0;">No delisted or mismatched metadata found.</p>
+            {unresolved_note}
         </div>'''
         yield gr.update(value=html), gr.update(visible=False), '{}'
         return
@@ -4721,6 +4772,7 @@ def find_metadata_issues(folders, progress=gr.Progress() if queue else None):
             <a href="https://civarchive.com" target="_blank">CivArchive</a>. Files with no CivArchive match are left
             untouched and keep showing as local-only.
         </div>
+        {unresolved_note}
     </div>'''
 
     issues = {'orphaned': orphaned, 'corrupted': corrupted}
