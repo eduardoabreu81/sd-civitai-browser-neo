@@ -2076,6 +2076,25 @@ def make_dir(path):
     except Exception as e:
         print(f"Error creating directory: {e}")
 
+def _normalize_model_id(value):
+    """
+    Normalize a modelId to int for comparisons/dict lookups.
+
+    The .json sidecar has stored modelId as either an int or a string
+    across different versions of this extension, while CivitAI's API
+    always returns it as an int (or as an int-shaped string in URL
+    params). Comparing/looking-up without normalizing causes silent
+    false mismatches (e.g. "1456174" != 1456174).
+    Returns None if value can't be parsed as an int.
+    """
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 ## === ANXETY EDITs ===
 def save_model_info(install_path, file_name, sub_folder, sha256=None, preview_html=None, overwrite_toggle=False, api_response=None):
     save_path, filename = get_save_path_and_name(install_path, file_name, api_response, sub_folder)
@@ -2141,7 +2160,7 @@ def save_model_info(install_path, file_name, sub_folder, sha256=None, preview_ht
         if os.path.exists(json_file):
             existing_sidecar = _api.safe_json_load(json_file)
             if existing_sidecar:
-                expected_model_id = existing_sidecar.get('modelId')
+                expected_model_id = _normalize_model_id(existing_sidecar.get('modelId'))
 
         version_data = None
         try:
@@ -2162,14 +2181,14 @@ def save_model_info(install_path, file_name, sub_folder, sha256=None, preview_ht
             pass  # fall through to gl.json_info below
 
         if version_data and expected_model_id is not None:
-            returned_model_id = version_data.get('modelId')
+            returned_model_id = _normalize_model_id(version_data.get('modelId'))
             if returned_model_id is not None and returned_model_id != expected_model_id:
                 print(f"[CivitAI Browser Neo] ⚠ by-hash returned model {returned_model_id} but expected {expected_model_id} for '{file_name}' — discarding to avoid corrupting cached metadata")
                 version_data = None
 
         fallback_data = gl.json_info
         if fallback_data and expected_model_id is not None:
-            fallback_id = fallback_data.get('id')
+            fallback_id = _normalize_model_id(fallback_data.get('id'))
             if fallback_id is not None and fallback_id != expected_model_id:
                 fallback_data = None
 
@@ -3521,9 +3540,9 @@ def _fetch_api_info_by_hash(file_path, api_info_file):
             if os.path.exists(json_file):
                 existing_sidecar = _api.safe_json_load(json_file)
                 if existing_sidecar:
-                    expected_model_id = existing_sidecar.get('modelId')
+                    expected_model_id = _normalize_model_id(existing_sidecar.get('modelId'))
 
-            returned_model_id = data.get('modelId')
+            returned_model_id = _normalize_model_id(data.get('modelId'))
             if expected_model_id is not None and returned_model_id is not None and returned_model_id != expected_model_id:
                 _debug_log(f"by-hash returned model {returned_model_id} but expected {expected_model_id} for {model_name} — discarding to avoid corrupting cached metadata")
                 print(f"[CivitAI Browser Neo] ⚠ by-hash returned model {returned_model_id} but expected {expected_model_id} for '{model_name}' — skipping .api_info.json write")
@@ -4638,7 +4657,7 @@ def find_metadata_issues(folders, progress=gr.Progress() if queue else None):
         if not os.path.exists(json_file):
             continue
         sidecar = _api.safe_json_load(json_file) or {}
-        model_id = sidecar.get('modelId')
+        model_id = _normalize_model_id(sidecar.get('modelId'))
         if not model_id:
             continue
         candidates.append((file_path, sidecar.get('sha256'), model_id, os.path.basename(file_path)))
