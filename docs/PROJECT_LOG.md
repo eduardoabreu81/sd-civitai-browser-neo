@@ -1336,109 +1336,105 @@ antes disso, os badges só apareciam depois de um clique manual em "reload model
 - Considerar trazer status de atualização (outdated/installed) pros cards nativos numa
   sessão futura, com uma estratégia de cache que não force scans de API extras.
 
-### 2026-07-19 — Fix: corrupção de `.api_info.json` + recuperação de modelos removidos do CivitAI via CivArchive
+### 2026-07-19 — Fix: `.api_info.json` corruption + recovery of CivitAI-delisted models via CivArchive
 
-**O que foi reportado:** Usuário baixou uma LoRA (`Cute_gym_girl_v4_epoch_10-Anima`, modelId
-2472713) que depois saiu do CivitAI, mas continua disponível no CivArchive/HuggingFace.
-Inspecionando os sidecars locais, o `.json` ainda referenciava corretamente o modelId 2472713,
-mas o `.api_info.json` continha os dados de **outro modelo completamente diferente** (id
-2598448, "Curvy Femboy..."). Ao investigar o fluxo de "check for updates", ficou claro que um
-modelo removido do CivitAI também era descartado silenciosamente da varredura em lote, sem
-nenhum aviso ao usuário.
+**What was reported:** User downloaded a LoRA (`Cute_gym_girl_v4_epoch_10-Anima`, modelId
+2472713) that was later removed from CivitAI but remains available on CivArchive/HuggingFace.
+Inspecting the local sidecars, the `.json` still correctly referenced modelId 2472713, but
+`.api_info.json` contained the data of a **completely different model** (id 2598448, "Curvy
+Femboy..."). Investigating the "check for updates" flow also showed that a model removed from
+CivitAI was silently dropped from the bulk scan, with no warning to the user.
 
-**Causa raiz da corrupção:** `save_model_info()` e `_fetch_api_info_by_hash()`
-(`scripts/civitai_file_manage.py`) resolvem metadata via `GET /api/v1/model-versions/by-hash/
-{sha256}`, que indexa pelo hash do arquivo **no site inteiro**, não por modelId. Se dois
-listings diferentes compartilham o mesmo arquivo (reupload, duplicata, ou uma colisão de hash
-deixada por uma remoção), a resposta do by-hash pode descrever um modelo totalmente diferente
-— e o código escrevia isso no `.api_info.json` sem checar contra o modelId já em cache no
-`.json` sidecar.
+**Root cause of the corruption:** `save_model_info()` and `_fetch_api_info_by_hash()`
+(`scripts/civitai_file_manage.py`) resolve metadata via `GET /api/v1/model-versions/by-hash/
+{sha256}`, which indexes by file hash **site-wide**, not by modelId. If two different listings
+share the same file (re-upload, duplicate, or a hash collision left behind by a takedown), the
+by-hash response can describe an entirely different model — and the code wrote it to
+`.api_info.json` without checking it against the modelId already cached in the `.json` sidecar.
 
-**O que mudou (pt-BR):**
-1. **Trava de integridade (Parte 1)** — `save_model_info`/`_fetch_api_info_by_hash` agora
-   comparam o `modelId` retornado pelo by-hash (ou pelo fallback `gl.json_info`) contra o
-   `modelId` já em cache no sidecar antes de sobrescrever `.api_info.json`. Em divergência, a
-   escrita é descartada e logada — nunca mais grava o modelo errado por cima.
-2. **Nova seção "Verify local metadata" no Organization tab** — dois botões novos, seguindo o
-   mesmo padrão UX de "Validate organization" → "Fix misplaced files":
-   - `find_metadata_issues()` varre os modelos locais com `modelId` em cache, consulta o
-     CivitAI em lote e classifica em **orphaned** (removido do CivitAI) e **corrupted**
-     (`.api_info.json` não bate com o sidecar — exatamente o caso relatado).
-   - `resolve_civarchive_issues()` busca cada item flagado no CivArchive pelo SHA256
-     (reaproveitando o adapter `CivArchiveSource` já existente em
-     `scripts/browser_sources/civarchive.py` — nenhuma chamada HTTP nova foi criada), e
-     regrava o `.api_info.json` com os dados reais (`"source": "civarchive"`), preservando o
-     `.json` original. Sem match no CivArchive, o arquivo fica intocado e continua caindo no
-     fallback local de sempre — **`_build_local_fallback_browser_item` não foi removido nem
-     alterado em seu comportamento padrão**, só passou a enriquecer o card quando existe
-     `.api_info.json` marcado `source: civarchive`.
-   - O painel de detalhes (`civitai_api.py`) passou a mostrar imagens/descrição reais e um
-     link "(recovered via CivArchive)" nesse caso específico, em vez do texto vazio "(Local
-     file only)".
+**What changed:**
+1. **Integrity guard (Part 1)** — `save_model_info`/`_fetch_api_info_by_hash` now compare the
+   `modelId` returned by the by-hash call (or the `gl.json_info` fallback) against the modelId
+   already cached in the sidecar before overwriting `.api_info.json`. On mismatch, the write is
+   discarded and logged — it will never again write the wrong model's data over an existing file.
+2. **New "Verify local metadata" section in the Organization tab** — two new buttons, following
+   the same UX pattern as "Validate organization" → "Fix misplaced files":
+   - `find_metadata_issues()` scans local models with a cached `modelId`, queries CivitAI in
+     bulk, and classifies them as **orphaned** (removed from CivitAI) or **corrupted**
+     (`.api_info.json` doesn't match the sidecar — exactly the reported case).
+   - `resolve_civarchive_issues()` looks up each flagged item on CivArchive by SHA256 (reusing
+     the existing `CivArchiveSource` adapter in `scripts/browser_sources/civarchive.py` — no new
+     HTTP call was written), and rewrites `.api_info.json` with the real data
+     (`"source": "civarchive"`), preserving the original `.json`. With no CivArchive match, the
+     file is left untouched and keeps falling back to the plain local-only card as before —
+     **`_build_local_fallback_browser_item` was neither removed nor changed in its default
+     behavior**, it was only extended to enrich the card when a `.api_info.json` marked
+     `source: civarchive` exists.
+   - The detail panel (`civitai_api.py`) now shows real images/description and a
+     "(recovered via CivArchive)" link in that specific case, instead of the empty "(Local file
+     only)" text.
 
-**Dois bugs pegos durante a validação remota do usuário (não durante o dev inicial):**
-3. **Falso positivo por falha de request** — `_bulk_fetch_models_by_ids` tratava qualquer
-   timeout/erro de conexão/HTTP não-200 como "modelo não encontrado" silenciosamente. Uma
-   falha de rede na consulta em lote fazia **todo mundo** aparecer como "removido do
-   CivitAI" (reproduzido: 7/7 modelos flagados numa varredura, incluindo um confirmado vivo
-   no site — "TURBO for ANIMA", modelId 2619830). Corrigido: a função agora retorna
-   `(found, unresolved)` — ids que falharam ao verificar são excluídos da lista de órfãos em
-   vez de reportados como removidos, com um aviso indicando quantos foram pulados. Também
-   passou a enviar `_api.get_headers()` na consulta em lote (faltava antes).
-4. **Inconsistência de tipo no `modelId`** — o sidecar `.json` guarda `modelId` ora como
-   `int`, ora como `string` (`"modelId": "1456174"`), dependendo de qual versão da extensão
-   escreveu o arquivo; a API do CivitAI sempre retorna `int`. Comparações por chave de
-   dicionário (`model_id not in found`) falhavam silenciosamente para os sidecars com string,
-   marcando modelos vivos como órfãos (caso real: `skindentation_epoch_10`, modelId
-   1456174). Adicionado `_normalize_model_id()` e aplicado em todo lugar que lê `modelId` do
-   sidecar para comparação/lookup — inclusive na trava da Parte 1, que tinha o mesmo risco.
+**Two bugs caught during the user's remote validation (not during initial dev):**
+3. **False positive on request failure** — `_bulk_fetch_models_by_ids` silently treated any
+   timeout/connection error/non-200 HTTP status as "model not found". A single network failure
+   in the bulk query made **every** model appear "removed from CivitAI" (repro: 7/7 models
+   flagged in one scan, including one confirmed live on the site — "TURBO for ANIMA", modelId
+   2619830). Fixed: the function now returns `(found, unresolved)` — ids that failed to check
+   are excluded from the orphaned list instead of being reported as removed, with a banner
+   noting how many were skipped. Also now sends `_api.get_headers()` on the bulk request
+   (previously missing).
+4. **`modelId` type inconsistency** — the `.json` sidecar stores `modelId` as either an `int` or
+   a `string` (`"modelId": "1456174"`) depending on which extension version wrote the file;
+   CivitAI's API always returns an `int`. Dict-key comparisons (`model_id not in found`) silently
+   failed for string-typed sidecars, flagging live models as orphaned (real case:
+   `skindentation_epoch_10`, modelId 1456174). Added `_normalize_model_id()` and applied it
+   everywhere a sidecar modelId is read for comparison/lookup — including the Part 1 guard,
+   which had the same risk.
 
-**Bug não relacionado, achado durante o mesmo teste do usuário:** clicar no botão CivitAI de
-um card nativo (Extra Networks) estava inserindo o LoRA direto no prompt, sem passar pelo
-popup nem pela config "Send model from the card's CivitAI button to the browser". Não era
-regressão desta sessão — vinha do recurso "CivitAI-style card theme" (`civitai_native_card_theme`,
-commits `a06ba46`…`ebdae46`, dias anteriores). `applyNativeCardTheme()` **move** (não clona)
-todos os botões do `.button-row` nativo para um container novo
-(`.civitai-neo-bottom-actions`), mas o listener que bloqueia a propagação do clique
-(`stopPropagation`, adicionado uma vez em `createCivitAICardButtons`) ficou preso no
-`.button-row` original, agora vazio — clique em qualquer botão relocado (CivitAI, 🏷️, ou os
-nativos de editar/copiar/refresh) vazava pro handler nativo do card, que insere o
-LoRA/embedding no prompt. Corrigido adicionando o mesmo `stopPropagation` no container novo.
-Confirmado que o `forge-neo-theme` (extensão de tema separada, mesmo repositório de projetos
-do usuário) **não** é a causa — o CSS dele já vem com guarda `body:not(.civitai-neo-card-theme)`
-para nunca conflitar com este recurso.
+**Unrelated bug found during the same test pass:** clicking a native Extra Networks card's
+CivitAI button was inserting the LoRA straight into the prompt, bypassing both the popup and
+the "Send model from the card's CivitAI button to the browser" setting. Not a regression from
+this session — it came from the pre-existing "CivitAI-style card theme" feature
+(`civitai_native_card_theme`, commits `a06ba46`…`ebdae46`, prior days). `applyNativeCardTheme()`
+**moves** (doesn't clone) every button-row child into a new container
+(`.civitai-neo-bottom-actions`), but the click-propagation guard (`stopPropagation`, added once
+in `createCivitAICardButtons`) stayed behind on the now-empty original `.button-row` — clicking
+any relocated button (CivitAI, 🏷️, or the native edit/copy/refresh buttons) bubbled up to the
+card's native click handler, which inserts the LoRA/embedding into the prompt. Fixed by adding
+the same `stopPropagation` listener to the new container. Confirmed the user's separate
+`forge-neo-theme` extension is **not** the cause — its CSS already guards with
+`body:not(.civitai-neo-card-theme)` to never conflict with this feature.
 
-**Arquivos alterados:**
-- `scripts/civitai_file_manage.py` — `_normalize_model_id()`, trava de id em
-  `save_model_info`/`_fetch_api_info_by_hash`, `_bulk_fetch_models_by_ids()` (com retorno
-  `found`/`unresolved`), `find_metadata_issues()`, `resolve_civarchive_issues()`,
-  `_build_local_fallback_browser_item()` enriquecido; novo import
-  `scripts.browser_sources as _browser_sources`.
-- `scripts/civitai_gui.py` — nova seção "Verify local metadata" / "Resolve via CivArchive" no
-  Organization tab (`gr.Button`, `gr.HTML`, `gr.State`), wiring dos `.click()`.
-- `scripts/civitai_api.py` — branch `is_local_only` (painel de detalhes) passou a renderizar
-  imagens reais e link CivArchive quando aplicável.
-- `javascript/civitai-html.js` — `stopPropagation` em `.civitai-neo-bottom-actions`.
+**Files changed:**
+- `scripts/civitai_file_manage.py` — `_normalize_model_id()`, id guard in
+  `save_model_info`/`_fetch_api_info_by_hash`, `_bulk_fetch_models_by_ids()` (now returning
+  `found`/`unresolved`), `find_metadata_issues()`, `resolve_civarchive_issues()`, enriched
+  `_build_local_fallback_browser_item()`; new import `scripts.browser_sources as
+  _browser_sources`.
+- `scripts/civitai_gui.py` — new "Verify local metadata" / "Resolve via CivArchive" section in
+  the Organization tab (`gr.Button`, `gr.HTML`, `gr.State`), `.click()` wiring.
+- `scripts/civitai_api.py` — the `is_local_only` branch (detail panel) now renders real images
+  and a CivArchive link when applicable.
+- `javascript/civitai-html.js` — `stopPropagation` on `.civitai-neo-bottom-actions`.
 
-**Decisões:**
-- **`file_scan()` não foi tocado** — em vez de extrair o bloco de bulk-query de dentro dessa
-  função (grande, geradora, já documentada como sensível a regressão de performance no Local
-  tab), `_bulk_fetch_models_by_ids()` foi escrita como implementação nova e paralela com a
-  mesma lógica de chunking/retry, usada só pelo scan novo.
-- **Fallback local nunca é removido** — requisito explícito do usuário: a formatação de
-  dados reais do CivitAI/CivArchive é melhor que qualquer coisa sintetizada localmente, então
-  o card local-only "vazio" continua existindo intacto como último recurso; CivArchive só
-  entra como fonte melhor quando de fato tem dados pra oferecer.
+**Decisions:**
+- **`file_scan()` was left untouched** — instead of extracting the bulk-query block out of that
+  function (large, generator-based, already documented as regression-sensitive for Local tab
+  performance), `_bulk_fetch_models_by_ids()` was written as a new, parallel implementation with
+  the same chunking/retry logic, used only by the new scan.
+- **The local fallback is never removed** — explicit user requirement: real CivitAI/CivArchive
+  data formatting beats anything synthesized locally, so the empty local-only card stays intact
+  as the last resort; CivArchive only becomes the source when it actually has data to offer.
 
-**Validação:** `py_compile` limpo nos três arquivos Python tocados; `node --check` limpo no
-JS. Passado para validação remota pelo usuário (branch `revamp`, commits `93ed71f`, `b0e8a72`,
-`340af52`, `0720ad1`) — os itens 3 e 4 acima só foram pegos **depois** de rodar contra a
-biblioteca real do usuário, não em teste local.
+**Validation:** clean `py_compile` on the three touched Python files; clean `node --check` on
+the JS. Handed off for the user's remote validation (branch `revamp`, commits `93ed71f`,
+`b0e8a72`, `340af52`, `0720ad1`) — items 3 and 4 above were only caught **after** running
+against the user's real library, not in local testing.
 
-**Próximos passos / Next steps:**
-- Confirmar que a varredura "Verify local metadata" está limpa (sem falsos positivos) contra
-  a biblioteca completa do usuário, agora com os fixes de `unresolved` e normalização de tipo.
-- Validar visualmente o card resolvido via CivArchive no painel de detalhes (imagens, link,
-  descrição) — ainda não confirmado ao vivo.
-- Confirmar que o fix de `stopPropagation` realmente resolve o problema do botão CivitAI
-  inserindo no prompt, com "CivitAI-style card theme" ligado.
+**Next steps:**
+- Confirm the "Verify local metadata" scan comes back clean (no false positives) against the
+  user's full library, now with the `unresolved` and type-normalization fixes.
+- Visually validate a CivArchive-resolved card in the detail panel (images, link, description) —
+  not yet confirmed live.
+- Confirm the `stopPropagation` fix actually resolves the CivitAI-button-inserts-into-prompt
+  issue with "CivitAI-style card theme" enabled.
