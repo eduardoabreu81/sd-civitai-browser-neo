@@ -1506,10 +1506,26 @@ key reaches CivitAI's auth layer fine and the failure is inside their own `user.
 procedure. This is an upstream CivitAI MCP issue (still beta), not something fixable from this
 extension's client; flagged for the user to report to CivitAI directly.
 
+**Follow-up (same day) — fallback images had no per-image metadata:** live validation showed the
+gallery now rendered, but every image fell back to the "No metadata available" state instead of
+showing real prompt/sampler/steps/etc., unlike a normally-downloaded model (compared directly
+against a known-good reference, `pastelkaAnima_v3.html`). Cause: the fallback introduced above,
+`selected_version.get('images')`, comes from the `/models` **listing** endpoint, which does not
+include per-image generation `meta` — only the dedicated by-id/by-hash endpoints do. Fixed by
+retrying via `/api/v1/model-versions/by-hash/{sha256}` (the same endpoint already proven to work
+for `.api_info.json`, confirmed live to return full `meta` for the affected model) before falling
+back to the meta-less listing images, which is now strictly the last resort. Same file
+(`scripts/civitai_api.py`), same function.
+
 **Next steps:**
-- Confirm live that a freshly-published model's HTML now shows its sample images instead of the
-  empty state.
+- Confirm live that a freshly-published model's HTML now shows its sample images **with** full
+  generation metadata (prompt/sampler/steps/...), not just the thumbnails.
 - Confirm live that a "Replace installed" update from Local Models now regenerates the sidecar
   with the new version's data, without needing a manual "Update info & tags" run.
+- The two models downloaded during this session before the by-hash retry fix
+  (`bluesyndromeND_type2`, `galenaCATGalenaCitronAnime_animaV1`) still have the meta-less cached
+  `.html` on disk — user needs to run "Update info & tags" in Organization once to rebuild them
+  through the fixed path (the stale-cache auto-rebuild in `model_from_sent` only triggers on the
+  "Unable to load preview images" marker, not on this "no metadata" state).
 - No action pending on the MCP `getSelfStatus` issue from this extension's side — it depends on
   a CivitAI-side fix.
