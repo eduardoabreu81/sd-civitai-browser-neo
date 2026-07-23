@@ -1946,12 +1946,19 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                     url = f"https://{get_civitai_domain()}/api/v1/model-versions/{selected_version['id']}"
                     api_version = request_civit_api(url)
                     # A freshly-published version can 404/error on this dedicated endpoint
-                    # before CivitAI's search index catches up, even though selected_version
-                    # (from the /models/{id} response that already rendered the rest of this
-                    # HTML) already carries the same version's images. Fall back to those
-                    # instead of showing the "Unable to load preview images" empty state —
-                    # but only when there's actually something to fall back to, so a genuine
-                    # API failure with no cached images still surfaces the error state.
+                    # before CivitAI's search index catches up. Retry via by-hash first —
+                    # proven (see the .api_info.json fetch elsewhere) to stay in sync even
+                    # when the by-id endpoint lags, and unlike selected_version's images
+                    # (from the /models listing response) it still carries full per-image
+                    # generation meta (prompt/sampler/steps/...), not just the thumbnail.
+                    if not (isinstance(api_version, dict) and 'images' in api_version):
+                        if sha256_value and sha256_value != 'Unknown':
+                            by_hash_url = f"https://{get_civitai_domain()}/api/v1/model-versions/by-hash/{sha256_value}"
+                            retry_version = request_civit_api(by_hash_url)
+                            if isinstance(retry_version, dict) and 'images' in retry_version:
+                                api_version = retry_version
+                    # Last resort: selected_version's own images have no per-image meta,
+                    # but showing them beats the "Unable to load preview images" empty state.
                     if not (isinstance(api_version, dict) and 'images' in api_version):
                         fallback_images = selected_version.get('images', []) or []
                         if fallback_images:
