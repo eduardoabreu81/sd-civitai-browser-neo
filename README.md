@@ -193,6 +193,7 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 - **Safer external metadata normalization** — external source files/images are normalized to the same legacy Browser shape expected by detail panels, downloads, sidecars, and preview saving.
 - **Hugging Face result filtering** — checkpoint search now prefers real model artifacts, avoids auxiliary Diffusers components, separates LoRA results from checkpoint results, and uses video pipeline filters for video model families such as Wan.
 - **GGUF installed-model detection** — `.gguf` checkpoints now appear in Local Models and are recognized as installed files by Browser cards, so their sidecars, delete actions, and update checks work the same as `.safetensors`/`.ckpt` files.
+- **Preview gallery reliability** — freshly-published models no longer show a false "Unable to load preview images" error, and updating an installed model with "Replace installed" now correctly refreshes its sidecar to the new version instead of retaining the previous one's data.
 
 > This is active work on the `revamp` branch. CivitAI remains the primary source of truth for metadata and SHA256 validation. External-source search/download is being added incrementally and should be runtime-tested in Forge Neo before release.
 

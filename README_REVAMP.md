@@ -152,6 +152,13 @@ A new sub-tab inside Local Models for managing LoRA categories.
 - If a downloaded file fails SHA256 verification, the extension re-queries `/api/v1/model-versions/{version_id}`.
 - If the author silently updated the file, the new hash is accepted and metadata is refreshed instead of failing.
 
+### Preview gallery reliability
+
+- A freshly-published model version no longer shows a false "Unable to load preview images" error — the extension retries through a second endpoint (and, as a last resort, the images already fetched for the model page) instead of giving up on the first failed request.
+- That retry preserves full per-image generation data (prompt, sampler, steps, CFG, seed) instead of falling back to bare thumbnails with no metadata.
+- The Local Models detail panel now detects a cached preview that's stuck in that error state and rebuilds it automatically on the next click, instead of showing the same broken cache indefinitely.
+- Fixed a bug where updating an already-installed model with **"Replace installed"** could regenerate the `.html`/`.json` sidecar with the *previous* version's data instead of the new one — the extension was resolving metadata against whichever version was still marked installed on disk at that moment, rather than the version actually being downloaded.
+
 ---
 
 ## 🗂️ Organization Enhancements
