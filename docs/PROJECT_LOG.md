@@ -1438,3 +1438,78 @@ against the user's real library, not in local testing.
   not yet confirmed live.
 - Confirm the `stopPropagation` fix actually resolves the CivitAI-button-inserts-into-prompt
   issue with "CivitAI-style card theme" enabled.
+
+### 2026-07-23 — Fix: missing preview-image gallery and stale metadata on model updates
+
+**What was reported:** Two freshly-downloaded checkpoints (`bluesyndromeND_type2`,
+`galenaCATGalenaCitronAnime_animaV1`) had their `.html` sidecar created, but the sample-image
+gallery inside it showed an "Unable to load preview images" empty state instead of the model's
+actual preview images. Separately, the user reported a longer-standing issue: updating an
+already-installed model from the Local Models tab with "Replace installed" regenerates the
+`.html`/`.json` sidecar, but it keeps showing the **previous** version's data — requiring a
+manual "Update info & tags" run from the Organization tab to actually refresh it. This never
+happens with "Keep installed", since that path creates a brand-new file/sidecar instead of
+overwriting one.
+
+**Root cause 1 (missing gallery):** `update_model_info()` (`scripts/civitai_api.py`) builds the
+sample-image gallery from a **separate**, redundant API call to
+`/api/v1/model-versions/{id}`, even though the model dict already fetched for the rest of the
+HTML (`selected_version`) already carries that version's `images` array — the same data that
+renders the model's thumbnail in the Browser grid before the user even clicks download. For a
+version published the same day, that dedicated endpoint 404'd (index not caught up yet on
+CivitAI's side), so the gallery fell back to the generic error state even though the images were
+already on hand. Confirmed by inspecting the already-downloaded `.api_info.json` for both
+models: it contained a full 10-image array with generation metadata.
+
+**Root cause 2 (stale update metadata):** `download_create_thread()`
+(`scripts/civitai_download.py`) resolves the version to render into `preview_html` via
+`update_model_versions(...).get('value')` — and that function (`scripts/civitai_api.py`) always
+defaults to whichever version is currently marked `[Installed]` on disk. During a "Replace
+installed" update, the OLD file is still on disk at the moment this lazy fetch runs (the new one
+hasn't replaced it yet), so the resolved "default" version was the **old** one — silently
+regenerating the sidecar with the previous version's data every time, even though the item being
+downloaded already carried the correct target version (`item['version_name']`).
+
+**What changed:**
+1. `scripts/civitai_api.py` — in the non-cached image-fetch branch, if the dedicated
+   model-versions call fails or returns no usable `images`, fall back to
+   `selected_version.get('images')` instead of unconditionally showing the empty state. Only
+   keeps the error state when there's truly nothing to fall back to.
+2. `scripts/civitai_download.py` — the lazy preview-html fetch now resolves against
+   `item['version_name']` (the version actually queued for download) instead of
+   `update_model_versions()`'s installed-prioritizing default.
+3. `scripts/civitai_file_manage.py` — added a defensive fallback in `model_from_sent` (Local tab
+   detail panel): if a cached `.html` still contains the "Unable to load preview images" marker,
+   treat it as a cache miss, refetch fresh data, and rewrite the sidecar via `save_model_info()`
+   so the next click doesn't hit the same stale cache. Scoped strictly to the file being viewed —
+   it never touches another file's sidecar, so a "Keep installed" old file (whose cache was never
+   broken to begin with) is unaffected.
+
+**Files changed:** `scripts/civitai_api.py`, `scripts/civitai_download.py`,
+`scripts/civitai_file_manage.py`.
+
+**Validation:** clean `py_compile` on all three files. Root cause 1 confirmed against the user's
+real `.api_info.json` files (images present in the already-fetched data). Root cause 2 confirmed
+by reading `update_model_versions()`'s default-selection logic (`scripts/civitai_api.py`,
+`[Installed]`-priority branch) against `download_create_thread()`'s lazy-fetch call site. Not yet
+re-validated live against a real "Replace installed" update on the user's Forge Neo instance.
+
+**Also investigated (no code change):** the user hit a recurring
+`user.getSelfStatus: Invalid input` error from the CivitAI MCP client
+(`scripts/civitai_mcp.py`, used today only for the account badge's `whoami()` call). Compared the
+client against the current `https://mcp.civitai.com/llms.txt` docs and the connector setup page —
+request shape, headers, and response envelope all match. Reproduced the MCP endpoint directly
+with no key and with a garbage key: both returned different, generic errors ("No API key
+available" / "Please use the public API instead"), while the user's real key (confirmed
+"FULL ACCESS", no limit, in active use) produces a distinct "Invalid input" error — proving the
+key reaches CivitAI's auth layer fine and the failure is inside their own `user.getSelfStatus`
+procedure. This is an upstream CivitAI MCP issue (still beta), not something fixable from this
+extension's client; flagged for the user to report to CivitAI directly.
+
+**Next steps:**
+- Confirm live that a freshly-published model's HTML now shows its sample images instead of the
+  empty state.
+- Confirm live that a "Replace installed" update from Local Models now regenerates the sidecar
+  with the new version's data, without needing a manual "Update info & tags" run.
+- No action pending on the MCP `getSelfStatus` issue from this extension's side — it depends on
+  a CivitAI-side fix.
