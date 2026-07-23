@@ -1718,10 +1718,18 @@ def _wrap_html_with_css(body: str) -> str:
     return f'<head><style>{css}</style></head>{body}'
 
 
+# Marks a cached .html sidecar whose sample-image gallery failed to load at save
+# time (e.g. CivitAI's model-versions endpoint 404ing on a just-published version
+# before its search index caught up — see civitai_api.py's selected_version images
+# fallback). model_from_sent uses this to treat the cache as a miss and rebuild it.
+_STALE_HTML_MARKER = 'Unable to load preview images'
+
+
 def model_from_sent(model_name, content_type):
     modelID_failed = False
     output_html = None
     model_file = None
+    needs_sidecar_rebuild = False
     use_local_html = getattr(opts, 'use_local_html', False)
     local_path_in_html = getattr(opts, 'local_path_in_html', False)
 
@@ -1782,6 +1790,12 @@ def model_from_sent(model_name, content_type):
                 output_html = _upgrade_cached_send_button(output_html)
                 if local_path_in_html:
                     output_html = convert_local_images(output_html)
+                if _STALE_HTML_MARKER in output_html:
+                    # Cached gallery failed to load previously — refetch below instead
+                    # of serving the broken cache again, and rebuild the sidecar so
+                    # future clicks don't hit this same stale cache.
+                    output_html = None
+                    needs_sidecar_rebuild = True
 
     if not output_html:
         api_response = None
@@ -1830,6 +1844,14 @@ def model_from_sent(model_name, content_type):
             # Fallback to first version if specific version not found
             model_versions = _api.update_model_versions(modelID, api_response)
             output_html = _api.update_model_info(None, model_versions.get('value'), True, modelID, api_response, True)
+
+        if needs_sidecar_rebuild and output_html and _STALE_HTML_MARKER not in output_html:
+            try:
+                install_path, model_filename = os.path.split(model_file)
+                sub_folder = os.path.normpath(os.path.relpath(install_path, gl.main_folder))
+                save_model_info(install_path, model_filename, sub_folder, sha256=file_sha256, preview_html=output_html, overwrite_toggle=True, api_response=api_response)
+            except Exception as e:
+                print(f"[CivitAI Browser Neo] - Could not rebuild stale sidecar for '{model_file}': {e}")
 
     css_path = Path(__file__).resolve().parents[1] / 'style_html.css'
     with open(css_path, 'r', encoding='utf-8') as css_file:

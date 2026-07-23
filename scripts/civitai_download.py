@@ -1341,7 +1341,15 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
         if _lazy_versions:
             item['model_versions'] = _lazy_versions
         try:
-            _lazy_result = _api.update_model_info(None, (item['model_versions'] or {}).get('value'), False, item['model_id'], json_input=_mj)
+            # Resolve preview_html for the version we actually queued (item['version_name']),
+            # NOT update_model_versions()'s default choice. That default prioritizes whichever
+            # version is currently marked [Installed] on disk — and for an update-in-progress
+            # the OLD file is still on disk at this point (the new one hasn't replaced it yet),
+            # so the dropdown's "value" pointed at the OLD version. That silently regenerated
+            # the .html/.json sidecar with the previous version's data on every "Replace
+            # installed" update, making it look like the update never refreshed anything.
+            _target_version = item.get('version_name') or (item['model_versions'] or {}).get('value')
+            _lazy_result = _api.update_model_info(None, _target_version, False, item['model_id'], json_input=_mj)
             item['preview_html'] = _lazy_result[0].get('value', '') if isinstance(_lazy_result[0], dict) else ''
             item['existing_path'] = (_lazy_result[11].get('value') if isinstance(_lazy_result[11], dict) else None) or item['install_path']
         except Exception as _e:

@@ -1945,6 +1945,17 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                 else:
                     url = f"https://{get_civitai_domain()}/api/v1/model-versions/{selected_version['id']}"
                     api_version = request_civit_api(url)
+                    # A freshly-published version can 404/error on this dedicated endpoint
+                    # before CivitAI's search index catches up, even though selected_version
+                    # (from the /models/{id} response that already rendered the rest of this
+                    # HTML) already carries the same version's images. Fall back to those
+                    # instead of showing the "Unable to load preview images" empty state —
+                    # but only when there's actually something to fall back to, so a genuine
+                    # API failure with no cached images still surfaces the error state.
+                    if not (isinstance(api_version, dict) and 'images' in api_version):
+                        fallback_images = selected_version.get('images', []) or []
+                        if fallback_images:
+                            api_version = {'images': fallback_images}
 
                 ## === ANXETY EDITs ===
                 # --- HTML Generation ---
