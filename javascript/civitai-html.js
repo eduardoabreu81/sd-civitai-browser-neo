@@ -1236,6 +1236,7 @@ function updateSelectedLocalModels() {
         console.warn('[CivitAI Browser Neo] updateSelectedLocalModels: #update_selected_trigger textarea not found');
         return;
     }
+    setCivDownloadOrigin('local');
     trigger.value = JSON.stringify(selectedModelsLocal);
     updateInput(trigger);
 }
@@ -2553,6 +2554,7 @@ function deleteInstalledModel(event, modelString, sha256, installedCount = 1) {
 function updateAllModels() {
     const trigger = gradioApp().querySelector('#update_all_trigger textarea');
     if (!trigger) return;
+    setCivDownloadOrigin('local');
     trigger.value = String(Date.now());
     updateInput(trigger);
 }
@@ -2565,6 +2567,7 @@ function updateOrSelectedModels() {
     if (selectedModels.length > 0) {
         const trigger = gradioApp().querySelector('#update_selected_trigger textarea');
         if (!trigger) return;
+        setCivDownloadOrigin('local');
         trigger.value = JSON.stringify(selectedModels);
         updateInput(trigger);
         // Visual feedback: dim checked cards

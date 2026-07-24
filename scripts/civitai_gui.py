@@ -1351,11 +1351,15 @@ def on_ui_tabs():
         ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
 
         # Update → reuse the existing single-update pipeline via update_single_trigger
-        # (download origin is carried per queue item — dl_origin — not set at click time)
+        # (per-item dl_origin still drives the bar once the queue renders; the _js below
+        # only sets the ORIGIN CLASS eagerly on click, closing the race where a just-finished
+        # Browser download leaves body.civ-dl-origin-browser set and the Local bar would
+        # otherwise flash in the Browser tab until the queue HTML re-renders)
         local_update_btn.click(
             fn=trigger_local_update,
             inputs=[local_model_id, local_sha256],
-            outputs=[update_single_trigger]
+            outputs=[update_single_trigger],
+            _js="(mid, sha) => { setCivDownloadOrigin('local'); return [mid, sha]; }"
         )
 
         # Download the version chosen in the dropdown → same pipeline, with the version id
@@ -1363,7 +1367,8 @@ def on_ui_tabs():
         local_download_version_btn.click(
             fn=trigger_local_version_download,
             inputs=[local_model_id, local_version, local_file_list],
-            outputs=[update_single_trigger]
+            outputs=[update_single_trigger],
+            _js="(mid, ver, files) => { setCivDownloadOrigin('local'); return [mid, ver, files]; }"
         )
 
         # Batch update of checked (outdated) cards → reuses the update_selected pipeline
