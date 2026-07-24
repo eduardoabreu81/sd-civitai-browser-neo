@@ -522,8 +522,10 @@ def update_mode_page_html(content_type_filter, base_filter, tile_count, current_
         )
 
         cards_html.append(f'''<figure class="civmodelcard update-mode-card" data-model-id="{model_id}" data-family="{fam_up}">
-  <input type="checkbox" class="model-checkbox" id="{chk_id}" onchange="multi_model_select('{model_str}', '{model_type}', this.checked, this); syncUpdateBtn()">
-  <label for="{chk_id}" class="custom-checkbox"><span class="checkbox-checkmark"></span></label>
+  <div class="checkbox-container">
+    <input type="checkbox" class="model-checkbox" id="{chk_id}" onchange="multi_model_select('{model_str}', '{model_type}', this.checked, this); syncUpdateBtn()">
+    <label for="{chk_id}" class="custom-checkbox"><span class="checkbox-checkmark"></span></label>
+  </div>
   <div class="civmodelcard-img-wrapper update-card-thumb">{thumb_html}</div>
   <figcaption class="update-card-caption">
     <div class="update-card-name" title="{model_name}">{model_name}</div>
