@@ -1529,3 +1529,39 @@ back to the meta-less listing images, which is now strictly the last resort. Sam
   "Unable to load preview images" marker, not on this "no metadata" state).
 - No action pending on the MCP `getSelfStatus` issue from this extension's side — it depends on
   a CivitAI-side fix.
+
+### 2026-07-24 — Fix: Local-tab update showed its progress bar in the Browser tab
+
+**What was reported:** Right after finishing a Browser download, the user clicked "Update to
+latest" on a model in Local Models — the new download's progress bar appeared in the Browser tab
+instead of Local.
+
+**Root cause:** the per-tab progress bar is gated by a `civ-dl-origin-local`/`civ-dl-origin-browser`
+body class (`setCivDownloadOrigin()`, `javascript/civitai-html.js`), which CSS uses to show/hide
+`#DownloadProgress` vs `#local_download_progress`. Every Local-tab update trigger (`local_update_btn`,
+`local_download_version_btn`, `updateSelectedLocalModels()`, `updateAllModels()`,
+`updateOrSelectedModels()`) only tagged the queue item's `dl_origin` **server-side**; the origin
+class itself was only set afterward by `setDownloadProgressBar()` reading the re-rendered
+`#civitai_dl_list` DOM. Right after a Browser download finishes, `body.civ-dl-origin-browser` is
+still set — if the Local update's own DOM re-render hadn't caught up yet by the time that read
+happened, the bar stayed on the Browser side.
+
+**What changed:** each Local-tab trigger now calls `setCivDownloadOrigin('local')` eagerly, at
+click time, client-side — closing the race instead of depending solely on the later DOM read. The
+existing DOM-based check in `setDownloadProgressBar()` still runs afterward and remains
+authoritative for the legitimate case of a Local item queued behind an still-active Browser
+download.
+
+**Files changed:** `scripts/civitai_gui.py` (`local_update_btn.click`, `local_download_version_btn.click`
+gained a `_js` preprocessor), `javascript/civitai-html.js` (`updateSelectedLocalModels`,
+`updateAllModels`, `updateOrSelectedModels`).
+
+**Validation:** clean `py_compile` and `node --check`. Not yet re-validated live against the exact
+reported sequence (finish a Browser download, immediately update from Local).
+
+**Next steps:**
+- Confirm live that updating from Local right after a Browser download now shows progress in the
+  Local tab.
+- Confirm the existing behavior is unchanged when a Local update is queued while a Browser
+  download is still actively running (should still show the Browser bar until that item
+  finishes).
