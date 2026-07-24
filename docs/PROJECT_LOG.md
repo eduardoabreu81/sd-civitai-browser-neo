@@ -1599,6 +1599,51 @@ made clicks land inconsistently depending on exact pixel/render conditions.
 **Validation:** clean `py_compile`. Not yet re-validated live against the exact reported sequence
 (page 2+, "Only models with updates" active, multiple checkbox clicks).
 
+**CORRECTION (same day, still 2026-07-24) — the diagnosis above was wrong.** A screenshot from
+the user showed the failing checkboxes live on the regular "Local Models Browser" grid
+(`model_list_html`, `target='local'`), not `update_mode_page_html` — there is no separate
+"Update Mode" surface the user interacts with; that name only exists internally for a code path
+reached through Browser-tab plumbing (`gl.update_mode` / `initial_model_page`), and it isn't what
+was being clicked. The `bb01602` fix above is harmless (aligns `update_mode_page_html` with the
+same wrapper pattern used elsewhere) but did **not** fix the reported bug — wrong function.
+
+**New evidence, still unresolved:** direct DOM inspection
+(`document.querySelector('#local_list_html .civmodelcardoutdated input.model-checkbox')?.outerHTML`)
+confirmed `data-local="true"` genuinely IS present on the real checkbox — ruling out the
+`_isLocalCheckbox` detection theory entirely. Console capture of a live failure showed the
+`onchange` handler firing (so the click reaches JS), but the checkbox never visually shows as
+checked. Most tellingly, one capture showed the **same** `modelName=Anima (2458426)` logged 6
+times in a row from what the user described as ~2 clicks, alternating
+`isChecked=true/false/true/false...`, and a second model (`RDBT | Anima (2356447)`) logged with
+`isLocal=false` in one capture despite its DOM element having `data-local="true"` confirmed
+moments later by direct inspection.
+
+**Leading hypothesis for next session:** duplicate DOM `id` collision. The checkbox `id`/label
+`for` pair is built purely from `model_string = "{model_name} ({model_id})"`
+(`scripts/civitai_api.py` line ~822) — if the same CivitAI model has two installed files rendered
+as separate cards (e.g. two kept-alongside versions from "Keep installed (download alongside)"),
+both cards get the **identical** `id="checkbox-{model_string}"`. Per HTML semantics, clicking
+ANY `<label for="...">` that shares that id always toggles the **first** matching `<input>` in
+DOM order — never necessarily the one under the label the user actually clicked. That would
+explain both the toggle-flapping (multiple visually-distinct cards all driving the one same
+underlying input back and forth) and "click registers in JS but the clicked checkbox never
+visually checks" (the visually-clicked card's own input never actually receives the change — a
+different, first-in-DOM duplicate does). Not yet confirmed with a live count check
+(`document.querySelectorAll('#local_list_html input.model-checkbox:checked').length` after
+clicking N boxes, to see if it matches N) or a duplicate-id check
+(`document.querySelectorAll('[id="checkbox-<name> (<id>)>"]').length`).
+
+Also flagged during this investigation: pervasive Gradio console errors
+(`Attempted to select a non-interactive or hidden tab`, `Too many arguments provided for the
+endpoint`) fire on *every* Gradio event in this session (checkbox clicks, page nav, card clicks,
+dropdown changes) — not proven related, but worth ruling out via a hard-refresh test before
+digging further, since a desynced Gradio frontend bundle could itself cause erratic re-renders.
+
 **Next steps:**
-- Confirm live that Update Mode checkboxes now check reliably on every click, across pages and
-  with the outdated-only filter active.
+- Get the user to confirm/deny the duplicate-id hypothesis: check whether the failing model has
+  multiple installed files/versions kept side-by-side, and run the two diagnostic queries above.
+- If confirmed, fix by making the checkbox `id`/`for` unique per rendered card (e.g. append the
+  file's sha256 or an index) while leaving `model_string` (used for the `multi_model_select`
+  array + Python-side matching) unchanged.
+- Rule out the Gradio console errors as a contributing factor via a hard refresh before assuming
+  they're unrelated noise.
