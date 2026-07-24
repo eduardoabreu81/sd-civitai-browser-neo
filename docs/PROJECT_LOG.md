@@ -1565,3 +1565,40 @@ reported sequence (finish a Browser download, immediately update from Local).
 - Confirm the existing behavior is unchanged when a Local update is queued while a Browser
   download is still actively running (should still show the Browser bar until that item
   finishes).
+
+### 2026-07-24 — Fix: Update Mode card checkboxes intermittently didn't register clicks
+
+**What was reported:** Selecting multiple cards works reliably in the Browser tab, but in the
+"aba Local" it sometimes accepts a checkbox click and sometimes doesn't — worse on page 2+ of the
+outdated-models view and with "Only models with updates" active.
+
+**Investigation:** first suspected a detection bug (`_isLocalCheckbox`/`data-local` marker, the
+same family as the 07-10 fix). Captured browser console output with the user during a live
+reproduction: `multi_model_select: isLocal=false ... browserCount=2` — the array WAS being
+populated correctly (0→1→2) and `isLocal=false` was actually correct, since these particular cards
+come from `update_mode_page_html` (the Update Mode / outdated-models grid, which never stamps
+`data-local` and renders outside `#local_list_html`), not the plain paginated Local grid. So the
+selection-tracking JS was not the problem. Follow-up question narrowed it to a purely visual
+symptom: the checkbox square itself doesn't visibly check when clicked — a click hit-testing
+issue, not a state-tracking one.
+
+**Root cause:** every other checkbox in the app (regular Browser/Local grid cards) wraps its
+`<input>`/`<label>` pair in a dedicated `<div class="checkbox-container">` (`position: relative;
+pointer-events: auto;` in `style.css`), which supplies the positioning context and explicit
+click-through override that the absolutely-positioned checkbox/label CSS depends on.
+`update_mode_page_html` (`scripts/civitai_api.py`) rendered its checkbox as a **bare** direct
+child of the card `<figure>` instead — a `display:flex; flex-direction:column; overflow:hidden`
+container (`.update-mode-card` in `style.css`) — without that wrapper. This structural mismatch
+made clicks land inconsistently depending on exact pixel/render conditions.
+
+**What changed:** wrapped the Update Mode card's checkbox/label pair in the same
+`.checkbox-container` div used everywhere else, matching the proven-working markup.
+
+**Files changed:** `scripts/civitai_api.py` (`update_mode_page_html`).
+
+**Validation:** clean `py_compile`. Not yet re-validated live against the exact reported sequence
+(page 2+, "Only models with updates" active, multiple checkbox clicks).
+
+**Next steps:**
+- Confirm live that Update Mode checkboxes now check reliably on every click, across pages and
+  with the outdated-only filter active.
