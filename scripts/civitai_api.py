@@ -984,6 +984,17 @@ def model_list_html(json_data, target=''):
         # el.closest('#local_list_html')).
         local_checkbox_attr = ' data-local="true"' if target == 'local' else ''
 
+        # The Browser grid (#list_html) and the Local grid (#local_list_html) are BOTH
+        # mounted at once — a Gradio tab only hides its content, it never unmounts it.
+        # Keying the checkbox id on model_string alone therefore produced two elements
+        # with the SAME id whenever a model appeared in both grids, and per HTML
+        # semantics <label for> always activates the FIRST match in document order. The
+        # Local card's label then toggled the Browser card's hidden input: the visible
+        # checkbox never checked, while multi_model_select fired with isLocal=false.
+        # Scoping the id per grid keeps every checkbox addressable by its own label.
+        checkbox_scope = target or 'browser'
+        checkbox_id = f'checkbox-{checkbox_scope}-{model_string}'
+
         # Show delete button for up-to-date installed models;
         # For outdated: both delete (hidden below tile size 11) + checkbox stacked
         # For non-installed: checkbox only
@@ -1011,9 +1022,9 @@ def model_list_html(json_data, target=''):
                 f'</svg>'
                 f'</button>'
                 f'<div class="checkbox-container">'
-                f'<input type="checkbox" class="model-checkbox"{local_checkbox_attr} id="checkbox-{model_string}" '
+                f'<input type="checkbox" class="model-checkbox"{local_checkbox_attr} id="{checkbox_id}" '
                 f'onchange="multi_model_select(\'{model_string}\', \'{item["type"]}\', this.checked, this)">'
-                f'<label for="checkbox-{model_string}" class="custom-checkbox">'
+                f'<label for="{checkbox_id}" class="custom-checkbox">'
                 f'<span class="checkbox-checkmark"></span>'
                 f'</label>'
                 f'</div>'
@@ -1023,9 +1034,9 @@ def model_list_html(json_data, target=''):
             # Non-installed: checkbox for batch download
             card_html += (
                 f'<div class="checkbox-container">'
-                f'<input type="checkbox" class="model-checkbox"{local_checkbox_attr} id="checkbox-{model_string}" '
+                f'<input type="checkbox" class="model-checkbox"{local_checkbox_attr} id="{checkbox_id}" '
                 f'onchange="multi_model_select(\'{model_string}\', \'{item["type"]}\', this.checked, this)">'
-                f'<label for="checkbox-{model_string}" class="custom-checkbox">'
+                f'<label for="{checkbox_id}" class="custom-checkbox">'
                 f'<span class="checkbox-checkmark"></span>'
                 f'</label>'
                 f'</div>'

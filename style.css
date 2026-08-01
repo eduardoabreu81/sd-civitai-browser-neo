@@ -162,21 +162,40 @@
     pointer-events: none;
 }
 
+/* Badges stack vertically on the left; the checkbox / delete button sit on the
+   right via .card-header's space-between. min-width:0 lets this column shrink on
+   narrow tiles instead of pushing the action controls out of the card — the badge
+   row grows downward over the artwork, never sideways into the checkbox. */
 .badges-container {
     display: flex;
     flex-direction: column;
     gap: 2px;
     pointer-events: none;
+    min-width: 0;
+    overflow: hidden;
 }
 
+/* Both children (.model-checkbox and .custom-checkbox) are absolutely positioned,
+   so without explicit dimensions this container collapses to 0x0. In the header it
+   still looked right by accident (flex space-between pinned the collapsed box to the
+   right edge), but inside .outdated-card-actions a 0x0 flex item reserves no space,
+   so the checkbox drew on top of its neighbours instead of stacking under the delete
+   button — the reason Local cards looked different from Browser ones. Sizing it to
+   the checkbox also gives clicks a real, predictable hit area. */
 .checkbox-container {
     position: relative;
     pointer-events: auto;
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
 }
 
 .delete-button-container {
     position: relative;
     pointer-events: auto;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
 }
 
 /* Outdated card: delete button + checkbox stacked */

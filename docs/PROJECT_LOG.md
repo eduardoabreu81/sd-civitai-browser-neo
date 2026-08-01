@@ -1861,3 +1861,58 @@ styling attached) so custom CSS and JS can still target paid cards.
 this is a pure CSS/markup change with no test coverage, so the rendered result still
 needs a look in Forge Neo (badge alignment next to the type badge, wrapping behaviour
 on narrow cards, and the hover fade).
+
+### 2026-08-01 — Fix: duplicate checkbox ids across the Browser and Local grids (RESOLVES the 2026-07-24 open bug)
+
+**What was reported:** after the Early Access badge change the user asked whether the new
+badge could overlap the selection checkbox, noted that the Browser and Local checkboxes
+*look different*, and said certain Local checkboxes still refuse to check.
+
+**Root cause of the check failure — found, and it is not the 2026-07-24 duplicate-version
+hypothesis.** `list_html` (Browser grid, `civitai_gui.py:421`) and `local_list_html`
+(Local grid, `civitai_gui.py:512`) are two separate `gr.HTML` components that are **both
+mounted at the same time** — a Gradio tab only hides its content, it never unmounts it.
+Both grids render through the same `get_model_card`, which stamped
+`id="checkbox-{model_name} ({model_id})"`. So any model present in *both* grids produced
+two elements sharing one id, and per HTML semantics `<label for>` always activates the
+**first** match in document order. Clicking a Local card's label therefore toggled the
+**Browser** card's hidden input.
+
+This explains every piece of evidence captured on 2026-07-24 that the duplicate-version
+theory could not: the console showing `isLocal=false ... browserCount=2` while Local cards
+were being clicked (the toggled input really was a Browser one), `data-local="true"`
+verifiably present on the Local checkbox (correct — but that element was never toggled),
+the same model logged repeatedly with alternating `isChecked` (one Browser input flapping),
+and the failure hitting only *certain* models (only those loaded in both grids at once).
+
+**Fixes:**
+1. `scripts/civitai_api.py::get_model_card` — checkbox ids are now scoped per grid:
+   `checkbox-{target or 'browser'}-{model_string}`. `multi_model_select` still receives the
+   unscoped `model_string`, so Python-side matching is unchanged.
+2. `style.css` — `.checkbox-container` had **no dimensions**. Both its children are
+   absolutely positioned, so it collapsed to 0x0. In `.card-header` that still looked right
+   by accident (flex `space-between` pins the collapsed box to the right edge, and the
+   checkbox's `right: 0` resolves to the same pixel either way), but inside
+   `.outdated-card-actions` a 0x0 flex item reserves no space, so the checkbox drew on top
+   of its neighbours instead of stacking under the delete button — **that is why Local
+   cards looked different from Browser ones**, since Local shows mostly installed/outdated
+   cards. Now sized 22x22 (and `.delete-button-container` 28x28), both `flex-shrink: 0`,
+   which also gives clicks a real hit area. Browser card positioning is unchanged.
+3. `style.css` — `.badges-container` got `min-width: 0; overflow: hidden` so a long badge
+   row can never push the action controls out of the card. **Answering the overlap
+   question: no.** The header is `display: flex; justify-content: space-between` with the
+   badges as the left item and the checkbox/delete controls as the right item, and
+   `.badges-container` is a *column* — extra badges grow downward over the artwork, never
+   sideways into the checkbox. The `min-width`/`flex-shrink` pair makes that structural
+   rather than incidental.
+
+**Files changed:** `scripts/civitai_api.py`, `style.css`.
+
+**Validation:** clean `py_compile`; suite **173 passed**; CSS braces balanced.
+**No automated coverage for any of this** — `get_model_card` is nested inside
+`model_list_html` and is not directly callable, so the id-collision fix rests on the HTML
+spec plus the 07-24 console captures, not on a test. Needs live confirmation in Forge Neo:
+load a model into the Browser grid, switch to Local, and check that same model's card —
+it should now tick. A duplicate-id check that must now return 1, not 2:
+`document.querySelectorAll('[id^="checkbox-"]').length` vs
+`new Set([...document.querySelectorAll('[id^="checkbox-"]')].map(e => e.id)).size`.
