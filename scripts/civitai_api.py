@@ -736,6 +736,9 @@ def model_list_html(json_data, target=''):
             date = 'Not Found'
 
         early_access = is_early_access(display_version) if display_version else False
+        # State marker on the <figure>. It carries no styling of its own anymore
+        # (the amber badge does the signalling); kept as a stable hook for user
+        # CSS and for querying paid cards from JS.
         early_access_class = 'early-access' if early_access else ''
 
         # Status badges: New / Updated + base model abbreviation (optional setting)
@@ -900,19 +903,23 @@ def model_list_html(json_data, target=''):
             f' <span class="base-model-short">{base_model_short}</span>'
         ) if base_model_short else ''
 
-        # Model Type Badge ( + Early Access + base model abbreviation)
+        # Model Type Badge ( + base model abbreviation)
+        model_type_badge = f'<div class="model-type-badge {item["type"].lower()}">{get_display_type(item["type"])}{bm_suffix}</div>'
+
+        # Early Access Badge — a standalone labelled pill next to the type badge.
+        # It replaces the old approach (recolouring the type badge + a subtle card
+        # border), which was easy to miss on a dense grid.
         if early_access:
-            # Gold badge with a lightning icon
-            model_type_badge = (
-                f'<div class="model-type-badge {item["type"].lower()} early-access-badge">'
+            early_access_badge = (
+                '<div class="early-access-badge">'
                 '<svg class="early-access-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor">'
                 '<path d="M13 2L3 14h9l-1 8 10-12h-8z"/>'
                 '</svg>'
-                f'{get_display_type(item["type"])}{bm_suffix}'
+                'Early Access'
                 '</div>'
             )
         else:
-            model_type_badge = f'<div class="model-type-badge {item["type"].lower()}">{get_display_type(item["type"])}{bm_suffix}</div>'
+            early_access_badge = ''
 
         # Status Badge (New / Updated)
         if status_badge_type:
@@ -969,7 +976,7 @@ def model_list_html(json_data, target=''):
             f'base-model="{base_model}" date="{date}" data-model-id="{model_id}" data-creator="{escape(model_uploader_card)}" '
             f'onclick="{select_onclick}">'
             f'<div class="card-header">'
-            f'<div class="badges-container">{model_type_badge}{status_badge}{nsfw_badge}{source_badge}</div>'
+            f'<div class="badges-container">{model_type_badge}{early_access_badge}{status_badge}{nsfw_badge}{source_badge}</div>'
         )
 
         # Marker for Local Models checkboxes so JS can detect them without relying

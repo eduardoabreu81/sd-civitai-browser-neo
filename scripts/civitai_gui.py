@@ -407,8 +407,8 @@ def on_ui_tabs():
                     '<span class="legend-item"><span class="legend-dot outdated"></span>Update available (same family)</span>'
                     '<span class="legend-separator"></span>'
                     '<span class="legend-item"><span class="legend-dot cross-family"></span>New family variant available</span>'
-                    '<span class="legend-separator"></span>'
-                    '<span class="legend-item"><span class="legend-dot early-access"></span>Early Access (paid)</span>'
+                    # Early Access is no longer a card border — it renders as a labelled
+                    # amber badge on the card itself, which needs no legend entry.
                     '</div>'
                 ))
             with gr.Accordion(label='\U0001f464 Creator Management', open=False, elem_id='creatorMgmtBox'):

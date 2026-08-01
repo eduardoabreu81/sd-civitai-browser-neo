@@ -104,11 +104,6 @@
     background: transparent;
     box-shadow: 0 0 4px 1px rgba(91, 155, 213, 0.5);
 }
-.card-legend .legend-dot.early-access {
-    border-color: #e0e0e0;
-    background: transparent;
-    box-shadow: 0 0 4px 1px rgba(224, 224, 224, 0.5);
-}
 .card-legend .legend-separator {
     width: 1px;
     height: 14px;
@@ -259,22 +254,38 @@
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     width: fit-content;
 }
-/* Early Access Badge */
-.civmodelcard.early-access .early-access-icon { /* Icon */
-    fill: #e0e0e0;
-    margin-left: -4px;
-    margin-right: 2px;
-    width: 14px;
-    height: 14px;
+/* Early Access Badge — standalone amber pill.
+   Amber (not the green used by New/Updated, nor the purple source badge) so the
+   "this one costs Buzz" state never reads as a positive status badge. */
+.early-access-badge {
+    display: flex;
+    height: 22px;
+    padding: 4px 10px;
+    color: #ffffff;
+    background: rgba(245, 158, 11, 0.9);
+    border: 1px solid rgba(251, 191, 36, 0.6);
+    border-radius: 10px;
+    box-shadow: 0 2px 8px 0 rgba(180, 83, 9, 0.35);
+    backdrop-filter: blur(6px);
+    font-size: 0.75em;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    pointer-events: none !important;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    width: fit-content;
+    white-space: nowrap;
 }
-
-.civmodelcard.early-access { /* Model Card */
-    box-shadow: 0 6px 15px -2px color-mix(in srgb, #e0e0e0 20%, rgba(0, 0, 0, 0.1));
-    border-color: color-mix(in srgb, #e0e0e0 40%, rgba(255, 255, 255, 0.3));
-}
-.civmodelcard.early-access .early-access-badge { /* Model Type Badge */
-    color: #e0e0e0;
-    border-color: color-mix(in srgb, #e0e0e0 40%, rgba(255, 255, 255, 0.3));
+.early-access-badge .early-access-icon { /* Lightning glyph */
+    fill: currentColor;
+    margin-left: -3px;
+    margin-right: 3px;
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
 }
 
 /* NSFW Badge */
@@ -309,6 +320,7 @@
 
 .civmodelcard:hover .badges-container .model-type-badge,
 .civmodelcard:hover .badges-container .nsfw-badge,
+.civmodelcard:hover .badges-container .early-access-badge,
 .civmodelcard:hover .badges-container .status-badge {
     opacity: 0;
     transform: translateX(-10px);

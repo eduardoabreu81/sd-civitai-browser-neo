@@ -1821,3 +1821,43 @@ slicing it.
 **Validation:** clean `py_compile`; full suite **173 passed** (158 → 166 → 173).
 Still not validated live in Forge Neo — that is the remaining open step for this whole
 investigation.
+
+### 2026-08-01 — UI: Early Access becomes a labelled badge instead of a card border
+
+**What was requested:** with paid models finally being detected (see the entry above),
+the user pointed out the signalling itself was too subtle and asked for a proper
+"Early Access" badge instead of the card border — referencing CivitAI's own card
+layout, where the state sits as its own pill next to the type badge.
+
+**Previous behaviour:** early access recoloured the *type* badge (`Checkpoint` turned
+light grey and grew a lightning glyph) and tinted the card's border/shadow via
+`.civmodelcard.early-access`. On a dense grid neither read as "this costs money" —
+the type badge still said "Checkpoint", and the border was a low-contrast grey.
+
+**What changed:**
+- `scripts/civitai_api.py::get_model_card` — the type badge is back to its normal
+  rendering in every case; a standalone `.early-access-badge` pill (lightning glyph +
+  the words "Early Access") is emitted right after it inside `.badges-container`.
+- `style.css` — new filled amber pill (`rgba(245, 158, 11, 0.9)`), built on the same
+  geometry as `.nsfw-badge` / `.status-badge` so it lines up with its neighbours.
+  Amber deliberately avoids the green of New/Updated (which reads as a *good* status)
+  and the purple of the source badge. The icon rule moved from
+  `.civmodelcard.early-access .early-access-icon` to `.early-access-badge .early-access-icon`
+  and now inherits `currentColor`.
+- `style.css` — the `.civmodelcard.early-access` border/shadow rule is gone, and the
+  badge joins the existing hover rule that fades badges out on card hover, so it
+  behaves like every other badge.
+- `scripts/civitai_gui.py` — dropped the "Early Access (paid)" entry from the card
+  legend. That legend documents *border colours*; with the border gone the entry
+  described something that no longer exists, and a labelled badge needs no legend.
+  Its now-unused `.card-legend .legend-dot.early-access` rule was removed too.
+
+The `early-access` class is still stamped on the `<figure>` as a state marker (no
+styling attached) so custom CSS and JS can still target paid cards.
+
+**Files changed:** `scripts/civitai_api.py`, `scripts/civitai_gui.py`, `style.css`.
+
+**Validation:** clean `py_compile`; suite **173 passed**. **Not visually verified** —
+this is a pure CSS/markup change with no test coverage, so the rendered result still
+needs a look in Forge Neo (badge alignment next to the type badge, wrapping behaviour
+on narrow cards, and the hover fade).
