@@ -93,9 +93,79 @@ def get_display_type(type_name):
     return MODEL_TYPE_DISPLAY_NAMES.get(type_name, type_name)
 
 def is_early_access(version_data):
-    """Check if the model is an early access"""
+    """Check whether a version is gated behind CivitAI's paid/early access.
+
+    CivitAI signals this three different ways depending on API vintage:
+      - `availability == 'EarlyAccess'` (legacy),
+      - `earlyAccessEndsAt` in the future (legacy),
+      - `paidAccess: {permanent, endsAt}` (current).
+    Only checking `availability` missed paid models entirely: CivitAI then answers
+    an authenticated download with a silent 3xx to the version's purchase page.
+    """
+    if not isinstance(version_data, dict):
+        return False
+
     avail = version_data.get('availability')
-    return isinstance(avail, str) and avail == 'EarlyAccess'
+    if isinstance(avail, str) and avail == 'EarlyAccess':
+        return True
+
+    paid = version_data.get('paidAccess')
+    if isinstance(paid, dict):
+        if paid.get('permanent'):
+            return True
+        if _is_future_timestamp(paid.get('endsAt')):
+            return True
+
+    return _is_future_timestamp(version_data.get('earlyAccessEndsAt'))
+
+def get_availability_label(version_data):
+    """Human-readable availability for the detail panel.
+
+    CivitAI reports paid versions as `availability: 'Public'` with the real gate in
+    `paidAccess`, so echoing `availability` verbatim showed "Public" for a model
+    that cannot actually be downloaded. Surface the paid state (and when it lifts)
+    instead.
+    """
+    if not isinstance(version_data, dict):
+        return 'Unknown'
+
+    raw = version_data.get('availability') or 'Unknown'
+    if not is_early_access(version_data):
+        return raw
+
+    paid = version_data.get('paidAccess')
+    if isinstance(paid, dict):
+        if paid.get('permanent'):
+            return 'Early Access (paid)'
+        ends = _format_timestamp_date(paid.get('endsAt'))
+        if ends:
+            return f'Early Access (paid until {ends})'
+        return 'Early Access (paid)'
+
+    ends = _format_timestamp_date(version_data.get('earlyAccessEndsAt'))
+    return f'Early Access (until {ends})' if ends else 'Early Access'
+
+def _format_timestamp_date(value):
+    """Return the YYYY-MM-DD part of an ISO-8601 timestamp, or '' if unusable."""
+    if not isinstance(value, str) or not value:
+        return ''
+    try:
+        datetime.fromisoformat(value.replace('Z', '+00:00'))
+    except ValueError:
+        return ''
+    return value.split('T')[0]
+
+def _is_future_timestamp(value):
+    """True when an ISO-8601 timestamp is still in the future (UTC)."""
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+    except ValueError:
+        return False
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed > datetime.now(timezone.utc)
 
 # Short abbreviations for base model names used in card badges.
 # Keep in sync with get_base_models() (civitai_gui.py) and
@@ -1858,7 +1928,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                     if selected_version == None and item['modelVersions']:
                         selected_version = item['modelVersions'][0]  # fallback to first version
 
-                model_availability = selected_version.get('availability', 'Unknown')
+                model_availability = get_availability_label(selected_version)
                 published_at = selected_version.get('publishedAt')
                 model_date_published = published_at.split('T')[0] if published_at else 'Unknown'
                 version_name = selected_version['name']

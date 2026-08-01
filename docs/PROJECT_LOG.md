@@ -1647,3 +1647,177 @@ digging further, since a desynced Gradio frontend bundle could itself cause erra
   array + Python-side matching) unchanged.
 - Rule out the Gradio console errors as a contributing factor via a hard refresh before assuming
   they're unrelated noise.
+
+---
+
+### 2026-08-01 — Fix: relative CivitAI redirect handed to Aria2 ("Unrecognized URI or unsupported protocol")
+
+**What was reported:** downloading `mangaVisionANIIL_animaV1.safetensors`
+(modelId=1272111, versionId=3188880) failed with:
+
+```
+[ERROR] Unrecognized URI or unsupported protocol: /model-versions/3188880
+Failed to start download: {'error': {'code': 1, 'message': 'No URI to download.'}}
+```
+
+**Root cause:** `get_download_link()` (`scripts/civitai_download.py`) returned
+`response.headers['Location']` verbatim. CivitAI answers
+`/api/download/models/{id}` with a 3xx whose `Location` is either the real CDN
+file URL **or** an HTML page explaining why the file cannot be downloaded
+(login wall, purchase page, or the model-version page itself) — and those page
+redirects are **relative** (`/model-versions/3188880`). The raw relative path
+was passed straight to `aria2.addUri`, which rejected it. The existing auth
+guard only inspected `response.text` for `login?returnUrl` + `reason=download-auth`,
+so it never caught a 3xx with an empty body or a non-`/login` page target.
+
+Confirmed against the live API: the version is `status=Published`,
+`availability=None`, `primary=True`, and both civitai.com and civitai.red return
+absolute `downloadUrl`s — so the bad URI came from the redirect resolution, not
+from stored/queued metadata.
+
+**What changed** (`scripts/civitai_download.py`):
+- `Location` is now resolved with `urllib.parse.urljoin(url, location)` before
+  anything downstream sees it, so a relative redirect can never reach Aria2.
+- New `_classify_download_redirect()` labels the resolved target as
+  `file` / `no_api` / `page` / `invalid`. Only civitai.com / civitai.red hosts on
+  page routes (`/login`, `/models/`, `/model-versions/`, `/purchase`, `/checkout`,
+  `/buzz`, `/user/`) count as pages; every other host (R2/B2 CDN, mirrors) stays a
+  file URL, and `/api/download/...` chained redirects still pass through.
+- A `page` redirect now fails with an explanatory console message ("CivitAI
+  redirected the download to a web page … requires a purchase, an API key, or is
+  no longer downloadable") instead of a bogus Aria2 URI error.
+- HTTP `401` is now mapped to `NO_API` (it previously fell through to the generic
+  "not found on CivitAI servers" message).
+- A missing `Location` header is logged via `debug_print` instead of raising `KeyError`.
+- Cosmetic: the SHA candidate probe no longer logs "Ambiguous SHA detected" when it
+  found 0 or 1 candidates — that misleading line appeared in the bug report and is
+  unrelated to the failure.
+
+**Files changed:** `scripts/civitai_download.py`.
+
+**Validation:** clean `py_compile`; `_classify_download_redirect()` unit-checked
+against 8 cases (relative page redirect, `/login?returnUrl`, model page, R2 CDN,
+civitai.red signed URL, b2.civitai.com, `magnet:`, `/purchase/buzz`) — all pass.
+Not yet re-validated live in Forge Neo against the reported model.
+
+**Next steps:**
+- Retry the failing download in the WebUI and report which message now appears —
+  that tells us *why* CivitAI is refusing (purchase/API key/removed) instead of
+  hiding it behind an Aria2 URI error.
+- `docs/FUNCTION_MAP.md` still documents a `_get_download_link_with_retry()`
+  wrapper that no longer exists in `civitai_download.py`; the doc entry needs
+  updating (both download paths call `get_download_link` directly).
+
+**Follow-up (same day): the actual reason CivitAI refused — paid access, not a broken URL.**
+
+Querying `/api/v1/model-versions/3188880` directly showed the version is
+`status=Published`, `availability=null`, `earlyAccessEndsAt=null` — but carries
+the *current* gating field:
+
+```
+"usageControl": "Download",
+"paidAccess": { "permanent": false, "endsAt": "2026-08-16T19:15:04.727Z" }
+```
+
+So the model is behind CivitAI's paid access until 2026-08-16. Server responses:
+
+| Request | Response |
+|---|---|
+| No API key | `401 {"error":"Unauthorized","message":"The creator of this asset requires you to be logged in to download it"}` |
+| With the user's API key | `3xx` → `Location: /model-versions/3188880`, empty body, **no message** — CivitAI silently redirects to the purchase page |
+
+That silent redirect is what reached Aria2. The URL fix above stops the bogus
+`Unrecognized URI` error, but the download still cannot succeed until the access
+is purchased or the paid window ends.
+
+**Second bug found and fixed — the early-access pre-flight guard never fired:**
+- `is_early_access()` (`scripts/civitai_api.py`) only tested
+  `availability == 'EarlyAccess'`. It now also recognizes `paidAccess.permanent`,
+  a future `paidAccess.endsAt`, and a future legacy `earlyAccessEndsAt`, via a new
+  `_is_future_timestamp()` helper (expired windows correctly read as free).
+- `download_file()` (`scripts/civitai_download.py`) evaluated
+  `items[0]['modelVersions'][0]` — always the model's *first* version, never the
+  queued one. It now matches on `item['version_id']`, falling back to `[0]`. A model
+  can mix free and paid versions, so the first entry says nothing about the one
+  being downloaded.
+
+Together these turn the failure into the intended up-front message ("is marked as
+Early Access on CivitAI. You need to purchase this model to download it") before a
+single byte is requested.
+
+**Files changed:** `scripts/civitai_api.py`, `scripts/civitai_download.py`.
+
+**Validation:** clean `py_compile`; `is_early_access()` unit-checked against 8 cases
+(current paid window, permanent paid, expired paid, legacy `availability`, legacy
+`earlyAccessEndsAt`, free model, malformed timestamp, non-dict) — all pass; full
+suite **158 passed**. Not yet re-validated live in Forge Neo.
+
+**Third part: the Early Access badge was broken by the same detection gap.**
+
+`is_early_access()` is the single gate for *four* consumers, so the legacy
+`availability`-only check silently disabled all of them for paid models:
+
+| Consumer | Location | Effect of the fix |
+|---|---|---|
+| Gold "Early Access" badge + lightning icon | `civitai_api.py:867` | paid models now get the badge |
+| `.early-access` card class (gold border) | `civitai_api.py:931`, `style.css:271` | card is visually marked |
+| Version dropdown label | `civitai_api.py:1631` | version reads as Early Access |
+| "Hide early access models" filter | `civitai_api.py:584` | the setting now actually catches paid models |
+
+Verified the data survives the pipeline: `/api/v1/models/1272111` (the payload that
+feeds the Browser grid) carries `paidAccess` per version, and the CivitAI adapter
+(`browser_sources/civitai.py::_normalize_model`) passes raw API dicts through —
+it only stamps provenance keys — so nothing strips the field before the card
+renderer sees it. The real payload also proves why matching the queued version
+matters: model 1272111 mixes a **paid** version (3188880, `paidAccess.endsAt`
+2026-08-16) with a **free** one (1435042, `paidAccess: null`), and both report
+`availability: 'Public'`.
+
+Note: other browser sources (CivArchive/HF/ArcEnCiel) go through
+`normalizer.canonical_version()`, which does not carry `availability`/`paidAccess`
+(they survive only inside `browserSourceVersionRaw`). Not an issue today — those
+platforms have no paid gate — but the badge is CivitAI-only by construction.
+
+**Tests added:** `tests/test_early_access.py` — 8 cases pinned to the real payloads
+(open paid window, the free sibling version of the same model, permanent paid,
+expired window, both legacy fields, plain free version, malformed input).
+
+**Files changed:** `scripts/civitai_api.py`, `scripts/civitai_download.py`,
+`tests/test_early_access.py`.
+
+**Validation:** clean `py_compile`; full suite **166 passed** (was 158). Not yet
+re-validated live in Forge Neo.
+
+**Known inconsistency (not changed):** `civitai_api.py:1006` reads
+`getattr(opts, 'hide_early_access', True)` while the option is registered with
+`default=False` (`civitai_gui.py:2320`). The registered default wins in practice,
+so paid models are shown-and-badged rather than hidden; the `True` fallback only
+applies if the option is missing from `opts` entirely.
+
+**Fourth part: audit of every other consumer of the legacy CivitAI fields.**
+
+Swept `availability` / `earlyAccess*` / `usageControl` / `licensingFee` / `paidAccess`
+across the whole codebase. One more real gap found and fixed, the rest verified clean:
+
+| Site | Verdict |
+|---|---|
+| `civitai_api.py:1894` detail-panel "Availability" row | **BUG — fixed.** Echoed `selected_version['availability']` verbatim, i.e. **"Public"** for a version that cannot be downloaded. Now goes through the new `get_availability_label()`. |
+| `civitai_api.py:1631` version dropdown `(Early Access)` suffix | OK — already routes through `is_early_access()`, fixed by part 3. |
+| `civitai_api.py:584` `filter_versions` hide filter | OK — same gate. |
+| `civitai_api.py:867/931` card badge + `.early-access` class | OK — same gate. |
+| `civitai_file_manage.py:1356` local-only stub version | OK — synthetic dict for files with no CivitAI record; no `paidAccess`, so it correctly reads as free. |
+| `civitai_html_builder.py:76/99` `build_version_info_html` | OK — pure renderer, takes the label as an argument. |
+| Other browser sources (CivArchive/HF/ArcEnCiel) | OK by construction — `canonical_version()` carries no availability fields; those platforms have no paid gate. |
+
+**New helper** `get_availability_label(version_data)` (`scripts/civitai_api.py`) renders:
+`Early Access (paid until YYYY-MM-DD)` for an open window, `Early Access (paid)` when
+permanent or dateless, `Early Access (until YYYY-MM-DD)` / `Early Access` for the legacy
+fields, and the raw `availability` otherwise — so free and expired-window versions are
+unaffected. Backed by `_format_timestamp_date()`, which validates the timestamp before
+slicing it.
+
+**Files changed:** `scripts/civitai_api.py`, `tests/test_early_access.py`.
+
+**Validation:** clean `py_compile`; full suite **173 passed** (158 → 166 → 173).
+Still not validated live in Forge Neo — that is the remaining open step for this whole
+investigation.

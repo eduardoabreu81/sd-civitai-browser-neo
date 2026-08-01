@@ -931,17 +931,70 @@ def _is_signed_civitai_download(url):
         return False
     return 'civitai.red' in host or 'b2.civitai.com' in host or 'b2.civitai.red' in host
 
+# CivitAI answers /api/download/models/{id} with a 3xx whose Location is either
+# the real CDN/file URL or an HTML page explaining why the file cannot be
+# downloaded (login wall, purchase/early-access page, or the version page
+# itself). Those page redirects are RELATIVE — e.g. "/model-versions/3188880" —
+# and handing them straight to Aria2 fails with
+# "Unrecognized URI or unsupported protocol", which hides the real reason.
+_CIVITAI_PAGE_HOSTS = ('civitai.com', 'civitai.red')
+_CIVITAI_PAGE_PATHS = ('/login', '/models/', '/model-versions/', '/purchase', '/checkout', '/buzz', '/user/')
+
+def _classify_download_redirect(link):
+    """Classify a resolved redirect target: 'file', 'no_api', 'page' or 'invalid'."""
+    try:
+        parsed = urllib.parse.urlparse(link)
+    except Exception:
+        return 'invalid'
+
+    if parsed.scheme not in ('http', 'https') or not parsed.netloc:
+        return 'invalid'
+
+    host = parsed.netloc.lower().split(':')[0]
+    if not any(host == h or host.endswith('.' + h) for h in _CIVITAI_PAGE_HOSTS):
+        # Any other host (R2/B2 CDN, mirrors) is a real file URL.
+        return 'file'
+
+    path = (parsed.path or '/').lower()
+    if path.startswith('/login') or 'returnurl' in (parsed.query or '').lower():
+        return 'no_api'
+    if any(path.startswith(p) for p in _CIVITAI_PAGE_PATHS):
+        return 'page'
+    return 'file'
+
 def get_download_link(url, model_id):
     headers = _api.get_headers(model_id)
     proxies, ssl = _api.get_proxies()
 
     response = requests.get(url, headers=headers, allow_redirects=False, proxies=proxies, verify=ssl)
 
+    if response.status_code == 401:
+        return 'NO_API'
+
     if 300 <= response.status_code <= 308:
         if 'login?returnUrl' in response.text and 'reason=download-auth' in response.text:
             return 'NO_API'
 
-        download_link = response.headers['Location']
+        location = response.headers.get('Location')
+        if not location:
+            debug_print(f"[Download] {url} answered {response.status_code} without a Location header")
+            return None
+
+        # Resolve relative Locations against the request URL before anything
+        # downstream (Aria2 / requests) ever sees them.
+        download_link = urllib.parse.urljoin(url, location)
+        kind = _classify_download_redirect(download_link)
+
+        if kind == 'no_api':
+            return 'NO_API'
+        if kind == 'invalid':
+            debug_print(f"[Download] {url} redirected to an unusable target: {location}")
+            return None
+        if kind == 'page':
+            print(f"CivitAI redirected the download to a web page ({download_link}) instead of a file — "
+                  f"the model likely requires a purchase, an API key, or is no longer downloadable.")
+            return None
+
         return download_link
     else:
         return None
@@ -964,8 +1017,16 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
                 model_json = item.get('model_json', {})
                 items = model_json.get('items', [])
                 if items and 'modelVersions' in items[0]:
-                    version = items[0]['modelVersions'][0]
-                    if is_early_access(version):
+                    versions = items[0]['modelVersions'] or []
+                    # Check the version actually queued, not modelVersions[0]:
+                    # a model can mix free and paid versions, so the first entry
+                    # says nothing about the one being downloaded.
+                    queued_id = item.get('version_id')
+                    version = next(
+                        (v for v in versions if queued_id and str(v.get('id')) == str(queued_id)),
+                        versions[0] if versions else None
+                    )
+                    if version and is_early_access(version):
                         early_access = True
                 break
 
@@ -1406,7 +1467,8 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
 
             # Log ambiguity for debugging and traceability
             try:
-                debug_print(f"[Debug] Ambiguous SHA detected for {sha}: {len(candidates)} candidates")
+                _label = 'Ambiguous SHA detected' if len(candidates) > 1 else 'SHA lookup'
+                debug_print(f"[Debug] {_label} for {sha}: {len(candidates)} candidates")
                 for c in candidates:
                     debug_print(f"[Debug] Candidate -> modelId={c.get('modelId')} versionId={c.get('versionId')} file={c.get('file_name')} domain={c.get('domain')}")
             except Exception:
