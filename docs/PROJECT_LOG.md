@@ -1916,3 +1916,11 @@ load a model into the Browser grid, switch to Local, and check that same model's
 it should now tick. A duplicate-id check that must now return 1, not 2:
 `document.querySelectorAll('[id^="checkbox-"]').length` vs
 `new Set([...document.querySelectorAll('[id^="checkbox-"]')].map(e => e.id)).size`.
+
+**Follow-up: Early Access badge recoloured amber → aqua.** The user confirmed the
+checkbox and badge fixes work live, but found amber clashed with the card design and
+asked for the aqua of CivitAI's own badge. Now `rgba(13, 190, 172, 0.92)` with a
+`rgba(94, 234, 212, 0.65)` border. Deliberately teal/cyan rather than emerald so it
+stays distinguishable from the green New/Updated status badges that share the same
+corner — the earlier objection to green was about that adjacency, not the hue itself.
+`style.css` only; no markup or logic touched.
