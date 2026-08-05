@@ -92,58 +92,93 @@ def get_display_type(type_name):
     """Return short/clear display name for model type"""
     return MODEL_TYPE_DISPLAY_NAMES.get(type_name, type_name)
 
-def is_early_access(version_data):
-    """Check whether a version is gated behind CivitAI's paid/early access.
+# Access kinds returned by get_access_kind(). CivitAI gates downloads two very
+# different ways and both used to be reported as "Early Access" here:
+#   ACCESS_EARLY — a timed window. Buzz buys it now; the file turns free at endsAt.
+#   ACCESS_PAID  — a permanent purchase. It never turns free; Buzz is the only way in.
+ACCESS_FREE = 'free'
+ACCESS_EARLY = 'early_access'
+ACCESS_PAID = 'paid'
 
-    CivitAI signals this three different ways depending on API vintage:
+def get_access_kind(version_data):
+    """Classify a version as ACCESS_FREE, ACCESS_EARLY or ACCESS_PAID.
+
+    CivitAI signals the gate three different ways depending on API vintage:
+      - `paidAccess: {permanent, endsAt}` (current) — `permanent: true` is the
+        permanent Buzz purchase, a future `endsAt` is the timed early-access window,
       - `availability == 'EarlyAccess'` (legacy),
-      - `earlyAccessEndsAt` in the future (legacy),
-      - `paidAccess: {permanent, endsAt}` (current).
-    Only checking `availability` missed paid models entirely: CivitAI then answers
-    an authenticated download with a silent 3xx to the version's purchase page.
+      - `earlyAccessEndsAt` in the future (legacy).
+    `availability` alone is useless today: the current API answers `'Public'` (or
+    `null`) for both gated kinds and hides the real state in `paidAccess`.
     """
     if not isinstance(version_data, dict):
-        return False
-
-    avail = version_data.get('availability')
-    if isinstance(avail, str) and avail == 'EarlyAccess':
-        return True
+        return ACCESS_FREE
 
     paid = version_data.get('paidAccess')
     if isinstance(paid, dict):
         if paid.get('permanent'):
-            return True
+            return ACCESS_PAID
         if _is_future_timestamp(paid.get('endsAt')):
-            return True
+            return ACCESS_EARLY
 
-    return _is_future_timestamp(version_data.get('earlyAccessEndsAt'))
+    if version_data.get('availability') == 'EarlyAccess':
+        return ACCESS_EARLY
+
+    if _is_future_timestamp(version_data.get('earlyAccessEndsAt')):
+        return ACCESS_EARLY
+
+    return ACCESS_FREE
+
+def is_access_gated(version_data):
+    """True when a version cannot be downloaded for free — early access OR paid.
+
+    Use this for anything that must treat both kinds alike (the download pre-flight
+    guard, the hide filters). Use get_access_kind() when the two must be told apart.
+    """
+    return get_access_kind(version_data) != ACCESS_FREE
+
+# Decorations appended to version names in the dropdown. Anything that turns a
+# dropdown selection back into an API version name must strip them, so keep the
+# list here rather than repeating literals at each call site.
+VERSION_NAME_SUFFIXES = (' [Installed]', ' (Early Access)', ' (Paid)')
+
+def strip_version_suffixes(version_display):
+    """Recover the raw CivitAI version name from a decorated dropdown label."""
+    name = str(version_display or '')
+    changed = True
+    while changed:
+        changed = False
+        for suffix in VERSION_NAME_SUFFIXES:
+            if name.endswith(suffix):
+                name = name[:-len(suffix)]
+                changed = True
+    return name.strip()
 
 def get_availability_label(version_data):
     """Human-readable availability for the detail panel.
 
-    CivitAI reports paid versions as `availability: 'Public'` with the real gate in
+    CivitAI reports gated versions as `availability: 'Public'` with the real gate in
     `paidAccess`, so echoing `availability` verbatim showed "Public" for a model
-    that cannot actually be downloaded. Surface the paid state (and when it lifts)
-    instead.
+    that cannot actually be downloaded. Surface the gate — and, for early access,
+    the date it lifts — instead.
     """
     if not isinstance(version_data, dict):
         return 'Unknown'
 
-    raw = version_data.get('availability') or 'Unknown'
-    if not is_early_access(version_data):
-        return raw
+    kind = get_access_kind(version_data)
+    if kind == ACCESS_FREE:
+        return version_data.get('availability') or 'Unknown'
+
+    if kind == ACCESS_PAID:
+        return 'Paid (Buzz purchase)'
 
     paid = version_data.get('paidAccess')
+    ends = ''
     if isinstance(paid, dict):
-        if paid.get('permanent'):
-            return 'Early Access (paid)'
         ends = _format_timestamp_date(paid.get('endsAt'))
-        if ends:
-            return f'Early Access (paid until {ends})'
-        return 'Early Access (paid)'
-
-    ends = _format_timestamp_date(version_data.get('earlyAccessEndsAt'))
-    return f'Early Access (until {ends})' if ends else 'Early Access'
+    if not ends:
+        ends = _format_timestamp_date(version_data.get('earlyAccessEndsAt'))
+    return f'Early Access (free after {ends})' if ends else 'Early Access'
 
 def _format_timestamp_date(value):
     """Return the YYYY-MM-DD part of an ISO-8601 timestamp, or '' if unusable."""
@@ -612,13 +647,21 @@ def update_mode_page_html(content_type_filter, base_filter, tile_count, current_
 
 
 def model_list_html(json_data, target=''):
-    def filter_versions(item, hide_early_access, current_time):
-        """Filter model versions based on file presence and early access status"""
+    def filter_versions(item, hide_early_access, hide_paid, current_time):
+        """Filter model versions by file presence and by the two paid-gate kinds.
+
+        Early access and permanent paid are hidden independently: a user may accept
+        a version that turns free in a few days while still wanting the
+        never-free ones out of the grid.
+        """
         versions = []
         for version in item.get('modelVersions', []):
             if not version.get('files'):
                 continue
-            if hide_early_access and is_early_access(version):
+            kind = get_access_kind(version)
+            if hide_early_access and kind == ACCESS_EARLY:
+                continue
+            if hide_paid and kind == ACCESS_PAID:
                 continue
             versions.append(version)
         return versions
@@ -735,11 +778,14 @@ def model_list_html(json_data, target=''):
         else:
             date = 'Not Found'
 
-        early_access = is_early_access(display_version) if display_version else False
+        access_kind = get_access_kind(display_version) if display_version else ACCESS_FREE
         # State marker on the <figure>. It carries no styling of its own anymore
-        # (the amber badge does the signalling); kept as a stable hook for user
-        # CSS and for querying paid cards from JS.
-        early_access_class = 'early-access' if early_access else ''
+        # (the badge does the signalling); kept as a stable hook for user CSS and
+        # for querying gated cards from JS. `.access-gated` matches both kinds.
+        access_class = {
+            ACCESS_EARLY: 'access-gated early-access',
+            ACCESS_PAID: 'access-gated paid-access',
+        }.get(access_kind, '')
 
         # Status badges: New / Updated + base model abbreviation (optional setting)
         show_status_badges = getattr(opts, 'show_civitai_status_badges', True)
@@ -906,20 +952,29 @@ def model_list_html(json_data, target=''):
         # Model Type Badge ( + base model abbreviation)
         model_type_badge = f'<div class="model-type-badge {item["type"].lower()}">{get_display_type(item["type"])}{bm_suffix}</div>'
 
-        # Early Access Badge — a standalone labelled pill next to the type badge.
-        # It replaces the old approach (recolouring the type badge + a subtle card
-        # border), which was easy to miss on a dense grid.
-        if early_access:
-            early_access_badge = (
-                '<div class="early-access-badge">'
+        # Access Badge — a standalone labelled pill next to the type badge. The two
+        # gated kinds get different pills because they mean different things to the
+        # user: aqua "Early Access" turns free on its own, gold "Paid" never does.
+        if access_kind == ACCESS_EARLY:
+            access_badge = (
+                '<div class="early-access-badge" title="Early Access — costs Buzz now, free once the window ends">'
                 '<svg class="early-access-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor">'
                 '<path d="M13 2L3 14h9l-1 8 10-12h-8z"/>'
                 '</svg>'
                 'Early Access'
                 '</div>'
             )
+        elif access_kind == ACCESS_PAID:
+            access_badge = (
+                '<div class="paid-badge" title="Paid — permanent purchase with Buzz, it never becomes free">'
+                '<svg class="paid-badge-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor">'
+                '<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15.5v1.2h-2v-1.2c-1.6-.2-2.8-1.1-3-2.6h1.9c.1.7.8 1.2 2.1 1.2 1.2 0 1.9-.5 1.9-1.2 0-.7-.5-1-2.2-1.4-2.1-.5-3.4-1.2-3.4-2.9 0-1.4 1.1-2.4 2.7-2.7V6.3h2v1.6c1.6.3 2.5 1.3 2.6 2.6h-1.9c-.1-.7-.6-1.2-1.7-1.2s-1.7.5-1.7 1.1c0 .6.5.9 2.2 1.3 2.1.5 3.4 1.2 3.4 3 0 1.5-1.1 2.5-2.9 2.8z"/>'
+                '</svg>'
+                'Paid'
+                '</div>'
+            )
         else:
-            early_access_badge = ''
+            access_badge = ''
 
         # Status Badge (New / Updated)
         if status_badge_type:
@@ -972,11 +1027,11 @@ def model_list_html(json_data, target=''):
 
         # ModelCard HTML (Header)
         card_html = (
-            f'<figure class="civmodelcard {nsfw_class} {early_access_class} {installstatus}{fav_class}" '
+            f'<figure class="civmodelcard {nsfw_class} {access_class} {installstatus}{fav_class}" '
             f'base-model="{base_model}" date="{date}" data-model-id="{model_id}" data-creator="{escape(model_uploader_card)}" '
             f'onclick="{select_onclick}">'
             f'<div class="card-header">'
-            f'<div class="badges-container">{model_type_badge}{early_access_badge}{status_badge}{nsfw_badge}{source_badge}</div>'
+            f'<div class="badges-container">{model_type_badge}{access_badge}{status_badge}{nsfw_badge}{source_badge}</div>'
         )
 
         # Marker for Local Models checkboxes so JS can detect them without relying
@@ -1059,12 +1114,13 @@ def model_list_html(json_data, target=''):
     video_playback = getattr(opts, 'video_playback', True)
     playback = 'autoplay loop' if video_playback else ''
     hide_early_access = getattr(opts, 'hide_early_access', True)
+    hide_paid_models = getattr(opts, 'hide_paid_models', False)
     current_time = datetime.now(timezone.utc)
 
     # Filter model versions and items
     filtered_items = []
     for item in json_data.get('items', []):
-        versions = filter_versions(item, hide_early_access, current_time)
+        versions = filter_versions(item, hide_early_access, hide_paid_models, current_time)
         if versions:
             item['modelVersions'] = versions
             filtered_items.append(item)
@@ -1683,11 +1739,13 @@ def update_model_versions(model_id, json_input=None, base_filter=None, installed
                 version_obj = next((ver for ver in versions if ver['name'] == v), None)
                 name = v
                 installed = v in installed_versions
-                early_access = is_early_access(version_obj) if version_obj else False
+                access_kind = get_access_kind(version_obj) if version_obj else ACCESS_FREE
                 if installed:
                     name += ' [Installed]'
-                if early_access:
+                if access_kind == ACCESS_EARLY:
                     name += ' (Early Access)'
+                elif access_kind == ACCESS_PAID:
+                    name += ' (Paid)'
                 display_version_names.append(name)
             default_installed = next((name for name in display_version_names if '[Installed]' in name), None)
 
@@ -1867,8 +1925,8 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
     else:
         model_id = input_id
 
-    if model_version and '[Installed]' in model_version:
-        model_version = model_version.replace(' [Installed]', '')
+    if model_version:
+        model_version = strip_version_suffixes(model_version)
     if model_id:
         output_html = ''
         output_training = ''
@@ -2672,8 +2730,8 @@ def update_file_info(model_string, model_version, selected_file_label, json_inpu
     model_id = None
     model_name, model_id = extract_model_info(model_string)
 
-    if model_version and '[Installed]' in model_version:
-        model_version = model_version.replace(' [Installed]', '')
+    if model_version:
+        model_version = strip_version_suffixes(model_version)
     api_data = json_input if json_input is not None else gl.json_data
     if model_id and model_version and isinstance(api_data, dict) and 'items' in api_data:
         for item in api_data['items']:

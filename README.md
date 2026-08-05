@@ -27,6 +27,7 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 - [Features](#-features)
 - [Installation](#-installation)
 - [Auto-Organization System](#-auto-organization-system)
+- [Paid vs. Early Access](#-paid-vs-early-access)
 - [Dashboard & Statistics](#-dashboard--statistics)
 - [Supported Model Types](#-supported-model-types)
 - [Credits](#-credits)
@@ -194,6 +195,7 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 - **Hugging Face result filtering** — checkpoint search now prefers real model artifacts, avoids auxiliary Diffusers components, separates LoRA results from checkpoint results, and uses video pipeline filters for video model families such as Wan.
 - **GGUF installed-model detection** — `.gguf` checkpoints now appear in Local Models and are recognized as installed files by Browser cards, so their sidecars, delete actions, and update checks work the same as `.safetensors`/`.ckpt` files.
 - **Preview gallery reliability** — freshly-published models no longer show a false "Unable to load preview images" error, and updating an installed model with "Replace installed" now correctly refreshes its sidecar to the new version instead of retaining the previous one's data.
+- **Paid vs. Early Access separation** — CivitAI's two paywalls are no longer lumped together: a timed early-access window (which expires into a free download) now gets an aqua badge, while a permanent Buzz purchase gets a gold **Paid** badge, with matching version-dropdown suffixes, detail-panel labels, download messages, and independent hide filters. See [Paid vs. Early Access](#-paid-vs-early-access).
 
 > This is active work on the `revamp` branch. CivitAI remains the primary source of truth for metadata and SHA256 validation. External-source search/download is being added incrementally and should be runtime-tested in Forge Neo before release.
 
@@ -283,7 +285,7 @@ Source-specific behavior:
 - Cancel individually or clear the entire queue
 - Folder automatically set based on content type ⭐
 - Custom sub-folders per download
-- API key support for early access and private models
+- API key support for early access, paid, and private models
 - Proxy support for restricted regions
 
 ### 🔄 Model Updates ⭐
@@ -325,9 +327,10 @@ Source-specific behavior:
 
 ### 🃏 Model Cards
 
-- Color-coded borders: aquamarine = installed, orange = outdated, gold = early access / favorite creator
+- Color-coded borders: aquamarine = installed, orange = outdated, gold = favorite creator
 - Color legend bar always visible above the grid ⭐
-- NSFW, Early Access (💎), and type badges
+- NSFW, access, and type badges
+- Paid models are told apart from early access ⭐ — see [Paid vs. Early Access](#-paid-vs-early-access)
 - Configurable tile size
 - Quick delete from the card
 - Multi-select checkboxes for batch download ⭐
@@ -382,6 +385,40 @@ Go to **Update Models** tab → select types → click **"📁 Organize models i
 - Automatic backup before any operation
 - One-click undo
 - Conflict detection (skips files that already exist at destination)
+
+---
+
+## 💎 Paid vs. Early Access
+
+CivitAI runs **two different paywalls**, and the difference matters: one expires on its
+own, the other never does. The browser labels them separately so you can tell at a glance
+whether a model is worth waiting for.
+
+| Badge | What it means | Does it become free? |
+|---|---|---|
+| 🟦 **Early Access** (aqua) | The creator opened a timed early-access window. Buzz unlocks it right now. | **Yes** — automatically, once the window closes. The detail panel shows the exact date: *"Early Access (free after 2026-08-10)"*. |
+| 🟨 **Paid** (gold) | A permanent purchase with yellow Buzz. | **No** — never. The detail panel shows *"Paid (Buzz purchase)"*. |
+
+Both badges appear on the model card next to the type badge, and both are repeated as a
+suffix in the version dropdown — `v1.0 (Early Access)` vs `v1.0 (Paid)` — because a single
+model can mix free, early-access and paid versions.
+
+**Downloads are blocked before they start.** CivitAI answers a download request for a
+gated version with a silent redirect to its purchase page, which used to surface as a
+confusing Aria2 error. The browser now detects the gate up front and explains which one
+applies, so you know whether waiting is an option.
+
+**Hiding them.** Two independent settings under **Settings → CivitAI Browser Neo**:
+
+- **Hide early access models** — hides only the timed kind
+- **Hide paid models** — hides only the permanent kind
+
+> ⚠️ These were a single setting before. If you previously used *"Hide early access models"*
+> to keep all paid content out of the grid, enable **both** — the old setting no longer
+> covers permanently-paid versions.
+
+An API key (**Settings → CivitAI Browser Neo → API key**) is still required to download
+any gated model you have already purchased.
 
 ---
 

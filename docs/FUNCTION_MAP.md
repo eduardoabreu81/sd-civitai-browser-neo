@@ -41,7 +41,10 @@
 
 | Function | Description | Dependencies | Returns |
 |----------|-------------|--------------|---------|
-| `is_early_access(version_data)` | Checks if a version is marked as early access. | — | `bool` |
+| `get_access_kind(version_data)` | Classifies a version's paywall as `ACCESS_FREE`, `ACCESS_EARLY` (timed window, turns free) or `ACCESS_PAID` (permanent Buzz purchase). | `_is_future_timestamp` | `str` |
+| `is_access_gated(version_data)` | True when a version is not free to download — either gated kind. | `get_access_kind` | `bool` |
+| `get_availability_label(version_data)` | Human-readable availability for the detail panel; names the gate instead of echoing `'Public'`. | `get_access_kind`, `_format_timestamp_date` | `str` |
+| `strip_version_suffixes(version_display)` | Recovers the raw version name from a dropdown label (`[Installed]`, `(Early Access)`, `(Paid)`). | `VERSION_NAME_SUFFIXES` | `str` |
 | `get_status_badge_type(item)` | Returns `'new'`, `'updated'`, or `''` based on version publish age. | `datetime`, `timedelta` | `str` |
 | `is_model_nsfw(model_data, nsfw_level)` | Determines NSFW status from metadata and first-image NSFW level. | — | `bool` |
 
@@ -72,7 +75,7 @@
 | Function | Description | Dependencies | Returns |
 |----------|-------------|--------------|---------|
 | `model_list_html(json_data)` | Builds full HTML card grid. Detects installed/outdated/cross-family status. | `filter_versions`, `collect_existing_files`, `get_model_card`, `contenttype_folder`, `_file.FavoriteCreators`, `_file.extract_version_from_ver_name`, `_file.compare_version_parts` | `str` |
-| `filter_versions(item, hide_early_access, current_time)` *(nested)* | Filters out versions with no files or early-access versions. | — | `list` |
+| `filter_versions(item, hide_early_access, hide_paid, current_time)` *(nested)* | Filters out versions with no files; hides early-access and permanently-paid versions independently. | `get_access_kind` | `list` |
 | `collect_existing_files(model_folders)` *(nested)* | Walks folders to collect existing filenames and SHA256 hashes. | `os.walk`, `json.load` | `(dict, dict)` |
 | `get_model_card(item, ...)` *(nested)* | Builds HTML for a single model card (badges, preview, actions). | `_api.get_base_model_short`, `_api.is_model_nsfw` | `str` |
 
@@ -96,7 +99,7 @@
 
 | Function | Description | Dependencies | Returns |
 |----------|-------------|--------------|---------|
-| `update_model_versions(model_id, json_input, base_filter)` | Builds version dropdown, marks installed & early-access versions. | `gl.json_data`, `contenttype_folder`, `normalize_sha256`, `is_early_access` | `gr.update` |
+| `update_model_versions(model_id, json_input, base_filter)` | Builds version dropdown, marks installed, early-access `(Early Access)` and paid `(Paid)` versions. | `gl.json_data`, `contenttype_folder`, `normalize_sha256`, `get_access_kind` | `gr.update` |
 | `update_file_info(model_string, model_version, file_metadata)` | Updates UI fields when a file is selected. Detects install status & misclassification. | `extract_model_info`, `gl.json_data`, `contenttype_folder`, `normalize_sha256`, `sub_folder_value`, `cleaned_name`, `_dl.convert_size` | `tuple[gr.update, ...]` (8 items) |
 | `update_model_info(...)` | Main preview-panel builder (description, permissions, samples, trigger words, install path). | `extract_model_info`, `gl.json_data`, `contenttype_folder`, `is_model_nsfw`, `get_civitai_domain`, `request_civit_api`, `fetch_and_process_image`, `get_local_trigger_words`, `_file.getSubfolders`, `_file.get_companion_banner`, `_file.convertCustomFolder`, `_dl.convert_size` | `tuple[gr.update, ...]` (13 items) |
 

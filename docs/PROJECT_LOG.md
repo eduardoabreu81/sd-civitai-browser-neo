@@ -1924,3 +1924,54 @@ asked for the aqua of CivitAI's own badge. Now `rgba(13, 190, 172, 0.92)` with a
 stays distinguishable from the green New/Updated status badges that share the same
 corner — the earlier objection to green was about that adjacency, not the hue itself.
 `style.css` only; no markup or logic touched.
+
+### 2026-08-05 — Split the paid gate in two: "Early Access" vs "Paid"
+
+**Problem:** everything gated on CivitAI was reported as *Early Access*, but CivitAI
+actually runs two gates with opposite consequences for the user:
+
+| Gate | API shape | Meaning |
+|---|---|---|
+| Early Access | `paidAccess: {permanent: false, endsAt: <future>}` | Buzz unlocks it now; the file becomes **free by itself** once the window closes |
+| Paid | `paidAccess: {permanent: true, endsAt: null}` | Permanent yellow-Buzz purchase; it **never** becomes free |
+
+Confirmed against live API (2026-08-05, `/api/v1/models?limit=100&sort=Newest`,
+336 versions: 329 free / 6 early access / 1 paid). Two things worth noting about the
+current payload: `/api/v1/model-versions/{id}` no longer returns `availability` at all
+(it is `null`), and the list endpoint returns `"Public"` for **both** gated kinds — so
+`availability` is now useless as a gate signal and `paidAccess` is the only truth.
+
+**What changed:**
+- `is_early_access()` → replaced by `get_access_kind()` returning `ACCESS_FREE` /
+  `ACCESS_EARLY` / `ACCESS_PAID`, plus `is_access_gated()` for the consumers that must
+  treat both alike. `permanent` is checked **before** `endsAt` so a stale end date on a
+  permanent purchase cannot downgrade it to the free-eventually kind.
+- Card badge: aqua "Early Access" pill kept; new gold `.paid-badge` (Buzz yellow
+  `rgba(253, 216, 53, 0.94)`, dark `#3b2f00` text for contrast) with a coin glyph.
+  Both carry a `title` explaining the difference on hover.
+- Card classes: `access-gated` (either kind) + `early-access` / `paid-access`. The old
+  single `.early-access` hook no longer means "gated" on its own.
+- Version dropdown: `(Early Access)` vs `(Paid)` suffix.
+- Detail panel `get_availability_label()`: `Early Access (free after YYYY-MM-DD)` vs
+  `Paid (Buzz purchase)` — the old wording said "Early Access (paid)" for both.
+- Download pre-flight guard: distinct messages. Waiting is a real option for early
+  access and never for a paid version, so the message must not suggest it.
+- New setting `hide_paid_models` alongside `hide_early_access`; `filter_versions()`
+  now hides the two kinds **independently**. Behaviour change: `hide_early_access` no
+  longer hides permanently-paid versions — enable the new setting for that.
+- New `strip_version_suffixes()` centralizes stripping the dropdown decorations.
+  This also fixes a latent bug: `update_model_info()` and `update_file_info()`
+  (`civitai_api.py`) only ever stripped `[Installed]`, so an early-access version
+  selected in the dropdown never matched its API entry.
+
+**Files changed:** `scripts/civitai_api.py`, `scripts/civitai_download.py`,
+`scripts/civitai_gui.py`, `style.css`, `tests/test_early_access.py`,
+`docs/FUNCTION_MAP.md`.
+
+**Validation:** suite **179 passed**; `pyflakes` clean (no undefined names after the
+rename); classifier cross-checked against the live API page above, including the two
+real gated samples (version 3188880 = early access until 2026-08-10, version 3200276 =
+permanently paid). **Card rendering not covered by a test** — `get_model_card` is nested
+inside `model_list_html` and needs `_file.FavoriteCreators` plus `gl` state, so the badge
+markup rests on the classifier tests plus reading. Needs live confirmation in Forge Neo:
+a grid page should now show gold "Paid" pills distinct from the aqua ones.

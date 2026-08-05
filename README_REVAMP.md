@@ -152,6 +152,30 @@ A new sub-tab inside Local Models for managing LoRA categories.
 - If a downloaded file fails SHA256 verification, the extension re-queries `/api/v1/model-versions/{version_id}`.
 - If the author silently updated the file, the new hash is accepted and metadata is refreshed instead of failing.
 
+### Paid vs. Early Access
+
+CivitAI gates downloads two different ways, and they used to be reported identically as
+"Early Access". They now have separate badges, labels, and filters:
+
+| Kind | API shape | Card badge | Becomes free? |
+|---|---|---|---|
+| Early Access | `paidAccess: {permanent: false, endsAt: <future>}` | aqua **Early Access** | **Yes**, when the window closes |
+| Paid | `paidAccess: {permanent: true}` | gold **Paid** | **No**, ever |
+
+- `get_access_kind()` (`scripts/civitai_api.py`) is the single classifier; `permanent` is
+  evaluated before `endsAt`, so a stale end date cannot downgrade a permanent purchase.
+- `availability` is no longer usable as a signal: `/api/v1/model-versions/{id}` returns it
+  as `null`, and the list endpoint returns `"Public"` for **both** gated kinds. Only
+  `paidAccess` is authoritative. Legacy `availability: 'EarlyAccess'` and
+  `earlyAccessEndsAt` are still honored for older/mirrored payloads.
+- Version dropdown suffixes: `(Early Access)` vs `(Paid)` — one model can mix free,
+  early-access and paid versions.
+- Detail panel: *"Early Access (free after YYYY-MM-DD)"* vs *"Paid (Buzz purchase)"*.
+- The download pre-flight guard blocks the request and names the gate, instead of letting
+  CivitAI's silent redirect to the purchase page reach Aria2 as an `Unrecognized URI` error.
+- Two independent settings: **Hide early access models** and **Hide paid models**.
+  ⚠️ These were one setting before; the first no longer hides permanently-paid versions.
+
 ### Preview gallery reliability
 
 - A freshly-published model version no longer shows a false "Unable to load preview images" error — the extension retries through a second endpoint (and, as a last resort, the images already fetched for the model page) instead of giving up on the first failed request.

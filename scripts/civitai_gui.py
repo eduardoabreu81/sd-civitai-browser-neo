@@ -407,8 +407,8 @@ def on_ui_tabs():
                     '<span class="legend-item"><span class="legend-dot outdated"></span>Update available (same family)</span>'
                     '<span class="legend-separator"></span>'
                     '<span class="legend-item"><span class="legend-dot cross-family"></span>New family variant available</span>'
-                    # Early Access is no longer a card border — it renders as a labelled
-                    # amber badge on the card itself, which needs no legend entry.
+                    # Early Access / Paid are no longer card borders — each renders as
+                    # its own labelled badge on the card, which needs no legend entry.
                     '</div>'
                 ))
             with gr.Accordion(label='\U0001f464 Creator Management', open=False, elem_id='creatorMgmtBox'):
@@ -1184,7 +1184,7 @@ def on_ui_tabs():
             whether the installed version is replaced or kept alongside (same as Update to latest)."""
             if not model_id_value or not version_display:
                 return gr.update()
-            vname = str(version_display).replace(' (Early Access)', '').replace(' [Installed]', '').strip()
+            vname = _api.strip_version_suffixes(version_display)
             items = gl.local_json_data.get('items', []) if isinstance(gl.local_json_data, dict) else []
             item = next((it for it in items if str(it.get('id')) == str(model_id_value)), None)
             ver = next((v for v in (item.get('modelVersions', []) if item else [])
@@ -2321,7 +2321,17 @@ def on_ui_settings():
             label='Hide early access models',
             section=browser,
             category_id=cat_id
-        ).info('Early access models are only downloadable for supporter tier members')
+        ).info('Versions inside a timed early-access window: they cost Buzz now and become free once the window ends')
+    )
+
+    shared.opts.add_option(
+        'hide_paid_models',
+        shared.OptionInfo(
+            default=False,
+            label='Hide paid models',
+            section=browser,
+            category_id=cat_id
+        ).info('Versions behind a permanent Buzz purchase. Unlike early access, these never become free')
     )
 
     shared.opts.add_option(

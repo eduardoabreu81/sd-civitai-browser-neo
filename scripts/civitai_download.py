@@ -21,7 +21,7 @@ import scripts.civitai_file_manage as _file
 import scripts.civitai_global as gl
 import scripts.civitai_api as _api
 import scripts.download_log as _dl_log
-from scripts.civitai_api import is_early_access, is_model_nsfw
+from scripts.civitai_api import is_model_nsfw
 from scripts.civitai_global import print, debug_print
 
 try:
@@ -1011,7 +1011,8 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
 
         ## === ANXETY EDITs ===
         # Find the model item in the download queue (by model_id and file_name)
-        early_access = False
+        access_kind = _api.ACCESS_FREE
+        gated_version = None
         for item in gl.download_queue:
             if _api.model_id_matches(item.get('model_id'), model_id):
                 model_json = item.get('model_json', {})
@@ -1026,12 +1027,21 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
                         (v for v in versions if queued_id and str(v.get('id')) == str(queued_id)),
                         versions[0] if versions else None
                     )
-                    if version and is_early_access(version):
-                        early_access = True
+                    if version:
+                        access_kind = _api.get_access_kind(version)
+                        gated_version = version
                 break
 
-        if early_access:
-            msg = f"File: '{file_name}' is marked as Early Access on CivitAI. You need to purchase this model to download it."
+        if access_kind != _api.ACCESS_FREE:
+            # Tell the two gates apart: waiting is a real option for early access,
+            # never for a permanent paid version.
+            label = _api.get_availability_label(gated_version)
+            if access_kind == _api.ACCESS_PAID:
+                msg = (f"File: '{file_name}' is a paid model on CivitAI ({label}). "
+                       f"You need to buy it with Buzz before it can be downloaded.")
+            else:
+                msg = (f"File: '{file_name}' is in Early Access on CivitAI ({label}). "
+                       f"Spend Buzz to unlock it now, or wait until the early-access window ends.")
             print(msg)
             gl.download_fail = 'EARLY_ACCESS'
             if progress is not None:

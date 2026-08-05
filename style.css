@@ -273,9 +273,14 @@
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     width: fit-content;
 }
-/* Early Access Badge — standalone aqua pill, matching CivitAI's own card badge.
-   Kept teal/cyan rather than emerald so it stays distinguishable from the green
-   New/Updated status badges, which sit in the same corner. */
+/* Access badges — two DIFFERENT gates, so two different pills.
+   Aqua "Early Access" = timed window, the file turns free on its own.
+   Gold "Paid"         = permanent Buzz purchase, it never turns free.
+   They shared one badge before, which hid a distinction the user acts on.
+
+   Early Access: teal/cyan (matching CivitAI's own card badge) rather than
+   emerald, so it stays distinguishable from the green New/Updated status
+   badges that sit in the same corner. */
 .early-access-badge {
     display: flex;
     height: 22px;
@@ -299,6 +304,39 @@
     white-space: nowrap;
 }
 .early-access-badge .early-access-icon { /* Lightning glyph */
+    fill: currentColor;
+    margin-left: -3px;
+    margin-right: 3px;
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+}
+
+/* Paid Badge — Buzz gold. Dark text because gold on white text is unreadable,
+   which also makes it read as a different class of badge at a glance. */
+.paid-badge {
+    display: flex;
+    height: 22px;
+    padding: 4px 10px;
+    color: #3b2f00;
+    background: rgba(253, 216, 53, 0.94);
+    border: 1px solid rgba(255, 236, 128, 0.75);
+    border-radius: 10px;
+    box-shadow: 0 2px 8px 0 rgba(202, 138, 4, 0.4);
+    backdrop-filter: blur(6px);
+    font-size: 0.75em;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    pointer-events: none !important;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    width: fit-content;
+    white-space: nowrap;
+}
+.paid-badge .paid-badge-icon { /* Buzz coin glyph */
     fill: currentColor;
     margin-left: -3px;
     margin-right: 3px;
@@ -340,6 +378,7 @@
 .civmodelcard:hover .badges-container .model-type-badge,
 .civmodelcard:hover .badges-container .nsfw-badge,
 .civmodelcard:hover .badges-container .early-access-badge,
+.civmodelcard:hover .badges-container .paid-badge,
 .civmodelcard:hover .badges-container .status-badge {
     opacity: 0;
     transform: translateX(-10px);
