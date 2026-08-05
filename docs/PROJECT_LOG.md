@@ -1975,3 +1975,48 @@ permanently paid). **Card rendering not covered by a test** — `get_model_card`
 inside `model_list_html` and needs `_file.FavoriteCreators` plus `gl` state, so the badge
 markup rests on the classifier tests plus reading. Needs live confirmation in Forge Neo:
 a grid page should now show gold "Paid" pills distinct from the aqua ones.
+
+**Follow-up (same day): a third `paidAccess` shape, and the badge text was illegible.**
+
+Live validation in Forge Neo found two defects in the commit above.
+
+**1. `paidAccess: {permanent: false, endsAt: null}` was classified as free.** The user
+reported model 2830035 / version 3193296 — paid on the site, no badge in the grid. The
+original classifier only accepted `permanent: true` or a *future* `endsAt`, so a gated
+version with no published end date fell through to the legacy checks and read as free.
+
+Shape census over 1660 live versions (8 pages of `/api/v1/models?sort=Newest`):
+
+| `paidAccess` | Count | Kind |
+|---|---|---|
+| absent / `null` | 1595 | free |
+| `{permanent: false, endsAt: <future>}` | 49 | early access |
+| `{permanent: true, endsAt: null}` | 15 | paid |
+| `{permanent: false, endsAt: null}` | 1 | **paid** — was misread as free |
+
+Corrected rule: **a populated `paidAccess` object is itself the gate**; its fields only
+say *which* gate. A dateless gate is reported as PAID rather than EARLY on purpose —
+with no date there is nothing to wait for, so "becomes free later" would be a lie. An
+`endsAt` in the past still means the window closed and the file is genuinely free.
+An empty `{}` carries no information and is deliberately not treated as a gate.
+
+**2. The Paid badge's label washed out.** Every other badge in `.badges-container` paints
+its text white, which coincidentally matches the WebUI theme's own light body text — so
+when a theme rule outranks a single-class selector, those badges still look correct *by
+accident*. The gold Paid badge was the only one with dark text, making it the only place
+the lost declaration was visible. Fixed by scoping both access badges under
+`.badges-container` and marking `color` (and the icon `fill`) `!important`. The Early
+Access badge got the same hardening even though it looks fine today: its white text only
+survives by that same coincidence, and a **light** WebUI theme would repaint it
+dark-on-aqua. Paid also moved to a slightly deeper gold (`rgba(250, 204, 21, 0.96)`) with
+near-black `#241c00` text and an amber border.
+
+**Files changed:** `scripts/civitai_api.py`, `style.css`, `tests/test_early_access.py`,
+`README_REVAMP.md`.
+
+**Validation:** suite **181 passed** (two new cases: the dateless gate pinned to the real
+3193296 payload, and the empty-object guard); classifier re-checked live against all five
+reference versions — 3193296, 3186683 and 3200276 → paid, 3188880 → early access,
+1435042 → free. The CSS fix is **not covered by a test** and the specificity diagnosis is
+inferred, not observed (the overriding rule lives in Gradio's own stylesheet, not this
+repo) — it needs a second look in Forge Neo.

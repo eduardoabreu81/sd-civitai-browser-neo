@@ -104,22 +104,34 @@ def get_access_kind(version_data):
     """Classify a version as ACCESS_FREE, ACCESS_EARLY or ACCESS_PAID.
 
     CivitAI signals the gate three different ways depending on API vintage:
-      - `paidAccess: {permanent, endsAt}` (current) — `permanent: true` is the
-        permanent Buzz purchase, a future `endsAt` is the timed early-access window,
+      - `paidAccess: {permanent, endsAt}` (current),
       - `availability == 'EarlyAccess'` (legacy),
       - `earlyAccessEndsAt` in the future (legacy).
     `availability` alone is useless today: the current API answers `'Public'` (or
     `null`) for both gated kinds and hides the real state in `paidAccess`.
+
+    A POPULATED `paidAccess` object is itself the gate signal — its fields only say
+    *which* gate. Three shapes exist in the wild (counted over 1660 live versions):
+      - `{permanent: true,  endsAt: null}` → permanent purchase           → PAID
+      - `{permanent: false, endsAt: <future>}` → timed window             → EARLY
+      - `{permanent: false, endsAt: null}` → gated, no published end date → PAID
+    The last one is rare but real (model 2830035 / version 3193296 reads as paid on
+    the site). Treat it as PAID, not EARLY: with no date there is nothing to wait
+    for, so telling the user to wait would be wrong. A `endsAt` in the PAST means the
+    window already closed, which is genuinely free again.
     """
     if not isinstance(version_data, dict):
         return ACCESS_FREE
 
     paid = version_data.get('paidAccess')
-    if isinstance(paid, dict):
+    if isinstance(paid, dict) and paid:
         if paid.get('permanent'):
             return ACCESS_PAID
-        if _is_future_timestamp(paid.get('endsAt')):
+        ends = paid.get('endsAt')
+        if _is_future_timestamp(ends):
             return ACCESS_EARLY
+        if ends is None:
+            return ACCESS_PAID
 
     if version_data.get('availability') == 'EarlyAccess':
         return ACCESS_EARLY

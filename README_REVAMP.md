@@ -160,8 +160,15 @@ CivitAI gates downloads two different ways, and they used to be reported identic
 | Kind | API shape | Card badge | Becomes free? |
 |---|---|---|---|
 | Early Access | `paidAccess: {permanent: false, endsAt: <future>}` | aqua **Early Access** | **Yes**, when the window closes |
-| Paid | `paidAccess: {permanent: true}` | gold **Paid** | **No**, ever |
+| Paid | `paidAccess: {permanent: true, endsAt: null}` | gold **Paid** | **No**, ever |
+| Paid | `paidAccess: {permanent: false, endsAt: null}` | gold **Paid** | **No** published date to wait for |
 
+- A **populated `paidAccess` object is itself the gate signal**; its fields only say
+  *which* gate. All three shapes above occur in the wild (counted over 1660 live
+  versions: 49 timed, 15 permanent, 1 dateless). The dateless shape is rare but real —
+  it is reported as **Paid**, not Early Access, because with no date there is nothing to
+  wait for and an "it becomes free later" label would be a lie.
+- An `endsAt` in the **past** means the window already closed → genuinely free again.
 - `get_access_kind()` (`scripts/civitai_api.py`) is the single classifier; `permanent` is
   evaluated before `endsAt`, so a stale end date cannot downgrade a permanent purchase.
 - `availability` is no longer usable as a signal: `/api/v1/model-versions/{id}` returns it

@@ -66,6 +66,29 @@ class TestGetAccessKind(unittest.TestCase):
         self.assertEqual(self.api.get_access_kind(version), self.api.ACCESS_PAID)
         self.assertTrue(self.api.is_access_gated(version))
 
+    def test_gated_without_an_end_date_is_paid(self):
+        """Real payload of model 2830035 / version 3193296, which the site shows as
+        paid. A populated `paidAccess` IS the gate; `permanent: false` with a null
+        `endsAt` means gated with no published end date. It must read as PAID, not
+        EARLY — with no date there is nothing to wait for, so an "it becomes free
+        later" label would be a lie. Rare but real: 1 of 1660 live versions sampled.
+        """
+        version = {
+            "id": 3193296,
+            "name": "v1.0",
+            "availability": "Public",
+            "paidAccess": {"permanent": False, "endsAt": None},
+        }
+        self.assertEqual(self.api.get_access_kind(version), self.api.ACCESS_PAID)
+        self.assertTrue(self.api.is_access_gated(version))
+
+    def test_empty_paid_access_object_is_not_a_gate(self):
+        """`{}` carries no gate information — don't invent one."""
+        self.assertEqual(
+            self.api.get_access_kind({"availability": "Public", "paidAccess": {}}),
+            self.api.ACCESS_FREE,
+        )
+
     def test_permanent_wins_over_a_stale_end_date(self):
         """`permanent` is authoritative: an endsAt alongside it must not downgrade
         the version to the (free-eventually) early-access kind."""

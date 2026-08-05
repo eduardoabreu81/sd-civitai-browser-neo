@@ -281,11 +281,14 @@
    Early Access: teal/cyan (matching CivitAI's own card badge) rather than
    emerald, so it stays distinguishable from the green New/Updated status
    badges that sit in the same corner. */
-.early-access-badge {
+.badges-container .early-access-badge {
     display: flex;
     height: 22px;
     padding: 4px 10px;
-    color: #ffffff;
+    /* !important for the same reason as .paid-badge below: white here only
+       survives a theme override by coincidence, and a LIGHT WebUI theme would
+       repaint it dark-on-aqua. */
+    color: #ffffff !important;
     background: rgba(13, 190, 172, 0.92);
     border: 1px solid rgba(94, 234, 212, 0.65);
     border-radius: 10px;
@@ -303,8 +306,8 @@
     width: fit-content;
     white-space: nowrap;
 }
-.early-access-badge .early-access-icon { /* Lightning glyph */
-    fill: currentColor;
+.badges-container .early-access-badge .early-access-icon { /* Lightning glyph */
+    fill: currentColor !important;
     margin-left: -3px;
     margin-right: 3px;
     width: 13px;
@@ -312,17 +315,23 @@
     flex-shrink: 0;
 }
 
-/* Paid Badge — Buzz gold. Dark text because gold on white text is unreadable,
-   which also makes it read as a different class of badge at a glance. */
-.paid-badge {
+/* Paid Badge — Buzz gold with near-black text.
+
+   The colour is declared `!important` and behind `.badges-container` on purpose.
+   Every other badge here paints its text WHITE, which happens to match the WebUI
+   theme's own light body text — so if a theme rule outranks the single-class
+   selector, those badges still look right by accident. This is the only badge with
+   dark text, so it was the only one where losing the declaration was visible: the
+   label fell back to the theme's light colour and washed out against the gold. */
+.badges-container .paid-badge {
     display: flex;
     height: 22px;
     padding: 4px 10px;
-    color: #3b2f00;
-    background: rgba(253, 216, 53, 0.94);
-    border: 1px solid rgba(255, 236, 128, 0.75);
+    color: #241c00 !important;
+    background: rgba(250, 204, 21, 0.96);
+    border: 1px solid rgba(202, 138, 4, 0.85);
     border-radius: 10px;
-    box-shadow: 0 2px 8px 0 rgba(202, 138, 4, 0.4);
+    box-shadow: 0 2px 8px 0 rgba(161, 98, 7, 0.45);
     backdrop-filter: blur(6px);
     font-size: 0.75em;
     font-weight: 700;
@@ -336,8 +345,8 @@
     width: fit-content;
     white-space: nowrap;
 }
-.paid-badge .paid-badge-icon { /* Buzz coin glyph */
-    fill: currentColor;
+.badges-container .paid-badge .paid-badge-icon { /* Buzz coin glyph */
+    fill: currentColor !important;
     margin-left: -3px;
     margin-right: 3px;
     width: 13px;
