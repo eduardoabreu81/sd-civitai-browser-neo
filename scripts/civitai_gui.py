@@ -256,7 +256,17 @@ def build_account_badge_html():
 
     Auto-connects with the saved API key via the MCP whoami (cached) and renders
     a small passive badge — no button, no interaction. Returns '' (invisible)
-    when account features are disabled or no key is set, so the slot collapses.
+    when account features are disabled, no key is set, or the identity cannot be
+    resolved, so the slot collapses.
+
+    A failure renders NOTHING rather than a warning. This badge is decorative and
+    the failure mode is not the user's to fix: as of 2026-08-05 CivitAI's own
+    `user.getSelfStatus` rejects the MCP server's call, so the old code painted a
+    permanent "⚠️ CivitAI account not connected (Error: user.getSelfStatus:
+    Invalid input)" onto the Dashboard for a bug no local setting can address.
+    The reason still goes to the debug log, and the badge comes back on its own
+    if the identity ever resolves again — including from a partially-failed
+    response, since a broken status step should not cost us the name.
     """
     from html import escape
     if not getattr(opts, 'account_features_mcp', True):
@@ -265,18 +275,19 @@ def build_account_badge_html():
         return ''
 
     res = _mcp.whoami()
-    if not res.get('ok'):
-        return ('<div style="opacity:0.7;font-size:12px;">⚠️ CivitAI account not connected '
-                f'({escape(str(res.get("error", "")))})</div>')
+    username, image = _mcp.extract_identity(res.get('data'))
 
-    data = res.get('data') if isinstance(res.get('data'), dict) else {}
-    username = data.get('username') or data.get('user') or data.get('name')
-    image = data.get('image') or data.get('avatar')
-    label = escape(str(username)) if username else escape((res.get('text') or 'Connected').split('\n')[0])
+    if not username:
+        if res.get('ok'):
+            debug_print(f"[MCP] whoami succeeded but carried no username: {str(res.get('data'))[:200]}")
+        else:
+            debug_print(f"[MCP] account badge hidden — whoami failed: {res.get('error')}")
+        return ''
+
     avatar = (f'<img src="{escape(str(image))}" style="width:24px;height:24px;border-radius:50%;'
               'object-fit:cover;">') if image else '<span style="font-size:18px;">👤</span>'
     return ('<div style="display:flex;align-items:center;gap:8px;font-size:14px;padding:4px 0;">'
-            f'{avatar}<span>Connected as <strong>{label}</strong></span></div>')
+            f'{avatar}<span>Connected as <strong>{escape(username)}</strong></span></div>')
 
 def on_ui_tabs():
     page_header = getattr(opts, 'page_header', False)

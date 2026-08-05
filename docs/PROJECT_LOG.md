@@ -2020,3 +2020,55 @@ reference versions — 3193296, 3186683 and 3200276 → paid, 3188880 → early 
 1435042 → free. The CSS fix is **not covered by a test** and the specificity diagnosis is
 inferred, not observed (the overriding rule lives in Gradio's own stylesheet, not this
 repo) — it needs a second look in Forge Neo.
+
+### 2026-08-05 — MCP account badge: CivitAI-side breakage, degrade instead of alarm
+
+**Symptom:** the Dashboard showed a permanent
+`⚠️ CivitAI account not connected (Error: user.getSelfStatus: Invalid input)`.
+
+**Not our bug.** Probed live with a real API key. The MCP server is healthy
+(`tools/list` → 200, 53 tools, `whoami` still published) and **authentication works**.
+The failure is a server-side input-validation regression, and it follows an exact
+pattern — every tool whose underlying tRPC procedure takes **no arguments** fails:
+
+| Tool | Result |
+|---|---|
+| `whoami` | ❌ `user.getSelfStatus: Invalid input` |
+| `check_notifications` | ❌ `user.checkNotifications: Invalid input` |
+| `list_chats` | ❌ `chat.getAllByUser: Invalid input` |
+| `list_notifications` | ✅ 30 items |
+| `get_my_resource_review` | ✅ `{reviewed: true}` |
+| `toggle_favorite_model` | ✅ real write, verified |
+| `search_models`, `list_enums` | ✅ (unauthed) |
+
+Those three tools declare an empty `inputSchema` (`properties: {}`, nothing required),
+so **no client-side change can influence the result** — CivitAI's MCP bridge forwards
+nothing to a tRPC procedure that now demands an input object.
+
+**Conclusion: the integration is NOT dead, so it is not being removed.** Only the
+identity/status surface is down; the part with actual planned value (favorite/follow
+from the detail panel) demonstrably works. Removing ~190 lines over three broken
+zero-arg endpoints would discard a working integration for a cosmetic badge.
+
+**What changed:**
+- `_error()` / `call_tool()` now carry `structuredContent` on the error envelope
+  (`data`), so a tool that resolves part of its work and fails later does not lose it.
+  Every error envelope exposes `data`, so callers never `KeyError`.
+- New `extract_identity()` in `civitai_mcp.py` (moved out of `civitai_gui.py`, where it
+  was untestable) returns `(username, avatar)` or `(None, None)`.
+- `build_account_badge_html()` renders **nothing** when the identity cannot be resolved,
+  instead of a warning the user cannot act on. The reason goes to the debug log. The
+  badge returns on its own if the identity ever resolves again — including from a
+  partially-failed response.
+
+**Files changed:** `scripts/civitai_mcp.py`, `scripts/civitai_gui.py`,
+`tests/test_civitai_mcp.py` (new).
+
+**Validation:** suite **191 passed** (10 new). Tests pin the *real* captured payloads:
+the broken whoami envelope must yield no identity, and the error envelope must retain
+`structuredContent`. Salvage-from-partial-failure is **speculative** — today's whoami
+returns a bare `{ok: false, error}` with no account data, so that path is currently
+unreachable; it is kept because a successful whoami shape has never been observed here.
+
+**Note for whoever revisits this:** re-probe `whoami` before building anything on it. If
+CivitAI fixes the zero-arg procedures the badge starts working again with no code change.

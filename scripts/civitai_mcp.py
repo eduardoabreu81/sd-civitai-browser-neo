@@ -79,9 +79,12 @@ def _headers(authed):
     return headers
 
 
-def _error(message, code=None):
+def _error(message, code=None, data=None):
+    """Error envelope. ``data`` carries any payload the server returned ALONGSIDE
+    the failure — a tool can resolve part of its work and still fail on a later
+    step, and throwing that away costs callers information they could use."""
     debug_print(f"[MCP] error: {message} (code={code})")
-    return {'ok': False, 'error': str(message), 'code': code}
+    return {'ok': False, 'error': str(message), 'code': code, 'data': data}
 
 
 def _mcp_post(method, params, authed):
@@ -147,7 +150,10 @@ def call_tool(name, arguments=None, authed=True):
     text = '\n'.join(p for p in text_parts if p)
 
     if result.get('isError'):
-        return _error(text or 'tool reported an error')
+        # Pass structuredContent through: CivitAI's `whoami` resolves the account
+        # first and only then calls user.getSelfStatus, so a failure in that second
+        # step can still arrive with the identity attached.
+        return _error(text or 'tool reported an error', data=result.get('structuredContent'))
 
     data = result.get('structuredContent')
     if data is None:
@@ -156,6 +162,37 @@ def call_tool(name, arguments=None, authed=True):
 
 
 # === High-level account/social helpers ======================================
+
+def extract_identity(payload):
+    """Dig a ``(username, avatar_url)`` pair out of a whoami payload.
+
+    Returns ``(None, None)`` when the payload carries no usable identity — which
+    is the current reality: CivitAI's `whoami` fails in `user.getSelfStatus` and
+    answers a bare ``{'ok': False, 'error': ...}`` with no account data at all.
+    The tolerance below (top level or nested under ``user``) exists because a
+    SUCCESSFUL whoami shape has never been observed here, so this must not assume
+    one exact layout. ``profilePicture: {url: ...}`` is not a guess — CivitAI uses
+    that shape for user objects embedded in notification payloads.
+    """
+    if not isinstance(payload, dict):
+        return None, None
+
+    sources = [payload]
+    nested = payload.get('user')
+    if isinstance(nested, dict):
+        sources.append(nested)
+
+    for source in sources:
+        username = source.get('username') or source.get('name')
+        if not isinstance(username, str) or not username.strip():
+            continue
+        image = source.get('image') or source.get('avatar') or source.get('profilePicture')
+        if isinstance(image, dict):
+            image = image.get('url')
+        return username.strip(), image if isinstance(image, str) and image else None
+
+    return None, None
+
 
 _whoami_cache = {}
 
