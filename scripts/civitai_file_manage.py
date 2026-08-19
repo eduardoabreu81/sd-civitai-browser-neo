@@ -604,21 +604,22 @@ def _walk_model_folders(folders):
 
 
 def _get_all_model_folders():
-    """Return all on-disk model folders across known content types."""
+    """Return all on-disk model folders across known content types.
+
+    Uses contenttype_folders() (plural) so extra directories configured through
+    Forge Neo's --ckpt-dirs / --lora-dirs / --vae-dirs are walked too; resolving
+    only the download destination would hide everything stored in the others.
+    """
     content_types = ['Checkpoint', 'LORA', 'LoCon', 'DoRA', 'VAE', 'Controlnet', 'Poses',
                      'TextualInversion', 'Upscaler', 'MotionModule', 'Workflows', 'Detection', 'Other', 'Wildcards']
 
     folders_to_check = []
     for content_type in content_types:
-        if content_type == 'Upscaler':
-            for desc in ['SWINIR', 'REALESRGAN', 'GFPGAN', 'BSRGAN', 'ESRGAN']:
-                folder = _api.contenttype_folder('Upscaler', desc)
-                if folder and folder not in folders_to_check:
+        descs = ['SWINIR', 'REALESRGAN', 'GFPGAN', 'BSRGAN', 'ESRGAN'] if content_type == 'Upscaler' else [None]
+        for desc in descs:
+            for folder in _api.contenttype_folders(content_type, desc):
+                if folder not in folders_to_check:
                     folders_to_check.append(folder)
-        else:
-            folder = _api.contenttype_folder(content_type)
-            if folder and folder not in folders_to_check:
-                folders_to_check.append(folder)
     return folders_to_check
 
 
@@ -2941,30 +2942,12 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
         folders = _file.get_content_choices()
 
     for item in folders:
-        if item == 'LORA':
-            folder = _api.contenttype_folder('LORA')
-            if folder:
-                folders_to_check.append(folder)
-        elif item == 'Upscaler':
-            folder = _api.contenttype_folder(item, 'SwinIR')
-            if folder:
-                folders_to_check.append(folder)
-            folder = _api.contenttype_folder(item, 'RealESRGAN')
-            if folder:
-                folders_to_check.append(folder)
-            folder = _api.contenttype_folder(item, 'GFPGAN')
-            if folder:
-                folders_to_check.append(folder)
-            folder = _api.contenttype_folder(item, 'BSRGAN')
-            if folder:
-                folders_to_check.append(folder)
-            folder = _api.contenttype_folder(item, 'ESRGAN')
-            if folder:
-                folders_to_check.append(folder)
-        else:
-            folder = _api.contenttype_folder(item)
-            if folder:
-                folders_to_check.append(folder)
+        if item == 'Upscaler':
+            for sub in ['SwinIR', 'RealESRGAN', 'GFPGAN', 'BSRGAN', 'ESRGAN']:
+                folders_to_check.extend(_api.contenttype_folders(item, sub))
+            continue
+        # Plural: also picks up --lora-dirs / --ckpt-dirs / --vae-dirs.
+        folders_to_check.extend(_api.contenttype_folders(item))
 
     total_files = 0
     files_done = 0
@@ -5741,19 +5724,12 @@ def _resolve_browser_local_folders(content_type):
         selected_types = [selected_types]
 
     for item in selected_types:
-        if item == 'LORA':
-            folder = _api.contenttype_folder('LORA')
-            if folder:
-                folders_to_check.append(folder)
-        elif item == 'Upscaler':
+        if item == 'Upscaler':
             for sub in ['SwinIR', 'RealESRGAN', 'GFPGAN', 'BSRGAN', 'ESRGAN']:
-                folder = _api.contenttype_folder(item, sub)
-                if folder:
-                    folders_to_check.append(folder)
+                folders_to_check.extend(_api.contenttype_folders(item, sub))
         else:
-            folder = _api.contenttype_folder(item)
-            if folder:
-                folders_to_check.append(folder)
+            # Plural: also picks up --lora-dirs / --ckpt-dirs / --vae-dirs.
+            folders_to_check.extend(_api.contenttype_folders(item))
 
     folders_to_check = sorted(list(set(folders_to_check)))
     return folders_to_check

@@ -478,7 +478,7 @@ def contenttype_folder(content_type, desc=None, custom_folder=None):
         'LORA': lambda: resolve_path('lora_dirs', resolve_path('lora_dir', main_models / 'Lora')),
         'LoCon': lambda: resolve_path('lora_dirs', resolve_path('lora_dir', main_models / 'Lora')), # 💩
         'DoRA': lambda: resolve_path('lora_dirs', resolve_path('lora_dir', main_models / 'Lora')),  # 💩
-        'VAE': lambda: resolve_path('vae_dir', main_models / 'VAE'),
+        'VAE': lambda: resolve_path('vae_dirs', resolve_path('vae_dir', main_models / 'VAE')),
         'Controlnet': lambda: resolve_path('controlnet_dir', main_models / 'ControlNet'),
         'Poses': lambda: main_models / 'Poses',
         'MotionModule': lambda: ext_dir / 'sd-webui-animatediff' / 'model',
@@ -545,6 +545,61 @@ def contenttype_folder(content_type, desc=None, custom_folder=None):
 
     debug_print(f"Warning: Unknown content_type '{content_type}', no folder mapping found")
     return None
+
+
+# cmd_opts attributes that can hold several directories for one content type.
+# Forge Neo declares --ckpt-dirs / --lora-dirs / --vae-dirs with argparse
+# action="append" (modules/cmd_args.py) and scans all of them alongside the
+# singular flag: sd_forge_lora/networks.py walks [lora_dir, *lora_dirs].
+#   (content type): (singular cmd_opts attr or None, plural cmd_opts attr)
+_MULTI_DIR_CONTENT_TYPES = {
+    'Checkpoint': ('ckpt_dir', 'ckpt_dirs'),
+    'LORA':       ('lora_dir', 'lora_dirs'),
+    'LoCon':      ('lora_dir', 'lora_dirs'),
+    'DoRA':       ('lora_dir', 'lora_dirs'),
+    'VAE':        ('vae_dir', 'vae_dirs'),
+}
+
+
+def contenttype_folders(content_type, desc=None, custom_folder=None):
+    """Every on-disk folder configured for a content type, primary destination first.
+
+    contenttype_folder() answers "where does a new download go" and so must return a
+    single path. Anything that READS the library — installed detection, the model-tree
+    walks, organization, the Local Models tab — needs the full set instead: a user who
+    launches Forge Neo with --lora-dirs "G:\\LORAS" keeps LoRAs there AND in the default
+    models/Lora, and Forge itself lists both. Resolving only the primary would make
+    every model in the other folders look uninstalled.
+
+    Returns a list of Paths with duplicates removed, order preserved. For content types
+    without multi-directory support this is just [contenttype_folder(...)].
+    """
+    folders = []
+
+    def _add(value):
+        if not value:
+            return
+        path = Path(value)
+        if path not in folders:
+            folders.append(path)
+
+    _add(contenttype_folder(content_type, desc, custom_folder))
+
+    # A custom folder is an explicit override; do not widen it with cmd_opts paths.
+    if custom_folder:
+        return folders
+
+    single_attr, plural_attr = _MULTI_DIR_CONTENT_TYPES.get(content_type, (None, None))
+    if single_attr:
+        _add(getattr(cmd_opts, single_attr, None))
+    if plural_attr:
+        extra = getattr(cmd_opts, plural_attr, None) or []
+        if isinstance(extra, (str, Path)):
+            extra = [extra]
+        for value in extra:
+            _add(value)
+
+    return folders
 
 
 def update_mode_page_html(content_type_filter, base_filter, tile_count, current_page):
