@@ -338,7 +338,7 @@ def on_ui_tabs():
     with gr.Blocks() as civitai_interface:
         gr.HTML(
             '<div style="text-align:right;opacity:0.6;font-size:12px;padding:2px 8px;letter-spacing:0.3px;">'
-            'Beta-Revamp v0.1.0</div>',
+            'v1.0.0</div>',
             elem_id='civitai_neo_version_badge'
         )
         ## Browser Tab

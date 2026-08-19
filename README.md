@@ -8,13 +8,14 @@
 
 [![Forge Neo](https://img.shields.io/badge/Forge-Neo-blue)](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo)
 [![Gradio](https://img.shields.io/badge/Gradio-4.40.0-orange)](https://gradio.app/)
+[![Version](https://img.shields.io/badge/Version-1.0.0-brightgreen)](#-changelog)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 > **Extension for [Stable Diffusion WebUI Forge - Neo](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo)**
 
 </div>
 
-Browse, download, and manage your CivitAI models directly inside Forge Neo — with auto-organization, disk usage dashboard, creator management, and support for all modern architectures (FLUX, Wan, Qwen, Pony, Illustrious, and more).
+Browse, download, and manage your model library directly inside Forge Neo — multi-source discovery, a self-contained Local Models tab, LoRA categorization, auto-organization, disk usage dashboard, creator management, and support for all modern architectures (FLUX, Wan, Qwen, Krea 2, Pony, Illustrious, and more).
 
 ---
 
@@ -22,34 +23,126 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 - [What's New](#-whats-new)
 - [Changelog](#-changelog)
-- [Revamp Preview](#-revamp-preview)
 - [Roadmap](#️-roadmap)
 - [Features](#-features)
 - [Installation](#-installation)
+- [Browser Sources](#-browser-sources)
+- [Local Models & LoraDex](#-local-models--loradex)
 - [Auto-Organization System](#-auto-organization-system)
+- [Metadata Maintenance](#️-metadata-maintenance--recovery)
 - [Paid vs. Early Access](#-paid-vs-early-access)
+- [Native Extra Networks Cards](#-native-extra-networks-cards)
 - [Dashboard & Statistics](#-dashboard--statistics)
 - [Supported Model Types](#-supported-model-types)
+- [Known Issues & Limitations](#️-known-issues--limitations)
 - [Credits](#-credits)
 
 ---
 
 ## 🆕 What's New
 
-### v0.9.0 — Major Update: CivitAI Domain Support, Update Mode Isolation & Download Resilience
+### v1.0.0 — First Stable Release
 
-- **Full support for the new CivitAI domain split** — CivitAI now separates SFW content (`civitai.com`) from the complete catalog (`civitai.red`). The extension adapts automatically so nothing breaks. Paste any CivitAI link from either domain and it opens instantly.
-- **New "SFW only" setting** — a simple checkbox in Settings lets you restrict all links and API calls to `civitai.com` if you prefer. Off by default, so the full catalog stays accessible without extra steps.
-- **Update Mode filter isolation** — Browser-tab filters are ignored when Update Mode is active, preventing "No updates match the current filters" false negatives. `pressRefresh()` and page-slider triggers no longer pull Browser filters into the Update Mode view.
-- **SHA256 silent-update detection** — if a downloaded file fails hash verification, the extension re-queries the CivitAI API for the version's current SHA256. If the author updated the file silently, the new hash is accepted and metadata is updated instead of failing.
-- **Defensive ambiguity handling** — searching by SHA256 that returns multiple candidates no longer crashes with `KeyError`; the code safely falls back to an error message.
-- **Exact search restricted to Model name** — CivitAI API does not support quoted search for Tag or User name. Exact search now only wraps terms in quotes when "Model name" is selected.
-- **Batch download resilience** — internal loop eliminates gaps between queued items, timeout increased to 30s with automatic retry (up to 3×), SHA256 buffer increased to 8MB.
-- **Update list sorted by mtime** — outdated models are now listed with most recently modified first, making it easier to prioritize updates.
+The `revamp` line is now the released version. This is the largest update since the Neo fork: the Browser is no longer hardwired to CivitAI, the Local Models tab was rebuilt from scratch, and a LoRA categorization system ships alongside it.
+
+- **Multi-Source Browser** — search through pluggable source adapters instead of CivitAI only: **CivArchive**, **ModelScope**, and **Arc en Ciel** join CivitAI in the source dropdown. See [Browser Sources](#-browser-sources).
+- **Paste model URL** — paste a direct link from CivitAI, CivArchive, Hugging Face, ModelScope, or Arc en Ciel; the extension detects the provider, fetches the model, and renders a card ready for download. Hugging Face direct file links (including subfolders) resolve to the exact file.
+- **Local Models rebuilt** — a self-contained tab with its own state, pagination (25/50/100), filters, and progress bar. **Update Models has been merged into it**, so scanning, batch updating, renaming, and deleting all live in one place. See [Local Models & LoraDex](#-local-models--loradex).
+- **LoraDex** — a new sub-tab for managing LoRA categories: auto-suggestion from tags and description, manual override persisted to the `.json` sidecar, category badges on cards, and organization into `Lora/<base>/<category>/` subfolders.
+- **Native Extra Networks cards** — the txt2img/img2img checkpoint and LoRA cards now carry base-model badges, LoRA category, trigger words, and the real CivitAI model name, read from local sidecars with no extra API calls. An opt-in theme restyles them to look like the CivitAI website. See [Native Extra Networks Cards](#-native-extra-networks-cards).
+- **Paid and Early Access are told apart** — CivitAI's two paywalls no longer share a badge: a timed window that expires into a free download gets an aqua **Early Access** badge, a permanent Buzz purchase gets a gold **Paid** badge, each with its own hide filter. See [Paid vs. Early Access](#-paid-vs-early-access).
+- **Metadata maintenance** — **Verify local metadata** checks that cached CivitAI IDs still resolve and that `.api_info.json` matches the file it sits next to; **Resolve via CivArchive** recovers real metadata for models that were delisted from CivitAI. See [Metadata Maintenance](#️-metadata-maintenance--recovery).
+- **GGUF support** — `.gguf` is a first-class checkpoint format: scanned by Local Models, recognized as installed by Browser cards, with sidecars, delete actions, and update checks working the same as `.safetensors`/`.ckpt`.
+- **Download and preview improvements** — previews can be saved as JPEG, Aria2 retries with backoff on HTTP 429, and freshly-published versions no longer show a false "Unable to load preview images" error.
+- **Faster Local tab** — installed-version detection and bulk download no longer walk the model tree per card; a single indexed scan per batch replaced the per-card walk.
+- **Account badge** — the Dashboard shows a passive CivitAI account status badge, auto-connected with your saved API key.
 
 ---
 
 ## 📖 Changelog
+
+### v1.0.0 — First Stable Release
+
+**Multi-Source Browser**
+- Added a browser source adapter foundation (`scripts/browser_sources/`) with a Browser Source selector in the Browser tab.
+- Added CivArchive, Hugging Face, Arc en Ciel, and ModelScope adapters.
+- Added **URL search mode** (`browser_sources/url_parser.py`): detects the provider from a pasted link and populates the model panel. Hugging Face direct file links resolve the exact file, including subfolders, and fetch the real size from the resolve URL.
+- Hugging Face is registered but hidden from the source dropdown — search results were too noisy, so discovery moved to URL-paste mode. Checkpoint search filtering prefers real model artifacts, separates LoRA from checkpoint results, and applies video pipeline filters for families such as Wan.
+- Added the CivArchive-only **Deleted from CivitAI** filter, based on CivArchive's `is_deleted`/`deleted_at` data.
+- Added external-source provenance: source badge, source URL, mirror/status notes, and download provenance in cards and detail panels.
+- External-source file and image metadata is normalized to the legacy Browser shape so detail panels, downloads, sidecars, and preview saving stay compatible.
+
+**Local Models**
+- Rebuilt Local Models as a self-contained tab: own grid, state, base-model filter, progress bar, and Clear buttons, fully isolated from the Browser tab.
+- Merged the Update Models tab into Local Models; bulk maintenance actions moved to the Organization tab.
+- Added pagination (Per page 25/50/100 + Prev/Next + page slider) with server-side slicing of the cached list.
+- Hybrid fetch: batched `/models` requests with per-id fallback when one model poisons a batch, chunked fetch and version-endpoint recovery for huge models, and automatic `civitai.com` → `civitai.red` fallback. Unresolvable models render as local-only cards instead of disappearing.
+- Detail panel: trained tags with **Add to prompt**, **Download selected version**, a **File dropdown** for versions with multiple files (filename and SHA256 follow the selection), and a refresh when the version changes.
+- Update flow: user-selectable versions, hybrid family/baseModel resolution, "only updates" as a pure client-side view filter, "Update to latest" without a prior scan, and a retention policy of keep / move to trash / replace (via `send2trash`).
+- "Update to latest" keeps the installed baseModel family instead of jumping across families.
+- Installed detection now also matches the cached `modelVersionId`, so renamed or hash-less files keep their green border; card buttons resolve the exact file by stem rather than prefix.
+- Per-tab download progress bars and per-queue-item download origin, so a Local update no longer drives the Browser progress bar.
+
+**LoRA categorization & LoraDex**
+- Added the **LoraDex** sub-tab: paginated LoRA list with mini-thumbnails and zoom, per-item and batch Apply/Reset, filename column, and persistence to the `.json` sidecar as `loraCategory`.
+- Added `categorize_lora_by_tags()` — auto-suggests a category from tags plus description, with filename and model name as extra hints. Categories are Character, Style, Clothing, Concept, Pose, Background, Utility, and Slider.
+- Manual `loraCategory` always wins over auto-detection.
+- Added a LoRA category badge below the model-type badge on cards.
+- Modular organization: by base model, by LoRA category, or both (`civitai_neo_lora_category_sort`).
+- `modelTags` falls back to the `.json` sidecar for LoraDex, organization, and update flows.
+
+**Native Extra Networks cards**
+- Added `build_native_card_badge_map()` — a local-sidecar-only pass (no API calls, no folder walk) that feeds base model, LoRA category, trigger words, and the real CivitAI name to WebUI's native Checkpoint and LoRA cards.
+- Added the opt-in setting **CivitAI-style card theme (native Extra Networks cards)** (`civitai_native_card_theme`): type/base badges on top, name and action buttons on the bottom, hover-reveal actions.
+- A `MutationObserver` re-applies badges to cards rendered after the initial load (tab switch, scroll).
+
+**Paid vs. Early Access**
+- Added `get_access_kind()` in `scripts/civitai_api.py` as the single classifier: a populated `paidAccess` object is itself the gate signal; `permanent` is evaluated before `endsAt`.
+- Separate badges (aqua **Early Access** vs gold **Paid**), version-dropdown suffixes, detail-panel labels, and download messages.
+- Split the old single setting into **Hide early access models** and **Hide paid models**.
+- The download pre-flight guard blocks gated requests up front instead of letting CivitAI's silent redirect to the purchase page reach Aria2 as an `Unrecognized URI` error.
+- `availability` is no longer used as a signal — the version endpoint returns it as `null` and the list endpoint returns `"Public"` for both gated kinds. Legacy `availability: 'EarlyAccess'` and `earlyAccessEndsAt` are still honored for older or mirrored payloads.
+
+**Organization & metadata**
+- Added **Verify local metadata** — detects `.api_info.json` corruption and modelIds that no longer resolve on CivitAI, with a guard that bails out with an explicit error when a global API failure would otherwise flag the entire library as delisted.
+- Added **Resolve via CivArchive** — recovers real metadata for orphaned or corrupted local models from CivArchive.
+- Fixed by-hash metadata lookups corrupting `.api_info.json` for unrelated files.
+- Added a local review marker (`scripts/civitai_local_review.py`): **Mark for review** in the model detail panel and overlay, persisted to `config_states/local_review_status.json` keyed by SHA256.
+- `.json` sidecars now persist the raw `baseModel` value alongside the legacy `sd version` field.
+- Auto-organize recalculates defensively: a download about to land in a content-type root folder is redirected to the correct subfolder after fetching the model's `baseModel`.
+- Custom organization categories can be defined in Settings with a JSON pattern list.
+
+**Base models & formats**
+- Added `.gguf` to model file detection, local scan, installed-file detection, organization, and sidecar resolution.
+- Added Krea 2, LTXV, Ernie, Anima, Chroma, and Z-Image / Z-Image Turbo, with matching badges; the base-model list is restricted to what Forge Neo supports and kept sorted alphabetically.
+- Hardened the version filter against a `None` `baseModel`.
+
+**Download & preview**
+- Preview images can be saved as JPEG (`preview_format`, `preview_jpeg_quality`); old `.preview.png`/`.png` duplicates are removed when switching format.
+- Aria2 retries with backoff on HTTP 429.
+- Fixed a false "Unable to load preview images" error on freshly-published versions: the extension retries through a second endpoint and, as a last resort, reuses the images already fetched for the model page — preserving per-image generation data instead of falling back to bare thumbnails.
+- Fixed "Replace installed" regenerating the `.html`/`.json` sidecar with the *previous* version's data; the preview is now resolved against the version actually being downloaded.
+- The Local Models detail panel rebuilds a cached preview that is stuck in the error state instead of serving the broken cache indefinitely.
+- Gallery images are saved on Local-tab updates; `.json` and `.api_info.json` are refreshed when a model is updated.
+- Batch download skips models that are already installed and up to date.
+
+**Send to txt2img**
+- Infotext is built from the card's own metadata, with an embedded-PNG fallback offered when a card image has no meta.
+- SwarmUI embedded JSON is converted to A1111 infotext.
+- A **Negative prompt** line is always emitted, so prompt-only cards still send correctly.
+- The `#paste` click is deferred so Send-to-txt2img no longer clears the prompt it just filled.
+- Stale Send-to-txt2img buttons in cached HTML sidecars are rewired.
+
+**Account (MCP)**
+- Added `scripts/civitai_mcp.py` and a passive account-status badge on the Dashboard, auto-connected with the saved API key. The badge hides itself on failure instead of showing an alarming error.
+
+**Performance**
+- Bulk download scans the model tree once per batch and respects the active base-model filter when picking the newest matching version.
+- Installed-version detection reads from a known-files index instead of walking the tree per card.
+
+**Refactors**
+- Extracted HTML builders from `update_model_info` into `scripts/civitai_html_builder.py` (with tests).
+- Browser filter defaults persist to an extension-local JSON file.
 
 ### v0.9.0 — CivitAI Domain Support, Update Mode Isolation & Download Resilience
 - Added centralized domain helper (`get_civitai_domain()`) to replace all hardcoded `civitai.com` URLs across the extension.
@@ -179,28 +272,6 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ---
 
-## 🧪 Revamp Preview
-
-> For the full, detailed revamp documentation see [`README_REVAMP.md`](README_REVAMP.md).
-
-### Revamp v0.1.0 preview — Multi-Source Browser foundation
-
-- **Browser Source selector** — the Browser can route searches through source adapters instead of being hardwired to CivitAI only.
-- **CivArchive adapter** — browse mirrored CivitAI records, including a source-specific **Deleted from CivitAI** filter for models marked as removed in CivArchive.
-- **ModelScope adapter** — search and download models from modelscope.cn, with content-type and base-model detection normalized to the Browser card format.
-- **Paste-model-URL search** — paste a direct link from CivitAI, CivArchive, Hugging Face, ModelScope, or Arc en Ciel into the Browser; the extension detects the provider, fetches the model, and renders a single card ready for download.
-- **Arc en Ciel adapter** — external-source adapter for arcenciel.io, validated for search, pagination, detail panel, and download.
-- **External-source provenance** — non-CivitAI cards and detail panels can show the origin source, source URL, mirror/status notes, and download provenance.
-- **Safer external metadata normalization** — external source files/images are normalized to the same legacy Browser shape expected by detail panels, downloads, sidecars, and preview saving.
-- **Hugging Face result filtering** — checkpoint search now prefers real model artifacts, avoids auxiliary Diffusers components, separates LoRA results from checkpoint results, and uses video pipeline filters for video model families such as Wan.
-- **GGUF installed-model detection** — `.gguf` checkpoints now appear in Local Models and are recognized as installed files by Browser cards, so their sidecars, delete actions, and update checks work the same as `.safetensors`/`.ckpt` files.
-- **Preview gallery reliability** — freshly-published models no longer show a false "Unable to load preview images" error, and updating an installed model with "Replace installed" now correctly refreshes its sidecar to the new version instead of retaining the previous one's data.
-- **Paid vs. Early Access separation** — CivitAI's two paywalls are no longer lumped together: a timed early-access window (which expires into a free download) now gets an aqua badge, while a permanent Buzz purchase gets a gold **Paid** badge, with matching version-dropdown suffixes, detail-panel labels, download messages, and independent hide filters. See [Paid vs. Early Access](#-paid-vs-early-access).
-
-> This is active work on the `revamp` branch. CivitAI remains the primary source of truth for metadata and SHA256 validation. External-source search/download is being added incrementally and should be runtime-tested in Forge Neo before release.
-
----
-
 ## 🗺️ Roadmap
 
 ### v0.7.0 — Forge Neo Compatibility *(complete)* ✅
@@ -223,23 +294,27 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 
 ### v0.9.0 — CivitAI Domain Support, Update Mode Isolation & Download Resilience *(complete)* ✅
 
-### Revamp v0.1.0 — Advanced Curation *(in progress on `revamp` branch)*
-- **Multi-Source Browser**: direct adapters for CivitAI, CivArchive, ModelScope, and Arc en Ciel, plus paste-a-URL support for Hugging Face.
-- **Deleted from CivitAI filter** for CivArchive, based on CivArchive's `is_deleted`/`deleted_at` data.
-- **External-source provenance** in cards and detail panels so downloaded models keep their origin visible.
-- **Hugging Face curated catalog foundation** for safer discovery of Forge-compatible repositories (until then, HF remains URL-only).
-- **Cross-source SHA256 double-check** against CivitAI metadata when external sources provide or allow resolving a file hash.
-- **Not found on CivitAI filter** as a separate future state from "Deleted from CivitAI".
-- ✅ **Explicit GGUF support** — Browser download, organization, local review, and metadata flows handle `.gguf` safely.
+### v1.0.0 — First Stable Release *(complete)* ✅
+- Multi-Source Browser: direct adapters for CivitAI, CivArchive, ModelScope, and Arc en Ciel, plus paste-a-URL support for Hugging Face
+- **Deleted from CivitAI** filter for CivArchive
+- External-source provenance in cards and detail panels
+- Local Models rebuilt: self-contained, paginated, with Update Models merged in
+- LoraDex and LoRA category management
+- Native Extra Networks card badges and the opt-in CivitAI-style card theme
+- Paid vs. Early Access separation with independent hide filters
+- Metadata verification and CivArchive recovery for delisted models
+- Explicit GGUF support across download, organization, local review, and metadata flows
+- Passive account badge on the Dashboard
+
+### v1.1.0 — Curation Depth *(planned)*
+- **Cross-source SHA256 double-check** against CivitAI metadata when external sources provide or allow resolving a file hash
+- **Not found on CivitAI** filter, as a state distinct from "Deleted from CivitAI"
+- **Hugging Face curated catalog** for safer discovery of Forge-compatible repositories (until then, HF stays URL-only)
+- **Organization by Tag — Phase 1**: save CivitAI tags to the `.json` sidecar; editable user-tags field in the model panel
+- **Organization by Tag — Phase 2**: pick "anchor" tags in the Organization tab → models with that tag sort into `<type>/<tag>/` subfolders, independent of base-model organization
 - Saved search presets
 - Favorites in creator/user search
-- Additional browser quality-of-life improvements
-- **Organization by Tag — Phase 1**: save CivitAI tags to `.json` sidecar; editable user-tags field in model panel for manual assignment
-- **Organization by Tag — Phase 2**: in Manage tab, pick "anchor" tags → models with that tag sort into `<type>/<tag>/` subfolders (independent of base-model organization)
-
-### v1.0.0 — First Stable Release *(planned)*
-- All known issues resolved
-- Full Forge Neo compatibility guarantee
+- Additional direct adapters (TensorArt, SeaArt, PixAI, Shakker, Tungsten, Civision, TensorHub, Yodayo, Moescape)
 
 ---
 
@@ -250,31 +325,16 @@ Browse, download, and manage your CivitAI models directly inside Forge Neo — w
 ### 🔍 Browse & Search
 
 - Browse CivitAI directly inside the WebUI — no tab switching
-- Select a Browser source adapter: CivitAI, CivArchive, ModelScope, and Arc en Ciel *(revamp preview)*
-- Search by model name, tag, username, or **paste a direct model URL** *(revamp preview)*
+- Select a Browser source adapter: CivitAI, CivArchive, ModelScope, or Arc en Ciel ⭐
+- Search by model name, tag, username, or **paste a direct model URL** ⭐
 - Filter by content type: Checkpoint, LORA, VAE, ControlNet, Upscaler, TextualInversion, Wildcards, Workflows, and more
-- Filter by base model: SD 1.x, SDXL, Pony, Illustrious, FLUX, Krea 2, Wan, Qwen, NoobAI, Lumina, LTXV, Ernie, Anima, Chroma, and more — list auto-updated from CivitAI at startup ⭐
+- Filter by base model: SD 1.x, SDXL, Pony, Illustrious, FLUX, Krea 2, Wan, Qwen, NoobAI, Lumina, LTXV, Ernie, Anima, Chroma, Z-Image, and more — list auto-updated from CivitAI at startup ⭐
 - Sort by: Highest Rated, Most Downloaded, Newest, Most Liked, Most Discussed
 - Filter by time period: Day, Week, Month, Year, All Time
 - NSFW toggle, liked-only filter, hide installed models, hide banned creators
+- Independent **Hide early access** and **Hide paid** filters ⭐
 - Exact search mode
 - Search settings persist across restarts ⭐
-
-### 🌐 Browser Sources *(revamp preview)*
-
-| Source | Current role | Notes |
-|---|---|---|
-| CivitAI | Primary catalog and metadata source | Full native support, API key support, SHA256 validation, previews, permissions, and update checks. |
-| CivArchive | Backup/mirror source for CivitAI records | Supports the source-specific **Deleted from CivitAI** filter. Pagination is currently client-side over the public search window returned by CivArchive. |
-| ModelScope | Direct search/browse adapter | Search models on modelscope.cn; content type and base model are detected from tags/metadata and normalized to Browser cards. |
-| Hugging Face | Direct URL download only | Browsing Hugging Face search results is too noisy for the current adapter, so discovery has been moved to URL-paste mode. Paste any `huggingface.co/<owner>/<repo>` link to fetch the model. |
-| Arc en Ciel | External-source adapter | Search, pagination, detail panel, and download validated in Forge Neo. |
-
-Source-specific behavior:
-- **Deleted from CivitAI** only applies to CivArchive. It means CivArchive marks the model as removed from CivitAI; it does not mean "exclusive to another platform".
-- **Not found on CivitAI** is planned separately. It requires a SHA256 double-check against CivitAI and must not be conflated with deleted records.
-- **GGUF** is supported as a checkpoint format. `.gguf` files are detected by Local Models, can be downloaded/organized, and have `.json`/`.api_info.json` sidecars just like `.safetensors`/`.ckpt` files.
-- Future adapters should prefer direct official/public APIs when available instead of scraping pages.
 
 ### 📥 Download
 
@@ -282,29 +342,59 @@ Source-specific behavior:
 - High-speed multi-connection downloads via Aria2 (optional, on by default)
 - Download queue — multiple downloads run in sequence without blocking the UI
 - Queue persistence — survives session disconnects with one-click restore ⭐
+- Independent progress bars for the Browser and Local Models tabs ⭐
 - Cancel individually or clear the entire queue
 - Folder automatically set based on content type ⭐
 - Custom sub-folders per download
+- File integrity check with silent-update detection — a hash mismatch re-queries the API before failing ⭐
+- Aria2 retry with backoff on HTTP 429 ⭐
 - API key support for early access, paid, and private models
 - Proxy support for restricted regions
+
+### 🏠 Local Models ⭐
+
+- Self-contained tab for the models installed on your machine — browse, rename, update, and delete
+- Update Models merged in: outdated models get an orange border and can be updated in batch
+- Pagination: 25 / 50 / 100 cards per page, with Prev/Next and a page slider
+- Sort by name or download date; filter by content type and base model
+- "Only models with updates" as an instant client-side view filter
+- Retention policy on update: keep alongside, move to trash, or replace
+- Detail panel with version dropdown, **File dropdown** for multi-file versions, trained tags with "Add to prompt", and "Download selected version"
+- Resilient metadata fetch: batched requests with per-id fallback, version-endpoint recovery, and `civitai.com` → `civitai.red` fallback — models the API can't resolve still show as local-only cards
+
+### 🏷️ LoRA Categorization & LoraDex ⭐
+
+- **LoraDex** sub-tab: paginated LoRA list with mini-thumbnails and zoom
+- Auto-suggested categories from tags, description, filename, and model name
+- Manual category assignment per LoRA, applied individually or in batch, persisted to the `.json` sidecar
+- Category badge on model cards
+- Organize LoRAs into `Lora/<base>/<category>/` subfolders — on download and in bulk
 
 ### 🔄 Model Updates ⭐
 
 - Orange border on cards with a newer version available
 - Batch update — select multiple outdated models and download all at once
-- Version comparison by model family (not just version name)
-- Retention policy on update: keep, move to trash, or replace
+- User-selectable target version, resolved by model family rather than version name alone
+- "Update to latest" keeps the installed base-model family
 - Dashboard shows outdated model counts after scanning
 
 ### 🗂️ Auto-Organization ⭐
 
 - New downloads automatically sorted into subfolders by base model (SDXL/, Pony/, FLUX/, etc.)
+- Modular: organize by base model, by LoRA category, or both
 - Organize your existing collection in one click
 - Validate organization — read-only check showing correct / misplaced / no-metadata per file ⭐
 - Fix misplaced files in one click — automatic backup created first ⭐
 - One-click rollback (keeps last 5 backups)
 - Custom folder mapping in Settings
 - Associated files (`.json`, `.png`, `.txt`) always move with the model
+
+### 🗄️ Metadata Maintenance ⭐
+
+- **Verify local metadata** — check that cached CivitAI IDs still resolve and that `.api_info.json` matches the file it sits beside
+- **Resolve via CivArchive** — recover real metadata for models delisted from CivitAI
+- **Mark for review** — flag a local model for later attention; status is stored by SHA256
+- Bulk metadata, tag, and preview refresh from CivitAI
 
 ### 🖼️ Model Info & Preview
 
@@ -314,7 +404,7 @@ Source-specific behavior:
 - "➕ Add to prompt" in the model overlay — appends trigger words directly; auto-inserts LoRA syntax ⭐
 - SHA256 hash shown in version info — click to select ⭐
 - Video preview on hover for cards with video samples ⭐
-- Save model info and images locally
+- Save model info and images locally, as PNG or JPEG ⭐
 
 ### 📊 Dashboard ⭐
 
@@ -324,23 +414,27 @@ Source-specific behavior:
 - Orphan file detection (optional)
 - Export to CSV or JSON
 - Update summary after scanning
+- Passive CivitAI account status badge
 
 ### 🃏 Model Cards
 
 - Color-coded borders: aquamarine = installed, orange = outdated, gold = favorite creator
 - Color legend bar always visible above the grid ⭐
-- NSFW, access, and type badges
+- NSFW, access, type, base-model, and LoRA-category badges ⭐
 - Paid models are told apart from early access ⭐ — see [Paid vs. Early Access](#-paid-vs-early-access)
 - Configurable tile size
 - Quick delete from the card
 - Multi-select checkboxes for batch download ⭐
 - Favorite (⭐) and ban (🚫) creator directly from the card ⭐
+- Optional CivitAI-style theme for WebUI's own Extra Networks cards ⭐
 
 ### 🔒 Safety
 
 - Deleted models go to the OS recycle bin by default (configurable)
 - Filename sanitization — removes illegal characters automatically
 - Filename length capped to prevent filesystem errors
+- Automatic backup before organize/fix operations (keeps last 5)
+- Conflict detection — existing files at the destination are skipped
 
 ---
 
@@ -352,6 +446,71 @@ Source-specific behavior:
 4. Click **Install** and reload the WebUI
 
 > ⚠️ This extension requires **Forge Neo**. For Forge Classic or Automatic1111, use the [anxety-solo fork](https://github.com/anxety-solo/sd-civitai-browser-plus).
+
+---
+
+## 🌐 Browser Sources
+
+The Browser tab routes searches through pluggable source adapters. CivitAI remains the source of truth for metadata and SHA256 validation; the other sources are additive.
+
+| Source | Current role | Notes |
+|---|---|---|
+| **CivitAI** | Primary catalog and metadata source | Full native support: API key, SHA256 validation, previews, permissions, and update checks. |
+| **CivArchive** | Backup/mirror of CivitAI records | Supports the source-specific **Deleted from CivitAI** filter. Pagination is client-side over the public search window CivArchive returns. |
+| **ModelScope** | Direct search/browse adapter | Searches modelscope.cn; content type and base model are detected from tags/metadata and normalized to Browser cards. |
+| **Arc en Ciel** | External-source adapter | Search, pagination, detail panel, and download validated in Forge Neo. |
+| **Hugging Face** | Direct URL download only | Browsing HF search results proved too noisy, so discovery moved to URL-paste mode. The adapter stays registered but is hidden from the dropdown. |
+
+### Paste model URL
+
+Switch the Browser search mode to **URL** and paste any supported link:
+
+- `civitai.com/models/...` or `civitai.red/models/...`
+- `civitai.com/api/...`
+- `civarchive.com/...`
+- `huggingface.co/<owner>/<repo>` (repo root)
+- `huggingface.co/<owner>/<repo>/blob/main/<sub/folder/file.safetensors>` (direct file link, including subfolders)
+- `modelscope.cn/models/...`
+- `arcenciel.io/models/...`
+
+The extension detects the provider, fetches the model, renders a single card, and populates the model panel for download. For Hugging Face file links the exact file is selected as the primary download and its real size is fetched from the resolve URL.
+
+### Source-specific behavior
+
+- **Deleted from CivitAI** only applies to CivArchive. It means CivArchive marks the model as removed from CivitAI; it does not mean "exclusive to another platform".
+- **Not found on CivitAI** is planned separately and requires a cross-source SHA256 double-check — it must not be conflated with deleted records.
+- Non-CivitAI cards and detail panels show the origin source, source URL, mirror/status notes, and download provenance.
+- External-source file and image metadata is normalized to the same shape CivitAI uses, so size, format, and preview handling stay compatible.
+- Future adapters should prefer official/public APIs over page scraping.
+
+---
+
+## 🏠 Local Models & LoraDex
+
+The **Local Models** tab is where your installed library lives. It has its own state, filters, pagination, and download progress bar, fully independent from the Browser tab.
+
+### Local Models Browser
+
+1. Pick the content types and (optionally) base models you want to see
+2. Click **📋 Load local models**
+3. Cards render with installed/outdated borders; click one to open the detail panel
+
+From the detail panel you can rename, delete, pick a version and file, add trigger words to the prompt, download a specific version, or update to the latest.
+
+For batch work: tick the checkboxes on outdated cards, choose **When updating:** *Replace installed* or *Keep installed (download alongside)*, then click **⬆️ Update selected**. The **⬆️ Only models with updates** checkbox filters the current view instantly, without re-scanning.
+
+Models the CivitAI API cannot resolve — delisted, renamed, or hash-less — still appear as local-only cards, so nothing disappears from your library view.
+
+### LoraDex
+
+The **LoraDex** sub-tab manages LoRA categories:
+
+- Every LoRA gets a suggested category derived from its tags, description, filename, and model name
+- Override it manually per row, or apply/reset pending changes in bulk
+- The choice is saved to the `.json` sidecar as `loraCategory` and always wins over auto-detection
+- Categories are Character, Style, Clothing, Concept, Pose, Background, Utility, and Slider
+
+With **Organize LoRAs by category** enabled, new downloads and bulk organization sort LoRAs into `Lora/<base>/<category>/` — either combined with base-model organization or on its own.
 
 ---
 
@@ -379,12 +538,36 @@ models/Lora/
 Enable **"Auto-organize downloads"** in Settings → Model Organization.
 
 ### Organize existing models
-Go to **Update Models** tab → select types → click **"📁 Organize models into subfolders"**.
+Go to the **Organization** tab → pick the content types → choose the **Organization mode** (by base model, by LoRA category, or both) → click **📁 Organize into subfolders**.
 
 ### Safety
-- Automatic backup before any operation
+- Automatic backup before any operation (keeps the last 5)
 - One-click undo
 - Conflict detection (skips files that already exist at destination)
+- Associated files (`.json`, `.png`, `.txt`) always move with the model
+
+---
+
+## 🗄️ Metadata Maintenance & Recovery
+
+Sidecar metadata drifts: models get delisted from CivitAI, a by-hash lookup writes the wrong record, or a file is renamed until nothing matches it any more. The **Organization** tab has two tools for that.
+
+### Verify local metadata
+
+**🔍 Verify local metadata** checks every scanned model and reports two kinds of problem:
+
+- **Removed from CivitAI** — the `modelId` cached in the `.json` sidecar no longer resolves on CivitAI
+- **Mismatched metadata** — the `.api_info.json` next to the file describes a different model
+
+Transient API failures are not counted as delisting: if the API is globally unreachable, the scan stops with an explicit error instead of flagging your entire library as removed.
+
+### Resolve via CivArchive
+
+When the verification finds problems, **🗄️ Resolve via CivArchive** appears. It queries CivArchive — a mirror that keeps records of models removed from CivitAI — and restores real metadata for the affected files, so delisted models keep working names, versions, and previews instead of decaying into unidentifiable files.
+
+### Mark for review
+
+The model detail panel and the model overlay have a **Mark for review** button for anything you want to revisit — a suspect duplicate, a file you may want to delete, a model whose metadata looks wrong. The status is stored in `config_states/local_review_status.json`, keyed by SHA256, so it survives renames and re-organization.
 
 ---
 
@@ -402,6 +585,21 @@ whether a model is worth waiting for.
 Both badges appear on the model card next to the type badge, and both are repeated as a
 suffix in the version dropdown — `v1.0 (Early Access)` vs `v1.0 (Paid)` — because a single
 model can mix free, early-access and paid versions.
+
+**How the two are told apart.** A populated `paidAccess` object is itself the gate signal;
+its fields only say *which* gate applies:
+
+| API shape | Reported as |
+|---|---|
+| `paidAccess: {permanent: false, endsAt: <future date>}` | Early Access |
+| `paidAccess: {permanent: true, endsAt: null}` | Paid |
+| `paidAccess: {permanent: false, endsAt: null}` | Paid |
+
+The third shape is rare but real. It is reported as **Paid**, not Early Access, because
+with no published date there is nothing to wait for and an "it becomes free later" label
+would be a lie. An `endsAt` in the **past** means the window already closed — the version
+is genuinely free again. `permanent` is evaluated before `endsAt`, so a stale end date
+cannot downgrade a permanent purchase.
 
 **Downloads are blocked before they start.** CivitAI answers a download request for a
 gated version with a silent redirect to its purchase page, which used to surface as a
@@ -422,6 +620,25 @@ any gated model you have already purchased.
 
 ---
 
+## 🎴 Native Extra Networks Cards
+
+The extension can enrich WebUI's **own** checkpoint and LoRA cards in txt2img/img2img — the ones under Extra Networks — using the sidecars already on disk. No extra API calls, no folder walk, so it is safe to run on every Extra Networks refresh.
+
+Each native card can show:
+
+- The base model badge (IL, Pony, FLUX, SDXL, …)
+- The confirmed LoRA category
+- Trigger words
+- The real CivitAI model name instead of the filename
+
+Cards rendered after the initial page load — when you switch tabs or scroll — pick up their badges automatically through a `MutationObserver`.
+
+### CivitAI-style card theme
+
+**Settings → CivitAI Browser Neo → CivitAI-style card theme (native Extra Networks cards)** (off by default) restyles those cards to look like the CivitAI website: type and base-model badges on top, name plus action buttons on the bottom, actions revealed on hover. It is purely visual (CSS) and safe alongside other UI themes.
+
+---
+
 ## 📊 Dashboard & Statistics
 
 Go to the **Dashboard** tab, select the content types you want to analyze, and click **"📊 Generate Dashboard"**.
@@ -434,6 +651,8 @@ You'll see:
 - Optional orphan file detection
 
 Results can be exported as CSV or JSON.
+
+The Dashboard also shows a passive **account status badge**: it auto-connects with your saved API key and displays the connected CivitAI username. No actions are tied to it — if the connection fails, the badge simply hides itself.
 
 ---
 
@@ -461,9 +680,22 @@ Results can be exported as CSV or JSON.
 | Hunyuan | Hunyuan |
 | Other | Catch-all; fully configurable |
 
+**File formats:** `.safetensors`, `.ckpt`, `.gguf`, `.pt`, `.pth`, `.bin`, `.th`, `.vae`, and `.zip` (Wildcards).
+
 > **Krea 2 note:** the `krea2_turbo_fp8_scaled.safetensors` checkpoint requires the Qwen-Image VAE (`qwen_image_vae.safetensors`) and the Qwen3VL 4B text encoder (`qwen3vl_4b_fp8_scaled.safetensors`) rather than FLUX text encoders. Place both files in the Forge Neo `models/text_encoder/` folder.
 
 Custom categories can be defined in **Settings → Model Organization** using a simple JSON pattern list.
+
+---
+
+## ⚠️ Known Issues & Limitations
+
+- Update detection still depends partly on filename and model-name matching, and may miss some outdated models.
+- `nsfwLevel` checks are not 100% accurate.
+- ModelScope content-type and base-model detection is heuristic and may misclassify unusual models.
+- Cross-source SHA256 double-check and a separate **Not found on CivitAI** filter are not implemented yet (planned for v1.1.0).
+- Hugging Face remains URL-only until a curated catalog is built.
+- CivArchive pagination is client-side over the public search window that CivArchive returns.
 
 ---
 
@@ -473,6 +705,7 @@ Custom categories can be defined in **Settings → Model Organization** using a 
 - **[sd-civitai-browser-plus](https://github.com/BlafKing/sd-civitai-browser-plus)** by BlafKing — foundation for this fork
 - **[sd-civitai-browser-plus](https://github.com/anxety-solo/sd-civitai-browser-plus)** by anxety-solo — UI redesign and quality improvements
 - **[sd-webui-civbrowser](https://github.com/SignalFlagZ/sd-webui-civbrowser)** by SignalFlagZ — creator management inspiration
+- **[CivArchive](https://civarchive.com)** — mirror used to recover metadata for delisted models
 - **[Forge Neo](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo)** by Haoming02
 
 ---

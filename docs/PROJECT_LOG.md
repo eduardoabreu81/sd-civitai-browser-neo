@@ -1,6 +1,6 @@
 # PROJECT_LOG
 
-## Escopo Atual (v0.9.0)
+## Current Scope (v1.0.0)
 
 - **Extension para Forge Neo** — Browse, download e organize modelos do CivitAI diretamente no WebUI com suporte a Gradio 4+
 - **Auto-organização inteligente** — Modelos organizados por base model (SDXL/, Pony/, FLUX/, Wan/, etc.) com backup/rollback automático e suporte a subpastas por subtipo Wan (I2V/T2V/TI2V)
@@ -13,14 +13,30 @@
 ## Estado Rápido
 
 **Stack:** Python 3.x + Gradio 4.40.0 + Forge Neo + Aria2 + JavaScript vanilla  
-**Features ativas:** Browse/Search, Download Queue, Auto-Organization, Update Detection, Dashboard, Creator Management, Local Models browser  
-**Status (main):** v0.9.0 — Estável (CivitAI Domain Support, Update Mode Isolation, Download Resilience)  
-**Status (branch `revamp`):** Beta-Revamp v0.1.0 — em desenvolvimento, não released. Aba Local Models self-contained (Update Models fundida), isolamento Browser↔Local, resiliência de fetch. Ver "Linha do Tempo — Branch `revamp`"  
+**Features ativas:** Multi-Source Browser (CivitAI/CivArchive/ModelScope/Arc en Ciel + URL paste), Download Queue, Local Models (self-contained, paginated, Update Models merged in), LoraDex, Auto-Organization, Metadata Maintenance (Verify / Resolve via CivArchive / Mark for review), Native Extra Networks cards, Dashboard, Creator Management  
+**Status (main):** v1.0.0 — First Stable Release. The `revamp` line was promoted to `main`: multi-source Browser, Local Models rebuilt, LoraDex, native Extra Networks cards, Paid vs. Early Access separation, metadata maintenance, GGUF support.  
+**Status (branch `revamp`):** promoted to `main` as v1.0.0. The branch is no longer a separate development line; its history is kept under "Linha do Tempo — Branch `revamp`".  
 **Twin project:** sd-civitai-browser-ex (Gradio 3, A1111/Forge Classic) — mudanças específicas do Neo não devem migrar automaticamente
 
 ---
 
 ## Linha do Tempo
+
+### 2026-08-19 — Release v1.0.0: `revamp` promoted to `main`
+
+**What changed**
+- README.md rewritten around v1.0.0: the "Revamp Preview" section is gone, its content folded into the released Features/Changelog. New top-level sections: Browser Sources, Local Models & LoraDex, Metadata Maintenance, Native Extra Networks Cards, Known Issues & Limitations.
+- Documented five features that had shipped without any README coverage: native Extra Networks card badges, the opt-in `civitai_native_card_theme`, Mark for review (`civitai_local_review.py`), Verify local metadata / Resolve via CivArchive, and user-selectable versions in Update Mode.
+- Fixed a stale instruction: "Organize existing models" pointed at the **Update Models** tab, which no longer exists — the action lives in the **Organization** tab.
+- `README_REVAMP.md` deleted; it existed only to describe an unmerged branch.
+- UI version badge bumped `Beta-Revamp v0.1.0` → `v1.0.0` (`scripts/civitai_gui.py`).
+- Roadmap restructured: v1.0.0 marked complete; the remaining revamp backlog (cross-source SHA256 double-check, "Not found on CivitAI" filter, HF curated catalog, Organization by Tag phases 1-2, saved search presets, extra adapters) moved to a new v1.1.0 milestone.
+
+**Branch promotion**
+- `revamp` was 212 commits ahead of `main`; `main` carried 2 commits `revamp` did not have, both superseded:
+  - `7e01c75` (drop `show_progress='hidden'` from the `download_create_thread` binding) — `revamp` was already in that state.
+  - `12f6284` (revert of `fix(js): guard outputType null and fix sendToBrowser tab navigation`) — deliberately **not** carried over. `revamp` keeps the guarded version, which is also the one that recognizes `#tab_civitai_interface_neo`.
+- Merge resolved in favour of `revamp` for all four conflicting files (`javascript/civitai-html.js`, `scripts/civitai_download.py`, `scripts/civitai_gui.py`, `style.css`).
 
 ### 2026-07-10 — Fix: Local Models outdated-card checkbox selection
 
@@ -884,7 +900,7 @@ Três mudanças implementadas nos dois repositórios:
 
 ---
 
-## Linha do Tempo — Branch `revamp` (Beta-Revamp v0.1.0)
+## Linha do Tempo — Branch `revamp` (released as v1.0.0)
 
 > Trabalho em desenvolvimento no branch `revamp` (divergiu de `main` em `a02e944`). UI marcada com o badge **Beta-Revamp v0.1.0** (`civitai_gui.py:322`). Tema central: aba **Local Models** self-contained, com a antiga aba **Update Models** fundida dentro dela. Ainda **não released** no CivitAI. Inclui novos módulos `civitai_html_builder.py` e `civitai_local_review.py` (ambos com testes) e docs de planejamento (`docs/REVAMP_AUDIT.md`, `docs/REVAMP_LAYOUT_PROPOSAL.md`, `docs/HTML_COMPONENT_ANALYSIS.md`, `docs/FUNCTION_MAP.md`).
 
@@ -1076,7 +1092,7 @@ Três mudanças implementadas nos dois repositórios:
 
 ---
 
-## Resumo para README (próximo release)
+## Resumo para README (consumido — released as v1.0.0)
 
 ### What's New — Revamp v0.1.0
 
