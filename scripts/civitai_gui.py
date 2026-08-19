@@ -15,6 +15,8 @@ import scripts.civitai_download as _download
 import scripts.civitai_file_manage as _file
 import scripts.civitai_global as gl
 import scripts.civitai_api as _api
+import scripts.civitai_mcp as _mcp
+import scripts.browser_sources as _browser_sources
 from scripts.civitai_global import print, debug_print
 
 
@@ -45,7 +47,7 @@ def _save_browser_defaults(data):
         json.dump(data, f, indent=4)
 
 
-def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, sn, es, ss, ts):
+def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, sn, es, ss, ts, src, deleted):
     config = cmd_opts.ui_config_file
 
     # Create a dictionary to map the settings to their respective variables
@@ -56,6 +58,8 @@ def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, sn, es, ss, ts):
         'civitai_interface_neo/Time period:/value': pt,
         'civitai_interface_neo/Sort by:/value': st,
         'civitai_interface_neo/Base model:/value': bf,
+        'civitai_interface_neo/Source:/value': src,
+        'civitai_interface_neo/Deleted from CivitAI/value': deleted,
         'civitai_interface_neo/Save info after download/value': cj,
         'civitai_interface_neo/Divide cards by date/value': False,  # This is a toggle, so its state does not matter here
         'civitai_interface_neo/Liked models only/value': ol,
@@ -86,13 +90,15 @@ def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, sn, es, ss, ts):
         print(f"Updated settings to: {config}")
 
     # Persist all browser filter defaults to extension-local file
-    print(f"[CivitAI Browser] Saving filter defaults: tile_size={ss}, tile_count={ts}, search_type={ust}, content_type={ct}, base_model={bf}, period={pt}, sort={st}, liked={ol}, hide={hi}, nsfw={sn}, exact={es}, save_json={cj}")
+    print(f"[CivitAI Browser] Saving filter defaults: tile_size={ss}, tile_count={ts}, search_type={ust}, content_type={ct}, base_model={bf}, source={src}, deleted_from_civitai={deleted}, period={pt}, sort={st}, liked={ol}, hide={hi}, nsfw={sn}, exact={es}, save_json={cj}")
     _save_browser_defaults({
         'search_type': ust,
         'content_type': ct,
         'time_period': pt,
         'sort_by': st,
         'base_model': bf,
+        'browser_source': src,
+        'deleted_from_civitai': deleted,
         'save_info_after_download': cj,
         'liked_models_only': ol,
         'hide_installed_models': hi,
@@ -101,6 +107,13 @@ def saveSettings(ust, ct, pt, st, bf, cj, ol, hi, sn, es, ss, ts):
         'tile_size': ss,
         'tile_count': ts,
     })
+
+
+def update_deleted_from_civitai_filter(source):
+    """Enable the deleted-model filter only for the CivArchive source."""
+    if source == 'CivArchive':
+        return gr.update(interactive=True)
+    return gr.update(value=False, interactive=False)
 
 # === ANXETY EDITs ===
 def all_visible(html_check):
@@ -119,8 +132,11 @@ def show_multi_buttons(model_list, type_list, version_value):
     multi_file_subfolder = False
     default_subfolder = 'Only available if the selected files are of the same model type'
     sub_folders = ['None']
-    BtnDwn = version_value and not version_value.endswith('[Installed]') and not model_list
-    BtnDel = version_value.endswith('[Installed]')
+    # version_value (selected version) can be None — e.g. when selection is driven from
+    # the Local Models grid checkboxes while the Browser version dropdown is empty.
+    installed_suffix = bool(version_value) and version_value.endswith('[Installed]')
+    BtnDwn = bool(version_value) and not installed_suffix and not model_list
+    BtnDel = installed_suffix
 
     dot_subfolders = getattr(opts, 'dot_subfolders', True)
 
@@ -146,11 +162,11 @@ def show_multi_buttons(model_list, type_list, version_value):
 
             list = set()
             sub_folders = [x for x in sub_folders if not (x in list or list.add(x))]
-        except:
+        except Exception:
             sub_folders = ['None']
 
     return (gr.update(visible=multi, interactive=multi), # Download Multi Button
-            gr.update(visible=BtnDwn if multi else True if not version_value.endswith('[Installed]') else False), # Download Button
+            gr.update(visible=BtnDwn if multi else (not installed_suffix)), # Download Button
             gr.update(visible=BtnDel if not model_list else False), # Delete Button
             gr.update(visible=otherButtons), # Save model info Button
             gr.update(visible=otherButtons), # Save images Button
@@ -170,85 +186,53 @@ def get_base_models():
     api_url = f'https://{_api.get_civitai_domain()}/api/v1/models?baseModels=GetModels'
     json_return = _api.request_civit_api(api_url, True)
     # The data below is taken from the API response (last synced: 2026-02-18)
+    # Forge Neo supported base models (per Haoming02/sd-webui-forge-classic neo branch).
+    # Keep this list in sync with get_model_categories() and BASE_MODEL_SHORT.
     default_options = [
         'Anima',
-        'AuraFlow',
         'Chroma',
-        'CogVideoX',
-        'Flux.1 S',
+        'Ernie',
         'Flux.1 D',
         'Flux.1 Krea',
         'Flux.1 Kontext',
+        'Flux.1 S',
         'Flux.2 D',
-        'Flux.2 Klein 9B',
-        'Flux.2 Klein 9B-base',
         'Flux.2 Klein 4B',
         'Flux.2 Klein 4B-base',
-        'HiDream',
-        'Hunyuan 1',
-        'Hunyuan Video',
+        'Flux.2 Klein 9B',
+        'Flux.2 Klein 9B-base',
         'Illustrious',
-        'Imagen4',
-        'Kling',
-        'Kolors',
+        'Krea 2',
         'LTXV',
-        'LTXV2',
         'Lumina',
-        'Mochi',
-        'Nano Banana',
         'NoobAI',
-        'ODOR',
-        'OpenAI',
         'Other',
-        'PixArt a',
-        'PixArt E',
-        'Playground v2',
         'Pony',
         'Pony V7',
         'Qwen',
-        'Stable Cascade',
         'SD 1.4',
         'SD 1.5',
-        'SD 1.5 LCM',
         'SD 1.5 Hyper',
-        'SD 2.0',
-        'SD 2.0 768',
-        'SD 2.1',
-        'SD 2.1 768',
-        'SD 2.1 Unclip',
-        'SD 3',
-        'SD 3.5',
-        'SD 3.5 Large',
-        'SD 3.5 Large Turbo',
-        'SD 3.5 Medium',
-        'Sora 2',
+        'SD 1.5 LCM',
         'SDXL 0.9',
         'SDXL 1.0',
         'SDXL 1.0 LCM',
-        'SDXL Lightning',
-        'SDXL Hyper',
-        'SDXL Turbo',
         'SDXL Distilled',
-        'Seedance',
-        'Seedance 1.5',
-        'Seedance 2.0',
-        'Seedream',
-        'SVD',
-        'SVD XT',
-        'Veo 3',
-        'Vidu Q1',
+        'SDXL Hyper',
+        'SDXL Lightning',
+        'SDXL Turbo',
         'Wan Video',
         'Wan Video 1.3B t2v',
-        'Wan Video 14B t2v',
         'Wan Video 14B i2v 480p',
         'Wan Video 14B i2v 720p',
-        'Wan Video 2.2 TI2V-5B',
+        'Wan Video 14B t2v',
         'Wan Video 2.2 I2V-A14B',
+        'Wan Video 2.2 TI2V-5B',
         'Wan Video 2.2 T2V-A14B',
-        'Wan Video 2.5 T2V',
         'Wan Video 2.5 I2V',
-        'ZImageTurbo',
+        'Wan Video 2.5 T2V',
         'ZImageBase',
+        'ZImageTurbo',
     ]
 
     if not isinstance(json_return, dict):
@@ -259,7 +243,7 @@ def get_base_models():
         try:
             parsed_message = json.loads(json_return['error']['message'])
             options = parsed_message[0]['errors'][0][0]['values']
-            return options
+            return sorted(options)
         except (KeyError, IndexError, json.JSONDecodeError, TypeError) as e:
             print(f"Basemodel fetch error extracting options: {e}")
             return default_options
@@ -267,6 +251,44 @@ def get_base_models():
         return default_options
 
 ## === ANXETY EDITs ===
+def build_account_badge_html():
+    """Background account badge for the Dashboard.
+
+    Auto-connects with the saved API key via the MCP whoami (cached) and renders
+    a small passive badge — no button, no interaction. Returns '' (invisible)
+    when account features are disabled, no key is set, or the identity cannot be
+    resolved, so the slot collapses.
+
+    A failure renders NOTHING rather than a warning. This badge is decorative and
+    the failure mode is not the user's to fix: as of 2026-08-05 CivitAI's own
+    `user.getSelfStatus` rejects the MCP server's call, so the old code painted a
+    permanent "⚠️ CivitAI account not connected (Error: user.getSelfStatus:
+    Invalid input)" onto the Dashboard for a bug no local setting can address.
+    The reason still goes to the debug log, and the badge comes back on its own
+    if the identity ever resolves again — including from a partially-failed
+    response, since a broken status step should not cost us the name.
+    """
+    from html import escape
+    if not getattr(opts, 'account_features_mcp', True):
+        return ''
+    if not (getattr(opts, 'custom_api_key', '') or '').strip():
+        return ''
+
+    res = _mcp.whoami()
+    username, image = _mcp.extract_identity(res.get('data'))
+
+    if not username:
+        if res.get('ok'):
+            debug_print(f"[MCP] whoami succeeded but carried no username: {str(res.get('data'))[:200]}")
+        else:
+            debug_print(f"[MCP] account badge hidden — whoami failed: {res.get('error')}")
+        return ''
+
+    avatar = (f'<img src="{escape(str(image))}" style="width:24px;height:24px;border-radius:50%;'
+              'object-fit:cover;">') if image else '<span style="font-size:18px;">👤</span>'
+    return ('<div style="display:flex;align-items:center;gap:8px;font-size:14px;padding:4px 0;">'
+            f'{avatar}<span>Connected as <strong>{escape(username)}</strong></span></div>')
+
 def on_ui_tabs():
     page_header = getattr(opts, 'page_header', False)
     lobe_directory = None
@@ -314,6 +336,11 @@ def on_ui_tabs():
     dashboard_scan_choices_with_all = ['All'] + dashboard_scan_choices
 
     with gr.Blocks() as civitai_interface:
+        gr.HTML(
+            '<div style="text-align:right;opacity:0.6;font-size:12px;padding:2px 8px;letter-spacing:0.3px;">'
+            'v1.0.0</div>',
+            elem_id='civitai_neo_version_badge'
+        )
         ## Browser Tab
         with gr.Tab(label='Browser', elem_id='browserTab'):
             gr.Markdown('## 🔍 Browse CivitAI Models', elem_id='browser_header')
@@ -322,10 +349,21 @@ def on_ui_tabs():
             update_mode_banner = gr.HTML(value='', elem_id='update_mode_banner')
             
             _browser_defaults = _load_browser_defaults()
+            _default_source = _browser_defaults.get(
+                'browser_source', _browser_sources.source_choices()[0]
+            )
             with gr.Row(elem_id='searchRow'):
                 with gr.Accordion(label='', open=False, elem_id=filterBox):
                     with gr.Row():
-                        use_search_term = gr.Radio(label='Search type:', choices=['Model name', 'User name', 'Tag', 'SHA256'], value=_browser_defaults.get('search_type', 'Model name'), elem_id='searchType')
+                        source = gr.Dropdown(
+                            label='Source:',
+                            choices=_browser_sources.source_choices(),
+                            value=_default_source,
+                            type='value',
+                            elem_id='browserSource'
+                        )
+                    with gr.Row():
+                        use_search_term = gr.Radio(label='Search type:', choices=['Model name', 'User name', 'Tag', 'SHA256', 'URL'], value=_browser_defaults.get('search_type', 'Model name'), elem_id='searchType')
                     with gr.Row():
                         content_type = gr.Dropdown(label='Content type:', choices=content_choices, value=_browser_defaults.get('content_type', None), type='value', multiselect=True, elem_id='centerText')
                     with gr.Row():
@@ -341,12 +379,23 @@ def on_ui_tabs():
                         only_liked = gr.Checkbox(label='Liked models only', value=_browser_defaults.get('liked_models_only', False), interactive=show_only_liked, elem_id=toggle4)
                         hide_installed = gr.Checkbox(label='Hide installed models', value=_browser_defaults.get('hide_installed_models', False), elem_id=toggle5)
                         hide_banned_creators = gr.Checkbox(label='Hide banned creators', value=False, elem_id='hideBannedCreators')
+                        deleted_from_civitai = gr.Checkbox(
+                            label='Deleted from CivitAI',
+                            info='CivArchive only',
+                            value=(
+                                _browser_defaults.get('deleted_from_civitai', False)
+                                if _default_source == 'CivArchive'
+                                else False
+                            ),
+                            interactive=_default_source == 'CivArchive',
+                            elem_id='deletedFromCivitai',
+                        )
                     with gr.Row():
                         size_slider = gr.Slider(label='Tile size:', minimum=8, maximum=20, value=_browser_defaults.get('tile_size', 12), step=0.25)
                         tile_count_slider = gr.Slider(label='Tile count:', minimum=1, maximum=100, value=_browser_defaults.get('tile_count', 27), step=1)
                     with gr.Row(elem_id='save_set_box'):
                         save_settings = gr.Button(value='Save settings as default', elem_id='save_set_btn')
-                search_term = gr.Textbox(label='', placeholder='Enter model name, or paste a CivitAI link', elem_id='searchBox')
+                search_term = gr.Textbox(label='', placeholder='Enter model name, or paste a model URL (CivitAI, CivArchive, Hugging Face, Arc en Ciel)', elem_id='searchBox')
                 refresh = gr.Button(value='', elem_id=refreshbtn, icon='placeholder')
             with gr.Row(elem_id=header):
                 with gr.Row(elem_id='pageBox'):
@@ -357,6 +406,7 @@ def on_ui_tabs():
                     pass # Row used for button placement on mobile
             with gr.Row(elem_id='select_all_models_container'):
                 select_all = gr.Button(value='Select All', elem_id='select_all_models', visible=False)
+                clear_results = gr.Button(value='🧹 Clear results', elem_id='clear_results_btn', scale=0, min_width=130)
             with gr.Row():
                 gr.HTML(value=(
                     '<div class="card-legend">'
@@ -368,8 +418,8 @@ def on_ui_tabs():
                     '<span class="legend-item"><span class="legend-dot outdated"></span>Update available (same family)</span>'
                     '<span class="legend-separator"></span>'
                     '<span class="legend-item"><span class="legend-dot cross-family"></span>New family variant available</span>'
-                    '<span class="legend-separator"></span>'
-                    '<span class="legend-item"><span class="legend-dot early-access"></span>Early Access (paid)</span>'
+                    # Early Access / Paid are no longer card borders — each renders as
+                    # its own labelled badge on the card, which needs no legend entry.
                     '</div>'
                 ))
             with gr.Accordion(label='\U0001f464 Creator Management', open=False, elem_id='creatorMgmtBox'):
@@ -412,56 +462,6 @@ def on_ui_tabs():
             with gr.Row():
                 preview_html = gr.HTML(elem_id='civitai_preview_html')
 
-        ## Update Tab
-        with gr.Tab(label='Update Models', elem_id='updateTab'):
-            gr.Markdown('## 🔄 Update & Maintain Models', elem_id='update_header')
-            gr.Markdown('Keep your models up-to-date and manage metadata, previews, and tags.')
-            
-            with gr.Row():
-                selected_tags = gr.CheckboxGroup(elem_id='selected_tags', label='Selected content types:', choices=scan_choices, value=['All'])
-            
-            with gr.Accordion(label='🔧 Scan Options', open=False):
-                with gr.Row(elem_id='civitai_update_toggles'):
-                    overwrite_toggle = gr.Checkbox(elem_id='overwrite_toggle', label='Overwrite any existing files (previews, HTMLs, tags, descriptions)', value=True, min_width=300)
-                    skip_hash_toggle = gr.Checkbox(elem_id='skip_hash_toggle', label='One-Time Hash Generation for externally downloaded models', value=True, min_width=300)
-                    do_html_gen = gr.Checkbox(elem_id='do_html_gen', label='Save HTML file for each model when updating info & tags', value=False, min_width=300)
-            
-            gr.Markdown('---')
-            gr.Markdown('### 📝 Update Model Information')
-            gr.Markdown('Fetch and update metadata, tags, and descriptions from CivitAI.')
-            
-            with gr.Row():
-                save_all_tags = gr.Button(value='📝 Update model info & tags', interactive=True, visible=True, variant='primary')
-                cancel_all_tags = gr.Button(value='Cancel updating model info & tags', interactive=False, visible=False)
-            with gr.Row():
-                tag_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-
-            with gr.Row():
-                sync_sha256_cache = gr.Button(value='🔄 Sync checkpoint SHA256 cache', interactive=True, visible=True)
-            with gr.Row():
-                sync_sha256_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-            
-            gr.Markdown('---')
-            gr.Markdown('### 🖼️ Update Model Previews')
-            gr.Markdown('Download and refresh preview images for your models.')
-            
-            with gr.Row():
-                update_preview = gr.Button(value='🖼️ Update model preview', interactive=True, visible=True, variant='primary')
-                cancel_update_preview = gr.Button(value='Cancel updating model previews', interactive=False, visible=False)
-            with gr.Row():
-                preview_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-            
-            gr.Markdown('---')
-            gr.Markdown('### 🔍 Check for Updates')
-            gr.Markdown('Scan your collection for newer versions available on CivitAI.')
-            
-            with gr.Row():
-                ver_search = gr.Button(value='🔍 Scan for available updates', interactive=True, visible=True, variant='primary')
-                cancel_ver_search = gr.Button(value='Cancel updates scan', interactive=False, visible=False)
-                load_to_browser_outdated = gr.Button(value='Load outdated models to browser', interactive=False, visible=False)
-            with gr.Row():
-                version_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-
         ## Queue Tab
         with gr.Tab(label='Download Queue', elem_id='queueTab'):
             gr.Markdown('## 📥 Download Queue Manager', elem_id='queue_header')
@@ -487,68 +487,192 @@ def on_ui_tabs():
 
         ## Local Models Tab
         with gr.Tab(label='Local Models', elem_id='localTab'):
-            gr.Markdown('## 📂 Manage Local Models', elem_id='local_models_header')
-            gr.Markdown('Load, organize, and manage your installed models.')
-            
+            with gr.Tabs(elem_id='localSubTabs'):
+                with gr.Tab(label='Local Models Browser', elem_id='localBrowserTab'):
+                    gr.Markdown('## 📂 Local Models Browser', elem_id='local_models_header')
+                    gr.Markdown('Browse, rename, update and delete the models installed on your machine.')
+
+                    # Hidden state/triggers for the local browser
+                    local_use_search = gr.State(value='Model name')
+                    local_tile_count = gr.State(value=100)
+                    local_nsfw = gr.State(value=True)
+                    local_model_select = gr.Textbox(elem_id='local_model_select', visible=False)
+                    local_list_html_input = gr.Textbox(elem_id='local_list_html_input', visible=False)
+                    local_page_trigger = gr.Textbox(elem_id='local_page_trigger', visible=False)
+                    local_sha256 = gr.Textbox(visible=False)
+                    local_model_id = gr.Textbox(visible=False)
+                    local_model_string = gr.Textbox(visible=False)
+                    local_rename_finish = gr.Textbox(visible=False)
+                    local_delete_finish = gr.Textbox(visible=False)
+
+                    # ── Filters + load (mirrors the Browser tab; filters what we touch) ──
+                    with gr.Row(elem_id='localSearchRow'):
+                        local_content_type = gr.Dropdown(label='Content type:', choices=content_choices, value=['Checkpoint', 'LORA'], type='value', multiselect=True, elem_id='localContentType')
+                        local_base_filter = gr.Dropdown(label='Base model:', choices=get_base_models(), value=None, type='value', multiselect=True, elem_id='localBaseFilter')
+                        local_sort = gr.Dropdown(label='Sort by:', choices=['Name (A-Z)', 'Name (Z-A)', 'Recently downloaded', 'Oldest downloaded'], value='Name (A-Z)', type='value', elem_id='localSortBy')
+                        local_page_size = gr.Dropdown(label='Per page:', choices=['25', '50', '100'], value='50', type='value', min_width=90, elem_id='localPerPage')
+                        local_search = gr.Textbox(label='', placeholder='Filter local models by name', elem_id='localSearchBox')
+                        local_load_btn = gr.Button(value='📋 Load local models', elem_id='localLoadBtn', variant='primary')
+                        local_clear_btn = gr.Button(value='🧹 Clear', elem_id='localClearBtn', scale=0, min_width=90)
+                    with gr.Row():
+                        local_size_slider = gr.Slider(label='Tile size:', minimum=8, maximum=20, value=12, step=0.25, elem_id='localSizeSlider', scale=4)
+                        local_only_updates = gr.Checkbox(label='⬆️ Only models with updates', value=False, elem_id='localOnlyUpdates', scale=1, min_width=220)
+
+                    # ── Card grid ──
+                    with gr.Row():
+                        local_list_html = gr.HTML(value='<div style="font-size: 24px; text-align: center; margin: 50px;">Click "Load local models" to list your installed models.</div>', elem_id='local_list_html')
+
+                    # Batch action: update the models checked on outdated cards (reuses update_selected pipeline)
+                    with gr.Row():
+                        local_update_mode = gr.Radio(choices=['Replace installed', 'Keep installed (download alongside)'], value='Replace installed', label='When updating:', elem_id='localUpdateMode', scale=2)
+                        local_update_selected_btn = gr.Button(value='⬆️ Update selected', elem_id='localUpdateSelectedBtn', scale=1)
+                    # Live download progress mirrored from #DownloadProgress (so updates started here
+                    # are visible without leaving the tab). Pure JS target — no Python binding.
+                    with gr.Row():
+                        local_download_progress = gr.HTML(value='<div style="min-height: 0px;"></div>', elem_id='local_download_progress')
+
+                    # ── Detail panel for the selected card ──
+                    with gr.Row():
+                        local_base_model = gr.Textbox(label='Base model:', interactive=False, lines=1)
+                        local_version = gr.Dropdown(label='Version:', choices=[], interactive=False, value=None)
+                        local_filename = gr.Textbox(label='Model filename:', interactive=False, scale=2)
+                        local_file_list = gr.Dropdown(label='File:', choices=[], interactive=False, value=None, scale=2, elem_id='localFileList')
+                    with gr.Row():
+                        local_trained_tags = gr.Textbox(label='Trained tags (if any):', value=None, interactive=False, lines=1, scale=6)
+                        local_send_tags_btn = gr.Button(value='➕ Add to prompt', scale=1, min_width=120, interactive=False, visible=False)
+                    with gr.Row():
+                        local_new_name = gr.Textbox(label='New name (rename):', interactive=False, max_lines=1, scale=4)
+                        local_rename_btn = gr.Button(value='✏️ Rename', interactive=False, scale=1)
+                        local_download_version_btn = gr.Button(value='⬇️ Download selected version', interactive=False, scale=1)
+                        local_update_btn = gr.Button(value='⬆️ Update to latest', interactive=False, scale=1)
+                        local_delete_btn = gr.Button(value='🗑️ Delete', interactive=False, variant='stop', scale=1)
+                    with gr.Row():
+                        local_preview_html = gr.HTML(elem_id='local_preview_html')
+
+                with gr.Tab(label='LoraDex', elem_id='loraDexTab'):
+                    gr.Markdown('## 🏷️ LoraDex — LoRA Category Manager')
+                    gr.Markdown('Manage LoRA categories. Each row has its own Apply/Reset. Use the bar below to apply or reset all pending changes at once.')
+
+                    # Hidden states
+                    loradex_page_trigger = gr.Textbox(visible=False, elem_id='loradex_page_trigger')
+                    loradex_command_state = gr.Textbox(visible=False, elem_id='loradex_command_state')
+
+                    # ── Filters + load ──
+                    with gr.Row(elem_id='loradexFilterRow'):
+                        loradex_base_filter = gr.Dropdown(label='Base model:', choices=get_base_models(), value=None, type='value', multiselect=True)
+                        loradex_cat_filter = gr.Dropdown(label='Category:', choices=['All'] + _file.LORA_DEX_CATEGORIES, value='All')
+                        loradex_pending_only = gr.Checkbox(label='Pending only', value=False)
+                        loradex_search = gr.Textbox(label='Search:', placeholder='Filter by LoRA name')
+                        loradex_page_size = gr.Dropdown(label='Per page:', choices=['10', '25', '50', '100'], value='25', type='value', min_width=90)
+                        loradex_load_btn = gr.Button(value='🔄 Load', variant='primary')
+
+                    # ── List ──
+                    with gr.Row():
+                        loradex_html = gr.HTML(value='<div style="font-size: 20px; text-align: center; margin: 50px;">Click "🔄 Load" to list your LoRAs.</div>', elem_id='loradex_list')
+
+                    # ── Pagination + bulk actions ──
+                    with gr.Row():
+                        loradex_apply_all_btn = gr.Button(value='✅ Apply page changes', variant='primary')
+                        loradex_reset_all_btn = gr.Button(value='↺ Reset page changes')
+                        loradex_status = gr.HTML()
+
+        ## Organization Tab
+        with gr.Tab(label='Organization', elem_id='organizationTab'):
+            gr.Markdown('## 🗂️ Organization & Maintenance', elem_id='organization_header')
+            gr.Markdown('Bulk metadata, previews and folder organization for your installed models. Per-model updates live in the **Local Models** tab.')
+
+            # Explicit content-type filter for everything scanned in this tab
+            selected_tags = gr.CheckboxGroup(elem_id='selected_tags', label='Content types to scan:', choices=scan_choices, value=['All'])
+
+            # Scan options (always visible)
+            gr.Markdown('**⚙️ Scan options**')
+            with gr.Row(elem_id='civitai_update_toggles'):
+                overwrite_toggle = gr.Checkbox(elem_id='overwrite_toggle', label='Overwrite existing files (previews, HTMLs, tags, descriptions)', value=True, min_width=300)
+                skip_hash_toggle = gr.Checkbox(elem_id='skip_hash_toggle', label='One-time hash generation for externally downloaded models', value=True, min_width=300)
+                do_html_gen = gr.Checkbox(elem_id='do_html_gen', label='Save an HTML file per model when updating info & tags', value=False, min_width=300)
+
+            gr.Markdown('**🔄 Update from CivitAI** — fetch metadata, tags and previews for the selected content types.')
             with gr.Row():
-                selected_tags_local = gr.CheckboxGroup(elem_id='selected_tags_local', label='Selected content types:', choices=local_scan_choices, value=['Checkpoint', 'LORA'])
-            
-            with gr.Accordion(label='🔧 Scan Options', open=False):
-                with gr.Row(elem_id='civitai_local_toggles'):
-                    overwrite_toggle_local = gr.Checkbox(elem_id='overwrite_toggle_local', label='Overwrite any existing files (previews, HTMLs, tags, descriptions)', value=True, min_width=300)
-                    skip_hash_toggle_local = gr.Checkbox(elem_id='skip_hash_toggle_local', label='One-Time Hash Generation for externally downloaded models', value=True, min_width=300)
-                    do_html_gen_local = gr.Checkbox(elem_id='do_html_gen_local', label='Save HTML file for each model when updating info & tags', value=False, min_width=300)
-            
-            gr.Markdown('---')
-            gr.Markdown('### 📋 Load Installed Models')
-            gr.Markdown('Scan and load information about all models currently installed on your system.')
-            
+                save_all_tags = gr.Button(value='📝 Update info & tags', interactive=True, variant='primary')
+                cancel_all_tags = gr.Button(value='✖ Cancel', interactive=False, visible=False, variant='stop')
+                update_preview = gr.Button(value='🖼️ Update previews', interactive=True, variant='primary')
+                cancel_update_preview = gr.Button(value='✖ Cancel', interactive=False, visible=False, variant='stop')
+                sync_sha256_cache = gr.Button(value='🔄 Sync SHA256 cache', interactive=True)
             with gr.Row():
-                load_installed = gr.Button(value='📋 Load all installed models', interactive=True, visible=True, variant='primary')
-                cancel_installed = gr.Button(value='Cancel loading models', interactive=False, visible=False)
-                load_to_browser_installed = gr.Button(value='Load installed models to browser', interactive=False, visible=False)
+                tag_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+                preview_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+                sync_sha256_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+
+            gr.Markdown('**⚙️ Organization mode** — choose how models are sorted into subfolders.')
             with gr.Row():
-                installed_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-            
-            gr.Markdown('---')
-            gr.Markdown('### 📁 Model Organization')
-            gr.Markdown('Automatically organize your models into subfolders by base model type (SDXL, Pony, FLUX, etc.)')
-            
+                org_by_base = gr.Checkbox(
+                    label='Organize by base model',
+                    value=lambda: getattr(opts, 'civitai_neo_auto_organize', False),
+                    elem_id='civitai_org_by_base'
+                )
+                org_by_category = gr.Checkbox(
+                    label='Organize LoRAs by category',
+                    value=lambda: getattr(opts, 'civitai_neo_lora_category_sort', False),
+                    elem_id='civitai_org_by_category'
+                )
+
+            gr.Markdown('**📁 Organize & validate** — sort models into subfolders and check placement.')
             with gr.Row():
-                organize_models = gr.Button(value='📁 Organize models into subfolders by type', interactive=True, visible=True, variant='primary')
-                cancel_organize = gr.Button(value='Cancel organization', interactive=False, visible=False)
+                organize_models = gr.Button(value='📁 Organize into subfolders', interactive=True, variant='primary')
+                cancel_organize = gr.Button(value='✖ Cancel', interactive=False, visible=False, variant='stop')
+                validate_org_btn = gr.Button(value='🔍 Validate organization', interactive=True)
+            with gr.Row():
+                undo_organization = gr.Button(value='↶ Undo last organization', interactive=True, variant='secondary')
+                fix_misplaced_btn = gr.Button(value='✅ Fix misplaced files', interactive=True, visible=False, variant='secondary')
+                undo_fix_btn = gr.Button(value='↶ Undo fix', interactive=True, visible=False, variant='secondary')
             with gr.Row():
                 organize_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-            
-            with gr.Row():
-                undo_organization = gr.Button(value='↶ Undo Last Organization', interactive=True, visible=True, variant='secondary')
-            with gr.Row():
-                undo_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-
-            gr.Markdown('---')
-            gr.Markdown('### 🔍 Validate Organization')
-            gr.Markdown('Check whether all models are in their correct subfolders — without moving anything. Optionally fix any misplaced files.')
-
-            with gr.Row():
-                validate_org_btn = gr.Button(value='🔍 Validate organization', interactive=True, visible=True, variant='primary')
-            with gr.Row():
                 validate_org_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-            with gr.Row():
-                fix_misplaced_btn = gr.Button(value='✅ Fix misplaced files', interactive=True, visible=False, variant='secondary')
-            with gr.Row():
+                undo_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
                 fix_misplaced_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-            with gr.Row():
-                undo_fix_btn = gr.Button(value='↶ Undo Fix', interactive=True, visible=False, variant='secondary')
-            with gr.Row():
                 undo_fix_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+
+            gr.Markdown('**🗄️ Verify local metadata** — check that cached CivitAI IDs still exist and that `.api_info.json` matches; recover data for delisted models from CivArchive.')
+            with gr.Row():
+                verify_metadata_btn = gr.Button(value='🔍 Verify local metadata', interactive=True)
+                resolve_civarchive_btn = gr.Button(value='🗄️ Resolve via CivArchive', interactive=True, visible=False, variant='secondary')
+            with gr.Row():
+                verify_metadata_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+                resolve_civarchive_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+
+            metadata_issues_state = gr.State(value='{}')
+
+            # Hidden, kept so existing bindings keep their inputs/outputs intact:
+            #  - selected_tags_local: organize/validate scope (Checkpoint/LORA), synced from selected_tags
+            #  - *_local toggles: consumed by file_scan_inputs_local
+            #  - ver_search/version_progress: "Scan for updates" now flows through Local Models
+            #  - load_installed/installed_progress: legacy full scan (superseded by "Load local models")
+            selected_tags_local = gr.CheckboxGroup(elem_id='selected_tags_local', choices=local_scan_choices, value=['Checkpoint', 'LORA'], visible=False)
+            with gr.Row(elem_id='civitai_local_toggles', visible=False):
+                overwrite_toggle_local = gr.Checkbox(elem_id='overwrite_toggle_local', value=True)
+                skip_hash_toggle_local = gr.Checkbox(elem_id='skip_hash_toggle_local', value=True)
+                do_html_gen_local = gr.Checkbox(elem_id='do_html_gen_local', value=False)
+            with gr.Row(visible=False):
+                ver_search = gr.Button(value='🔍 Scan for updates', interactive=True)
+                cancel_ver_search = gr.Button(value='Cancel updates scan', interactive=False)
+                version_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+            with gr.Row(visible=False):
+                load_installed = gr.Button(value='📋 Load all installed models', interactive=True)
+                cancel_installed = gr.Button(value='Cancel loading models', interactive=False)
+                installed_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
 
             validate_plan_state = gr.State(value='{}')
 
         ## Dashboard Tab
         with gr.Tab(label='Dashboard', elem_id='dashboardTab'):
+            # Account badge: auto-connects in the background with the saved API key
+            # (populated by civitai_interface.load). Renders empty/invisible when there
+            # is no key or the account feature is disabled — no button, no interaction.
+            account_badge_html = gr.HTML(value='', elem_id='civitai_account_badge')
+
             gr.Markdown('## 📊 Model Collection Statistics', elem_id='dashboard_header')
             gr.Markdown('View disk usage statistics for your model collection organized by type.')
-            
+
             with gr.Row():
                 dashboard_content_types = gr.CheckboxGroup(
                     elem_id='dashboard_content_types', 
@@ -637,6 +761,8 @@ def on_ui_tabs():
         model_select = gr.Textbox(elem_id='model_select', visible=False)
         model_sent = gr.Textbox(elem_id='model_sent', visible=False)
         type_sent = gr.Textbox(elem_id='type_sent', visible=False)
+        native_badge_trigger = gr.Textbox(elem_id='native_badge_trigger', visible=False)
+        native_badge_data = gr.Textbox(elem_id='native_badge_data', visible=False)
         click_first_item = gr.Textbox(visible=False)
         empty = gr.Textbox(value='', visible=False)
         download_start = gr.Textbox(visible=False)
@@ -729,7 +855,7 @@ def on_ui_tabs():
         list_models.select(fn=None, inputs=list_models, _js='(list_models) => select_model(list_models)')
 
         preview_html_input.change(fn=None, _js='() => adjustFilterBoxAndButtons()')
-        preview_html_input.change(fn=None, _js='() => setDescriptionToggle()')
+        preview_html_input.change(fn=None, _js='() => initDescriptionToggle()')
 
         page_slider.release(fn=None, _js='() => pressRefresh()')
 
@@ -738,7 +864,7 @@ def on_ui_tabs():
         # is missing from the DOM after download/delete/queue events.
         card_updates = [queue_trigger, download_finish, delete_finish]
         for func in card_updates:
-            func.change(fn=None, inputs=func, _js='(modelName) => updateCard(modelName, false)')
+            func.change(fn=None, inputs=current_model, _js='(modelName) => updateCard(modelName, false)')
 
         # Ensure realtime card status updates also fire when current_model itself changes.
         # Skip pressRefresh() fallback — current_model changes after download/delete/ambiguity
@@ -790,8 +916,16 @@ def on_ui_tabs():
                 show_nsfw,
                 exact_search,
                 size_slider,
-                tile_count_slider
+                tile_count_slider,
+                source,
+                deleted_from_civitai
             ]
+        )
+
+        source.change(
+            fn=update_deleted_from_civitai_filter,
+            inputs=[source],
+            outputs=[deleted_from_civitai],
         )
 
         toggle_date.input(
@@ -896,10 +1030,421 @@ def on_ui_tabs():
             ]
         )
 
+        # ── Local Models Browser bindings ──
+        _local_empty = (
+            gr.update(value=None),                                   # local_preview_html
+            gr.update(value=None, choices=[], interactive=False),  # local_version
+            gr.update(value=''),                                    # local_base_model
+            gr.update(value=''),                                    # local_filename
+            gr.update(value=None, choices=[], interactive=False),  # local_file_list
+            gr.update(value=''),                                    # local_sha256
+            gr.update(value=''),                                    # local_model_id
+            gr.update(value='', interactive=False),                 # local_new_name
+            gr.update(interactive=False),                           # local_rename_btn
+            gr.update(interactive=False),                           # local_delete_btn
+            gr.update(interactive=False),                           # local_update_btn
+            gr.update(value=None, interactive=False),               # local_trained_tags
+            gr.update(interactive=False, visible=False),            # local_send_tags_btn
+            gr.update(value=''),                                    # local_model_string
+            gr.update(interactive=False),                           # local_download_version_btn
+        )
+
+        def _build_local_panel(model_string, model_version=None, set_version=True, force_disk_scan=False):
+            """Build the Local detail-panel updates for a model/version.
+            Reuses _api.update_model_info and routes its outputs to local_* components.
+            Resolves against gl.local_json_data (json_input) so the panel keeps working
+            no matter what the Browser tab loaded meanwhile.
+            set_version=False keeps the version dropdown as-is (used on version switch).
+            force_disk_scan=True ignores the cached _local_paths stamp and walks the
+            content-type tree fresh — used after an update download so the panel reflects
+            the version actually on disk now (the stamp points at the pre-update file)."""
+            if not model_string or not gl.local_json_data:
+                return _local_empty
+
+            model_name, model_id = _api.extract_model_info(model_string)
+            # Installed file path(s) for this model, stamped by render_local_browser.
+            # Lets update_model_versions detect the installed version from these 1-3
+            # files instead of walking the whole content-type tree on every click.
+            # Falls back to the full walk (None) when an item predates the stamp.
+            _panel_items = gl.local_json_data.get('items', []) if isinstance(gl.local_json_data, dict) else []
+            _panel_item = next((it for it in _panel_items if str(it.get('id')) == str(model_id)), None)
+            _installed_paths = (_panel_item.get('_local_paths') or []) if _panel_item else []
+            if force_disk_scan:
+                _installed_paths = []  # force the full walk below (stamp is stale post-update)
+            model_versions = _api.update_model_versions(
+                model_id, json_input=gl.local_json_data,
+                installed_file_paths=_installed_paths or None)
+            chosen = model_version or (model_versions.get('value') if model_versions else None)
+            info = _api.update_model_info(model_string, chosen, json_input=gl.local_json_data, prefer_cached_images=True)
+            (html, tags_u, base_model_u, _dl, _img, _del, _flist,
+             model_filename_u, _url, model_id_u, current_sha256_u, _ip, _sf) = info
+
+            fname = model_filename_u.get('value') if isinstance(model_filename_u, dict) else None
+            base_name = os.path.splitext(fname)[0] if fname else (model_name or '')
+
+            tags_val = tags_u.get('value') if isinstance(tags_u, dict) else None
+            has_tags = bool(tags_val and str(tags_val).strip())
+
+            try:
+                is_local_only = int(model_id) < 0
+            except (TypeError, ValueError):
+                is_local_only = False
+
+            # Partial items (recovered via /model-versions/by-hash because the /models
+            # endpoint 500s on them) only carry the installed version — "Update to latest"
+            # would re-download that same version (and delete the file first in Replace
+            # mode), so updating must stay disabled for them.
+            _items = gl.local_json_data.get('items', []) if isinstance(gl.local_json_data, dict) else []
+            _item = next((it for it in _items if str(it.get('id')) == str(model_id)), None)
+            is_partial = bool(_item and _item.get('partial'))
+
+            # "Download selected version" only makes sense for a version that is NOT the
+            # one installed (the dropdown marks installed versions with '[Installed]').
+            is_installed_ver = '[Installed]' in str(chosen or '')
+
+            version_out = (model_versions if model_versions else gr.update()) if set_version else gr.update()
+
+            return (
+                html,                                                   # local_preview_html
+                version_out,                                            # local_version
+                base_model_u,                                           # local_base_model
+                model_filename_u,                                       # local_filename
+                _flist,                                                 # local_file_list
+                current_sha256_u,                                       # local_sha256
+                model_id_u,                                             # local_model_id
+                gr.update(value=base_name, interactive=True),           # local_new_name
+                gr.update(interactive=True),                            # local_rename_btn
+                gr.update(interactive=True),                            # local_delete_btn
+                gr.update(interactive=not is_local_only and not is_partial),  # local_update_btn (CivitAI, full data only)
+                tags_u,                                                 # local_trained_tags
+                gr.update(interactive=has_tags, visible=has_tags),      # local_send_tags_btn
+                gr.update(value=model_string),                          # local_model_string
+                gr.update(interactive=not is_local_only and not is_partial and not is_installed_ver),  # local_download_version_btn
+            )
+
+        def update_local_model_info(input):
+            """Card click → populate the detail panel (and set the version dropdown)."""
+            if not input:
+                return _local_empty
+            model_string = re.sub(r'\.\d{3}$', '', input)
+            return _build_local_panel(model_string, None, set_version=True)
+
+        def update_local_version(model_string, model_version):
+            """Version dropdown change → refresh the panel for the chosen version
+            (keeps the dropdown selection intact)."""
+            return _build_local_panel(model_string, model_version, set_version=False)
+
+        def update_local_file_info(model_string, model_version, file_label):
+            """File dropdown change → update filename/SHA256/model_id for the selected file."""
+            if not model_string or not model_version or not file_label:
+                return (
+                    gr.update(value=None),
+                    gr.update(value=None),
+                    gr.update(value=None),
+                )
+            info = _api.update_file_info(
+                model_string,
+                model_version,
+                file_label,
+                json_input=gl.local_json_data
+            )
+            filename_update, _, model_id_update, sha256_update = info[:4]
+            return (
+                filename_update,  # local_filename
+                sha256_update,    # local_sha256
+                model_id_update,  # local_model_id
+            )
+
+        def trigger_local_update(model_id_value, installed_sha=''):
+            """Funnel a local model into the existing single-update pipeline.
+
+            "Update to latest" must KEEP the installed baseModel family (e.g. a model
+            page hosting both Illustrious and Pony versions). We anchor on the installed
+            file's SHA256 to find its baseModel, then force the newest version sharing
+            that baseModel (versions are ordered newest-first). This bypasses the looser
+            auto-resolution so the update can never jump to a different family.
+            Falls back to '||[]' (auto-resolve, which is family-safe in update flows)
+            only if the installed version/baseModel can't be resolved here."""
+            if not model_id_value:
+                return gr.update()
+            target_id = None
+            items = gl.local_json_data.get('items', []) if isinstance(gl.local_json_data, dict) else []
+            item = next((it for it in items if str(it.get('id')) == str(model_id_value)), None)
+            versions = item.get('modelVersions', []) if item else []
+            sha = (installed_sha or '').upper().strip()
+            if versions and sha:
+                inst_base = None
+                for ver in versions:
+                    if any((f.get('hashes', {}).get('SHA256') or '').upper() == sha
+                           for f in ver.get('files', [])):
+                        inst_base = (ver.get('baseModel') or '').strip()
+                        break
+                if inst_base:
+                    # versions[0] = newest overall → first match = newest of this baseModel
+                    for ver in versions:
+                        if (ver.get('baseModel') or '').strip() == inst_base and ver.get('id') is not None:
+                            target_id = ver['id']
+                            break
+            if target_id is not None:
+                return gr.update(value=f"{model_id_value}||[{target_id}]")
+            return gr.update(value=f"{model_id_value}||[]")
+
+        def trigger_local_version_download(model_id_value, version_display, file_label):
+            """Funnel 'download the version chosen in the dropdown' into the single-update
+            pipeline as model_id||[version_id]||file_label. The 'When updating:' radio decides
+            whether the installed version is replaced or kept alongside (same as Update to latest)."""
+            if not model_id_value or not version_display:
+                return gr.update()
+            vname = _api.strip_version_suffixes(version_display)
+            items = gl.local_json_data.get('items', []) if isinstance(gl.local_json_data, dict) else []
+            item = next((it for it in items if str(it.get('id')) == str(model_id_value)), None)
+            ver = next((v for v in (item.get('modelVersions', []) if item else [])
+                        if (v.get('name') or '').strip() == vname), None)
+            if not ver or ver.get('id') is None:
+                debug_print(f"Download selected version: could not resolve '{version_display}' for model {model_id_value}")
+                return gr.update()
+            file_label = (file_label or '').strip()
+            if file_label:
+                return gr.update(value=f"{model_id_value}||[{ver['id']}]||{file_label}")
+            return gr.update(value=f"{model_id_value}||[{ver['id']}]")
+
+        def refresh_local_after_download(model_string):
+            """After a download finishes, re-render the open Local detail panel so the
+            version dropdown's [Installed] marker, the Update button and the
+            Download-version button reflect the version now on disk (mirrors how the
+            Browser refreshes list_versions on download_finish). force_disk_scan=True
+            because the cached _local_paths stamp still points at the pre-update file.
+            No-op when no Local model is open (e.g. a Browser-tab download)."""
+            print(f"[local refresh] download_finish → model_string={model_string!r}")
+            if not model_string:
+                return tuple(gr.update() for _ in local_detail_outputs)
+            return _build_local_panel(model_string, None, set_version=True, force_disk_scan=True)
+
+        local_detail_outputs = [
+            local_preview_html, local_version, local_base_model, local_filename, local_file_list,
+            local_sha256, local_model_id, local_new_name,
+            local_rename_btn, local_delete_btn, local_update_btn,
+            local_trained_tags, local_send_tags_btn, local_model_string,
+            local_download_version_btn
+        ]
+        local_render_inputs = [
+            local_content_type, local_base_filter, local_use_search,
+            local_search, local_tile_count, local_nsfw, local_sort
+        ]
+
+        # The Organization tab's "Content types to scan" (selected_tags) is the single visible
+        # scan filter; mirror it into the hidden selected_tags_local (organize/validate only act
+        # on Checkpoint/LORA folders) so both halves respect the same selection.
+        def _sync_scan_scope(types):
+            types = types or []
+            if 'All' in types:
+                local = ['Checkpoint', 'LORA']
+            else:
+                local = [t for t in types if t in ('Checkpoint', 'LORA')] or ['Checkpoint', 'LORA']
+            return gr.update(value=local)
+
+        selected_tags.change(
+            fn=_sync_scan_scope,
+            inputs=[selected_tags],
+            outputs=[selected_tags_local]
+        )
+
+        # User-initiated loads render straight into the VISIBLE grid so Gradio shows
+        # its loading spinner over it; .then re-applies the tile size.
+        # Invalidate any stale scan-derived update set before a fresh Local load/filter,
+        # so Local updates/retention resolve from current local_json_data / on-disk state.
+        local_load_btn.click(
+            fn=_file.reset_update_items
+        ).then(
+            fn=_file.render_local_browser,
+            inputs=local_render_inputs,
+            outputs=[local_list_html],
+            show_progress='full'
+        ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)'
+        ).then(fn=None, _js='() => filterLocalOutdated()')
+        local_search.submit(
+            fn=_file.reset_update_items
+        ).then(
+            fn=_file.render_local_browser,
+            inputs=local_render_inputs,
+            outputs=[local_list_html],
+            show_progress='full'
+        ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)'
+        ).then(fn=None, _js='() => filterLocalOutdated()')
+        # "Only models with updates" is a pure client-side view filter over the already-loaded
+        # cards (no re-scan): show only cards the grid already marked civmodelcardoutdated.
+        local_only_updates.change(fn=None, _js='() => filterLocalOutdated()')
+
+        # "Sort by:" re-orders the already-loaded grid in place (no folder re-scan / API
+        # call) by reusing the cached gl.local_json_data; then re-applies tile size + the
+        # outdated view filter. If nothing is loaded yet it's a no-op.
+        local_sort.change(
+            fn=_file.resort_local_browser,
+            inputs=[local_sort],
+            outputs=[local_list_html],
+            show_progress='hidden'
+        ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)'
+        ).then(fn=None, _js='() => filterLocalOutdated()')
+
+        # Pagination: "Per page" dropdown resets to page 1; the Prev/Next buttons in the
+        # grid's pagination bar write #local_page_trigger via localGoToPage(n).
+        local_page_size.change(
+            fn=_file.change_local_page_size,
+            inputs=[local_page_size],
+            outputs=[local_list_html],
+            show_progress='hidden'
+        ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)'
+        ).then(fn=None, _js='() => filterLocalOutdated()')
+
+        local_page_trigger.change(
+            fn=_file.render_local_page,
+            inputs=[local_page_trigger],
+            outputs=[local_list_html],
+            show_progress='hidden'
+        ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)'
+        ).then(fn=None, _js='() => filterLocalOutdated()')
+
+        # Action-triggered refreshes still flow through the hidden input → visible grid,
+        # then size the tiles (mirrors the Browser list_html_input pattern).
+        local_list_html_input.change(fn=HTMLChange, inputs=[local_list_html_input], outputs=local_list_html)
+        local_list_html_input.change(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
+        local_list_html_input.change(fn=None, _js='() => filterLocalOutdated()')
+        local_size_slider.change(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
+
+        # Card click → detail panel. show_progress='hidden' so Gradio doesn't briefly reveal
+        # the visible=False outputs (e.g. "Add to prompt") just to show a loading spinner.
+        local_model_select.change(
+            fn=update_local_model_info,
+            inputs=[local_model_select],
+            outputs=local_detail_outputs,
+            show_progress='hidden'
+        )
+
+        # Version dropdown change → refresh panel for the chosen version
+        local_version.select(
+            fn=update_local_version,
+            inputs=[local_model_string, local_version],
+            outputs=local_detail_outputs,
+            show_progress='hidden'
+        )
+
+        # File dropdown change → update filename/SHA256 for the selected file
+        local_file_list.input(
+            fn=update_local_file_info,
+            inputs=[local_model_string, local_version, local_file_list],
+            outputs=[local_filename, local_sha256, local_model_id],
+            show_progress='hidden'
+        )
+
+        # Rename → refresh grid (spinner over the grid during the re-scan)
+        local_rename_btn.click(
+            fn=_file.rename_installed_model,
+            inputs=[local_sha256, local_new_name, local_rename_finish],
+            outputs=[local_rename_finish]
+        ).then(
+            fn=_file.render_local_browser,
+            inputs=local_render_inputs,
+            outputs=[local_list_html],
+            show_progress='full'
+        ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
+
+        # Delete (with confirm) → refresh grid (spinner over the grid during the re-scan)
+        local_delete_btn.click(
+            fn=_file.delete_installed_by_sha256,
+            inputs=[local_sha256, local_delete_finish, local_model_id, local_filename],
+            outputs=[local_delete_finish],
+            _js="(s, f, mid, fn) => { if (!confirm('Delete this model and all its files?')) throw new Error('cancelled'); return [s, f, mid, fn]; }"
+        ).then(
+            fn=_file.render_local_browser,
+            inputs=local_render_inputs,
+            outputs=[local_list_html],
+            show_progress='full'
+        ).then(fn=None, inputs=local_size_slider, _js='(size) => updateCardSize(size, size * 1.5)')
+
+        # Update → reuse the existing single-update pipeline via update_single_trigger
+        # (per-item dl_origin still drives the bar once the queue renders; the _js below
+        # only sets the ORIGIN CLASS eagerly on click, closing the race where a just-finished
+        # Browser download leaves body.civ-dl-origin-browser set and the Local bar would
+        # otherwise flash in the Browser tab until the queue HTML re-renders)
+        local_update_btn.click(
+            fn=trigger_local_update,
+            inputs=[local_model_id, local_sha256],
+            outputs=[update_single_trigger],
+            _js="(mid, sha) => { setCivDownloadOrigin('local'); return [mid, sha]; }"
+        )
+
+        # Download the version chosen in the dropdown → same pipeline, with the version id
+        # forced (model_id||[version_id]||file_label); honors the 'When updating:' replace/keep radio.
+        local_download_version_btn.click(
+            fn=trigger_local_version_download,
+            inputs=[local_model_id, local_version, local_file_list],
+            outputs=[update_single_trigger],
+            _js="(mid, ver, files) => { setCivDownloadOrigin('local'); return [mid, ver, files]; }"
+        )
+
+        # Batch update of checked (outdated) cards → reuses the update_selected pipeline
+        local_update_selected_btn.click(fn=None, _js='() => updateSelectedLocalModels()')
+
+        # Clear results (keep the filter inputs) → reset the grid + the whole detail panel
+        _local_grid_placeholder = '<div style="font-size: 24px; text-align: center; margin: 50px;">Click "Load local models" to list your installed models.</div>'
+        local_clear_btn.click(
+            fn=lambda: (gr.update(value=_local_grid_placeholder),) + _local_empty,
+            inputs=[],
+            outputs=[local_list_html] + local_detail_outputs,
+            show_progress='hidden'
+        )
+
+        # Trained tags → txt2img prompt (reuses the Browser's sendTagsToPrompt)
+        local_send_tags_btn.click(fn=None, inputs=[local_trained_tags], _js='(tags) => sendTagsToPrompt(tags)')
+
+        # ── LoraDex bindings ──
+        loradex_load_btn.click(
+            fn=_file.render_lora_dex_page,
+            inputs=[loradex_base_filter, loradex_cat_filter, loradex_pending_only, loradex_search, loradex_page_size],
+            outputs=[loradex_html],
+            show_progress='full'
+        )
+        loradex_search.submit(
+            fn=_file.render_lora_dex_page,
+            inputs=[loradex_base_filter, loradex_cat_filter, loradex_pending_only, loradex_search, loradex_page_size],
+            outputs=[loradex_html],
+            show_progress='full'
+        )
+        loradex_page_size.change(
+            fn=_file.change_lora_dex_page_size,
+            inputs=[loradex_page_size],
+            outputs=[loradex_html],
+            show_progress='hidden'
+        )
+        loradex_page_trigger.change(
+            fn=_file.render_lora_dex_page_trigger,
+            inputs=[loradex_page_trigger],
+            outputs=[loradex_html],
+            show_progress='hidden'
+        )
+        loradex_command_state.change(
+            fn=_file.handle_lora_dex_command,
+            inputs=[loradex_command_state],
+            outputs=[loradex_status, loradex_html],
+            show_progress='hidden'
+        ).then(
+            fn=None,
+            _js='() => { requestNativeBadgeData(); }'
+        )
+        loradex_apply_all_btn.click(fn=None, _js='() => loradexApplyAll()')
+        loradex_reset_all_btn.click(fn=None, _js='() => loradexResetAll()')
+
         model_sent.change(
             fn=_file.model_from_sent,
             inputs=[model_sent, type_sent],
             outputs=[model_preview_html_input]
+        )
+
+        native_badge_trigger.change(
+            fn=_file.get_native_card_badge_json,
+            inputs=[native_badge_trigger],
+            outputs=[native_badge_data],
+            show_progress='hidden'
         )
 
         send_to_browser.change(
@@ -1021,14 +1566,22 @@ def on_ui_tabs():
             show_progress='hidden'
         )
 
+        def _selected_to_queue_filtered(model_list, subfolder, dl_start, create_json_v, html, base_filter_v):
+            # Pass the active Browser base-model filter so a bulk download picks the
+            # newest version MATCHING the filter (not the global-newest, which may be
+            # a base the user didn't select, e.g. Anima/Chroma).
+            return _download.selected_to_queue(
+                model_list, subfolder, dl_start, create_json_v, html, base_filter=base_filter_v)
+
         download_selected.click(
-            fn=_download.selected_to_queue,
+            fn=_selected_to_queue_filtered,
             inputs=[
                 selected_model_list,
                 subfolder_selected,
                 download_start,
                 create_json,
-                download_manager_html
+                download_manager_html,
+                base_filter
             ],
             outputs=[
                 download_model,
@@ -1041,8 +1594,25 @@ def on_ui_tabs():
             show_progress='hidden'
         )
 
+        # Clear results (keep the filter inputs) → reset grid, preview and the model/version/file
+        # dropdowns so no stale selection survives the clear.
+        _browser_grid_placeholder = '<div style="font-size: 24px; text-align: center; margin: 50px;">Click the search icon to load models.<br>Use the filter icon to filter results.</div>'
+        clear_results.click(
+            fn=lambda: (
+                gr.update(value=_browser_grid_placeholder),
+                gr.update(value=''),
+                gr.update(choices=[], value=None, interactive=False),
+                gr.update(choices=[], value=None, interactive=False),
+                gr.update(choices=[], value=None, interactive=False),
+            ),
+            inputs=[],
+            outputs=[list_html, preview_html, list_models, list_versions, file_list],
+            show_progress='hidden'
+        )
+
         for component in [download_start, queue_trigger]:
             component.change(fn=None, _js='() => setDownloadProgressBar()')
+            component.change(fn=None, _js='() => setLocalDownloadProgressBar()')
             component.change(
                 fn=_download.download_create_thread,
                 inputs=[download_finish, queue_trigger],
@@ -1050,8 +1620,7 @@ def on_ui_tabs():
                     download_progress,
                     current_model,
                     download_finish,
-                    queue_trigger,
-                    update_mode_banner
+                    queue_trigger
                 ]
             )
 
@@ -1157,7 +1726,7 @@ def on_ui_tabs():
             if model_id and gl.json_data:
                 # Find the current model in the API data
                 for item in gl.json_data.get('items', []):
-                    if int(item.get('id', 0)) == int(model_id):
+                    if _api.model_id_matches(item.get('id'), model_id):
                         debug_print(f"Using existing API data for model {model_id}")
                         # Ensure preview_html is a string
                         if not isinstance(preview_html, str):
@@ -1205,7 +1774,9 @@ def on_ui_tabs():
             only_liked,
             show_nsfw,
             exact_search,
-            tile_count_slider
+            tile_count_slider,
+            source,
+            deleted_from_civitai
         ]
 
         refresh_inputs = [empty if item == page_slider else item for item in page_inputs]
@@ -1230,10 +1801,34 @@ def on_ui_tabs():
             model_filename
         ]
 
+        # Post-download Browser refresh (restored from main): re-render the current
+        # Browser page so the just-downloaded model shows as installed. Deferred to
+        # here because it needs refresh_inputs/page_outputs. Guarded so it only runs
+        # in a Browser-search context — after a Local update gl.url_list is a local
+        # sentinel (not http), so we skip it to avoid clobbering the Browser grid.
+        def _post_download_page_refresh(*args):
+            url1 = gl.url_list.get(1) if isinstance(gl.url_list, dict) else None
+            is_browser_source = isinstance(url1, str) and (
+                url1.startswith('http') or url1.startswith('browser_source://')
+            )
+            if not is_browser_source:
+                return tuple(gr.update() for _ in page_outputs)
+            return _api.initial_model_page(*args, from_update_tab=True)
+
         _download_finish_event.then(
-            fn=lambda *args: _api.initial_model_page(*args, from_update_tab=True),
+            fn=_post_download_page_refresh,
             inputs=refresh_inputs,
             outputs=page_outputs
+        )
+
+        # After any download completes, refresh the open Local detail panel so its
+        # [Installed] version marker / Update button match what is now on disk
+        # (the Browser panel already refreshes via download_finish → list_versions).
+        _download_finish_event.then(
+            fn=refresh_local_after_download,
+            inputs=[local_model_string],
+            outputs=local_detail_outputs,
+            show_progress='hidden'
         )
 
         file_scan_inputs = [
@@ -1259,7 +1854,9 @@ def on_ui_tabs():
             overwrite_toggle_local,
             tile_count_slider,
             skip_hash_toggle_local,
-            do_html_gen_local
+            do_html_gen_local,
+            org_by_base,
+            org_by_category
         ]
 
         load_to_browser_inputs = [
@@ -1271,18 +1868,11 @@ def on_ui_tabs():
             tile_count_slider,
             base_filter,
             show_nsfw,
-            exact_search
+            exact_search,
+            source
         ]
 
         cancel_btn_list = [cancel_all_tags, cancel_ver_search, cancel_installed, cancel_update_preview, cancel_organize]
-
-        browser = [save_all_tags, ver_search, load_installed, update_preview]
-
-        browser_installed_load = [cancel_installed, load_to_browser_installed, installed_progress]
-        browser_outdated_load = [cancel_ver_search, load_to_browser_outdated, version_progress]
-
-        browser_installed_list = page_outputs + browser + browser_installed_load
-        browser_outdated_list = page_outputs + browser + browser_outdated_load
 
         # Page Button Functions #
 
@@ -1336,9 +1926,12 @@ def on_ui_tabs():
                 load_installed,
                 update_preview,
                 organize_models,
-                cancel_ver_search,
-                load_to_browser_outdated
+                cancel_ver_search
             ]
+        ).then(
+            fn=_file.render_local_browser,
+            inputs=local_render_inputs,
+            outputs=[local_list_html_input]
         )
 
         load_installed.click(
@@ -1373,9 +1966,12 @@ def on_ui_tabs():
                 load_installed,
                 update_preview,
                 organize_models,
-                cancel_installed,
-                load_to_browser_installed
+                cancel_installed
             ]
+        ).then(
+            fn=_file.render_local_browser,
+            inputs=local_render_inputs,
+            outputs=[local_list_html_input]
         )
 
         save_all_tags.click(
@@ -1487,9 +2083,12 @@ def on_ui_tabs():
                 load_installed,
                 update_preview,
                 organize_models,
-                cancel_organize,
-                load_to_browser_installed
+                cancel_organize
             ]
+        ).then(
+            fn=_file.render_local_browser,
+            inputs=local_render_inputs,
+            outputs=[local_list_html_input]
         )
 
         undo_organization.click(
@@ -1501,7 +2100,7 @@ def on_ui_tabs():
 
         validate_org_btn.click(
             fn=_file.validate_organization,
-            inputs=[selected_tags_local],
+            inputs=[selected_tags_local, org_by_base, org_by_category],
             outputs=[
                 validate_org_progress,
                 fix_misplaced_btn,
@@ -1512,7 +2111,7 @@ def on_ui_tabs():
 
         fix_misplaced_btn.click(
             fn=_file.fix_misplaced_files,
-            inputs=[validate_plan_state],
+            inputs=[validate_plan_state, org_by_base, org_by_category],
             outputs=[
                 fix_misplaced_progress,
                 fix_misplaced_btn,
@@ -1527,6 +2126,28 @@ def on_ui_tabs():
             outputs=[
                 undo_fix_progress
             ]
+        )
+
+        verify_metadata_btn.click(
+            fn=_file.find_metadata_issues,
+            inputs=[selected_tags_local],
+            outputs=[
+                verify_metadata_progress,
+                resolve_civarchive_btn,
+                metadata_issues_state
+            ],
+            show_progress="full"
+        )
+
+        resolve_civarchive_btn.click(
+            fn=_file.resolve_civarchive_issues,
+            inputs=[metadata_issues_state],
+            outputs=[
+                resolve_civarchive_progress,
+                resolve_civarchive_btn,
+                metadata_issues_state
+            ],
+            show_progress="full"
         )
 
         def handle_dashboard_selection(selected):
@@ -1578,15 +2199,6 @@ def on_ui_tabs():
             _js='(json) => downloadBlobFile(json, "dashboard_stats.json", "application/json")'
         )
 
-        load_to_browser_outdated.click(
-            fn=_file.load_to_browser,
-            inputs=load_to_browser_inputs,
-            outputs=browser_outdated_list
-        ).then(
-            fn=_file.enter_update_mode,
-            outputs=[update_mode_banner]
-        )
-
         update_all_trigger.change(
             fn=_download.update_all_models,
             inputs=[download_start, create_json, download_manager_html],
@@ -1603,7 +2215,7 @@ def on_ui_tabs():
 
         update_single_trigger.change(
             fn=_download.download_single_update,
-            inputs=[update_single_trigger, download_start, create_json, download_manager_html],
+            inputs=[update_single_trigger, download_start, create_json, download_manager_html, local_update_mode],
             outputs=[
                 download_model,
                 cancel_model,
@@ -1617,7 +2229,7 @@ def on_ui_tabs():
 
         update_selected_trigger.change(
             fn=_download.update_selected_models,
-            inputs=[update_selected_trigger, download_start, create_json, download_manager_html],
+            inputs=[update_selected_trigger, download_start, create_json, download_manager_html, local_update_mode],
             outputs=[
                 download_model,
                 cancel_model,
@@ -1635,12 +2247,6 @@ def on_ui_tabs():
             outputs=[update_mode_banner, list_html_input, get_prev_page, get_next_page, page_slider]
         )
 
-        load_to_browser_installed.click(
-            fn=_file.load_to_browser,
-            inputs=load_to_browser_inputs,
-            outputs=browser_installed_list
-        )
-
         # Settings function
         create_subfolder.change(
             fn=_file.updateSubfolder,
@@ -1652,6 +2258,13 @@ def on_ui_tabs():
         civitai_interface.load(
             fn=_download.get_interrupted_downloads_json,
             outputs=[restore_queue_input]
+        )
+
+        # Background account badge: connects with the saved API key on UI load,
+        # no button/interaction (renders empty when disabled or no key).
+        civitai_interface.load(
+            fn=build_account_badge_html,
+            outputs=[account_badge_html]
         )
 
     tab_name = 'CivitAI Browser Neo'
@@ -1693,6 +2306,16 @@ def on_ui_settings():
     )
 
     shared.opts.add_option(
+        'account_features_mcp',
+        shared.OptionInfo(
+            default=True,
+            label='Account badge (MCP connection)',
+            section=browser,
+            category_id=cat_id
+        ).info('Connects automatically with your API key to show the CivitAI account badge on the Dashboard. Turn off to disable the badge. Requires UI reload')
+    )
+
+    shared.opts.add_option(
         'civitai_sfw_only',
         shared.OptionInfo(
             default=False,
@@ -1709,7 +2332,17 @@ def on_ui_settings():
             label='Hide early access models',
             section=browser,
             category_id=cat_id
-        ).info('Early access models are only downloadable for supporter tier members')
+        ).info('Versions inside a timed early-access window: they cost Buzz now and become free once the window ends')
+    )
+
+    shared.opts.add_option(
+        'hide_paid_models',
+        shared.OptionInfo(
+            default=False,
+            label='Hide paid models',
+            section=browser,
+            category_id=cat_id
+        ).info('Versions behind a permanent Buzz purchase. Unlike early access, these never become free')
     )
 
     shared.opts.add_option(
@@ -1805,6 +2438,30 @@ def on_ui_settings():
     )
 
     shared.opts.add_option(
+        'preview_format',
+        shared.OptionInfo(
+            default='PNG',
+            label='Saved preview image format',
+            component=gr.Dropdown,
+            component_args=lambda: {'choices': ['PNG', 'JPEG']},
+            section=browser,
+            category_id=cat_id
+        ).info('PNG preserves transparency; JPEG is smaller and faster to load')
+    )
+
+    shared.opts.add_option(
+        'preview_jpeg_quality',
+        shared.OptionInfo(
+            default=90,
+            label='JPEG preview quality',
+            component=gr.Slider,
+            component_args=lambda: {'minimum': 50, 'maximum': 100, 'step': 5},
+            section=browser,
+            category_id=cat_id
+        ).info('Only used when Saved preview image format is JPEG')
+    )
+
+    shared.opts.add_option(
         'model_desc_to_json',
         shared.OptionInfo(
             default=False,
@@ -1882,6 +2539,16 @@ def on_ui_settings():
             section=browser,
             category_id=cat_id
         ).info('Check for updates using family and version (if disabled, compares only num version patterns)')
+    )
+
+    shared.opts.add_option(
+        'civitai_native_card_theme',
+        shared.OptionInfo(
+            default=False,
+            label='CivitAI-style card theme (native Extra Networks cards)',
+            section=browser,
+            category_id=cat_id
+        ).info('Restyles the txt2img/img2img checkpoint & LoRA cards to look like the CivitAI website: type/base-model badges on top, name + our action buttons on the bottom. Purely visual (CSS), safe alongside other UI themes.')
     )
 
     shared.opts.add_option(
@@ -2104,6 +2771,16 @@ def on_ui_settings():
             section=organization,
             category_id=cat_id
         ).info('When enabled, new downloads will automatically go into subfolders based on baseModel (e.g., SDXL/, Pony/, FLUX/)')
+    )
+
+    shared.opts.add_option(
+        'civitai_neo_lora_category_sort',
+        shared.OptionInfo(
+            default=False,
+            label='Sort LoRAs into category subfolders (Character, Style, etc.)',
+            section=organization,
+            category_id=cat_id
+        ).info('When enabled, LoRAs are further sorted into subfolders by usage category based on model tags. Requires Auto-organize and tags in .api_info.json.')
     )
     
     shared.opts.add_option(

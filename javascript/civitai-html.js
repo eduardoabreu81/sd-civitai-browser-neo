@@ -1,5 +1,8 @@
 // Selects a model by pressing on card
-function select_model(model_name, event, bool = false, content_type = null, sendToBrowser = false) {
+// targetPrefix routes selection to a different hidden textbox set (e.g. 'local'
+// → #local_model_select), so the Local Models browser can reuse this function
+// without touching the Browser tab's wiring. Empty prefix = Browser (default).
+function select_model(model_name, event, bool = false, content_type = null, sendToBrowser = false, targetPrefix = '') {
     if (event) {
         var className = event.target.className;
         if (className.includes('custom-checkbox') || className.includes('model-checkbox')) {
@@ -10,6 +13,8 @@ function select_model(model_name, event, bool = false, content_type = null, send
     let output;
     if (sendToBrowser) {
         output = gradioApp().querySelector('#send_to_browser textarea');
+    } else if (targetPrefix) {
+        output = gradioApp().querySelector(`#${targetPrefix}_model_select textarea`);
     } else {
         output = bool ? gradioApp().querySelector('#model_sent textarea') : gradioApp().querySelector('#model_select textarea');
     }
@@ -23,10 +28,12 @@ function select_model(model_name, event, bool = false, content_type = null, send
 
     if (content_type) {
         const outputType = gradioApp().querySelector('#type_sent textarea');
-        const randomNumber = Math.floor(Math.random() * 1000);
-        const paddedNumber = String(randomNumber).padStart(3, '0');
-        outputType.value = content_type + '.' + paddedNumber;
-        updateInput(outputType);
+        if (outputType) {
+            const randomNumber = Math.floor(Math.random() * 1000);
+            const paddedNumber = String(randomNumber).padStart(3, '0');
+            outputType.value = content_type + '.' + paddedNumber;
+            updateInput(outputType);
+        }
     }
 }
 
@@ -136,9 +143,9 @@ function applyPendingCardUpdates() {
         if (pendingCardUpdates.size === 0) return;
 
         const containers = [
-            document.querySelector('.civmodellist'),
-            document.querySelector('.civmodelcards')
-        ].filter(Boolean);
+            ...document.querySelectorAll('.civmodellist'),
+            ...document.querySelectorAll('.civmodelcards')
+        ];
 
         if (containers.length === 0) {
             console.log('[updateCard] poller: no containers in DOM');
@@ -198,11 +205,13 @@ function updateCard(modelNameWithSuffix, allowRefresh = true) {
     const modelId = modelIdMatch ? modelIdMatch[1] : null;
     const statusClasses = ['civmodelcardinstalled', 'civmodelcardoutdated', 'civmodelcardcrossfamily'];
 
-    // Search both Browser-mode (.civmodellist) and Update-mode (.civmodelcards) containers
+    // Search ALL Browser-mode (.civmodellist) and Update-mode (.civmodelcards) containers.
+    // querySelectorAll (not querySelector) so the Local Models grid — a second
+    // .civmodellist in the DOM — also gets its cards updated after download/delete.
     const containers = [
-        document.querySelector('.civmodellist'),
-        document.querySelector('.civmodelcards')
-    ].filter(Boolean);
+        ...document.querySelectorAll('.civmodellist'),
+        ...document.querySelectorAll('.civmodelcards')
+    ];
 
     console.log('[updateCard] called:', modelNameWithSuffix, 'modelId:', modelId, 'containers:', containers.length, 'allowRefresh:', allowRefresh);
 
@@ -278,6 +287,10 @@ function updateCard(modelNameWithSuffix, allowRefresh = true) {
     if (hideInstalledToggle) {
         hideInstalled(hideInstalledToggle.checked);
     }
+
+    // A card whose status just changed (e.g. outdated -> installed after an update) must be
+    // re-evaluated against the Local "Only models with updates" view filter.
+    filterLocalOutdated();
 }
 
 // === VIDEO HOVER-TO-PLAY ===
@@ -516,6 +529,7 @@ function createTooltip(element, hover_element, insertText) {
 // Function that closes filter dropdown if clicked outside the dropdown
 function setupClickOutsideListener() {
     var filterBox = document.getElementById('filterBoxL') || document.getElementById('filterBox');
+    if (!filterBox) return;
     var filterButton = filterBox.children[1];
     var dropDown = filterBox.getElementsByTagName('div')[2];
 
@@ -607,17 +621,29 @@ function createCivitAICardButtons() {
                     event.stopPropagation();
                 });
 
-                if (!buttonRow.querySelector('.goto-civitbrowser.card-button')) {
-                    const modelName = cardDiv.querySelector('.actions .name')?.textContent.trim();
-                    if (!modelName) return;
+                const modelName = cardDiv.querySelector('.actions .name')?.textContent.trim();
+                if (!modelName) return;
 
-                    const newDiv = document.createElement('div');
-                    newDiv.className = 'goto-civitbrowser card-button';
+                // Searched across the whole card (not just buttonRow): the themed layout
+                // relocates these buttons into .civitai-neo-bottom-actions, so a buttonRow-only
+                // check would miss them there and create duplicates on every re-scan.
+                let gotoBtn = cardDiv.querySelector('.goto-civitbrowser.card-button');
+                if (!gotoBtn) {
+                    gotoBtn = document.createElement('div');
+                    gotoBtn.className = 'goto-civitbrowser card-button';
                     const svgIcon = createSVGIcon(fontSize);
-                    newDiv.appendChild(svgIcon);
+                    gotoBtn.appendChild(svgIcon);
 
-                    newDiv.onclick = () => modelInfoPopUp(modelName, cardDiv.parentElement.id);
-                    buttonRow.insertBefore(newDiv, buttonRow.firstChild);
+                    gotoBtn.onclick = () => modelInfoPopUp(modelName, cardDiv.parentElement.id);
+                    buttonRow.insertBefore(gotoBtn, buttonRow.firstChild);
+                }
+
+                ensureTriggerButton(buttonRow, fontSize);
+
+                if (isNativeCardThemeActive()) {
+                    applyNativeCardTheme(cardDiv, buttonRow, modelName, fontSize);
+                } else {
+                    applyNativeCardBadges(cardDiv, buttonRow, modelName);
                 }
             });
         }
@@ -626,6 +652,199 @@ function createCivitAICardButtons() {
     setTimeout(() => {
         clearInterval(checkForCardDivs);
     }, 5000);
+}
+
+// === Native card badges/actions (base model, LoRA category, trigger words) ===
+// Data comes from a Python-built map (civitai_file_manage.build_native_card_badge_map),
+// fetched once via requestNativeBadgeData() and cached in window.__civitaiNativeBadges.
+function requestNativeBadgeData() {
+    const trigger = gradioApp().querySelector('#native_badge_trigger textarea');
+    if (!trigger) return;
+    trigger.value = String(Date.now());
+    updateInput(trigger);
+}
+
+// Auto-organized LoRAs are indexed both by plain filename and "Subfolder/filename" on the
+// Python side (build_native_card_badge_map), but tries the last path segment too in case
+// WebUI ever displays a nesting depth/format we didn't anticipate.
+function lookupBadgeInfo(modelName) {
+    const badges = window.__civitaiNativeBadges || {};
+    return badges[modelName] || badges[modelName.split('/').pop()];
+}
+
+function isNativeCardThemeActive() {
+    return document.body.classList.contains('civitai-neo-card-theme');
+}
+
+// Applies the "Settings → CivitAI-style card theme" toggle as a body class so CSS can
+// scope the whole redesign; re-run createCivitAICardButtons() so already-rendered cards
+// pick it up without a full page reload.
+function syncNativeCardThemeSetting() {
+    const checkbox = gradioApp().querySelector('#setting_civitai_native_card_theme input[type=checkbox]');
+    if (!checkbox) return;
+    const apply = () => {
+        document.body.classList.toggle('civitai-neo-card-theme', checkbox.checked);
+        createCivitAICardButtons();
+    };
+    apply();
+    checkbox.addEventListener('change', apply);
+}
+
+function ensureTriggerButton(buttonRow, fontSize) {
+    const cardDiv = buttonRow.closest('.card');
+    let triggerBtn = cardDiv?.querySelector('.civitai-native-trigger-btn');
+    if (triggerBtn) return triggerBtn;
+
+    const modelName = cardDiv?.querySelector('.actions .name')?.textContent.trim();
+    const info = modelName ? lookupBadgeInfo(modelName) : null;
+    if (!info || !info.triggerWords || !info.triggerWords.length) return null;
+
+    triggerBtn = document.createElement('div');
+    triggerBtn.className = 'civitai-native-trigger-btn card-button';
+    triggerBtn.title = 'Send trigger words to prompt';
+    triggerBtn.textContent = '🏷️';
+    triggerBtn.style.fontSize = fontSize;
+    triggerBtn.onclick = (event) => {
+        event.stopPropagation();
+        sendTagsToPrompt(info.triggerWords.join(', '));
+    };
+    buttonRow.appendChild(triggerBtn);
+    return triggerBtn;
+}
+
+// Compact mode (theme OFF): small chips inside the existing native button-row.
+function applyNativeCardBadges(cardDiv, buttonRow, modelName) {
+    // Clean up leftovers from a live theme-toggle-off (no page reload) so the two badge
+    // layouts never coexist on the same card. ALL button-row children (native buttons
+    // included) were MOVED (not cloned) into .civitai-neo-bottom-actions, so rescue every
+    // one of them back into buttonRow before removing their themed container, or they'd be
+    // deleted along with it.
+    const themedBottom = cardDiv.querySelector('.civitai-neo-bottom');
+    if (themedBottom) {
+        const actionsRow = themedBottom.querySelector('.civitai-neo-bottom-actions');
+        if (actionsRow) {
+            Array.from(actionsRow.children).forEach((btn) => buttonRow.appendChild(btn));
+        }
+        themedBottom.remove();
+    }
+    cardDiv.querySelector('.civitai-neo-top-row')?.remove();
+
+    const info = lookupBadgeInfo(modelName);
+    if (!info) return;
+
+    if (info.baseModelShort && !buttonRow.querySelector('.civitai-native-base-badge')) {
+        const baseBadge = document.createElement('div');
+        baseBadge.className = 'civitai-native-base-badge';
+        baseBadge.textContent = info.baseModelShort;
+        baseBadge.title = info.baseModel || info.baseModelShort;
+        buttonRow.insertBefore(baseBadge, buttonRow.firstChild);
+    }
+
+    if (info.loraCategory && !buttonRow.querySelector('.civitai-native-lora-badge')) {
+        const catBadge = document.createElement('div');
+        catBadge.className = `civitai-native-lora-badge lora-category-badge ${info.loraCategory.toLowerCase()}`;
+        catBadge.textContent = info.loraCategory;
+        buttonRow.insertBefore(catBadge, buttonRow.firstChild);
+    }
+}
+
+function getCardTypeLabel(parentId) {
+    const id = (parentId || '').toLowerCase();
+    if (id.includes('lora')) return 'LoRA';
+    if (id.includes('checkpoint')) return 'Checkpoint';
+    if (id.includes('hypernetwork')) return 'Hypernetwork';
+    if (id.includes('textual') || id.includes('embedding')) return 'Embedding';
+    return '';
+}
+
+// CivitAI-style theme (theme ON): badges top row, name + ALL action buttons (native ones —
+// copy path, edit metadata, refresh — plus ours — goto-civitbrowser, trigger-word inject) in
+// a gradient bar at the bottom. Buttons are relocated (not cloned) out of the native
+// button-row into our own bottom bar so nothing is left floating at the top/side.
+function applyNativeCardTheme(cardDiv, buttonRow, modelName, fontSize) {
+    cardDiv.style.position = cardDiv.style.position || 'relative';
+    const info = lookupBadgeInfo(modelName) || {};
+    const displayName = info.displayName || modelName;
+
+    // Rebuilt (not just created-once) on every scan: badge data (window.__civitaiNativeBadges)
+    // arrives asynchronously, and cards with far more entries than others (typically LoRA,
+    // since libraries usually have many more LoRAs than checkpoints) are more likely to get
+    // their first pass in before the fetch lands. A create-once guard would otherwise lock
+    // that card into an empty badge forever.
+    let topRow = cardDiv.querySelector('.civitai-neo-top-row');
+    if (!topRow) {
+        topRow = document.createElement('div');
+        topRow.className = 'civitai-neo-top-row';
+        cardDiv.appendChild(topRow);
+    }
+    topRow.innerHTML = '';
+
+    // "Type | BaseModel" combined into one pill (e.g. "Checkpoint | ANI"), mirroring the
+    // .model-type-badge convention already used on our own Browser/Local cards, rather than
+    // two separate pills fighting for space.
+    const typeLabel = getCardTypeLabel(cardDiv.parentElement.id);
+    if (typeLabel || info.baseModelShort) {
+        const typeBadge = document.createElement('span');
+        typeBadge.className = 'civitai-neo-badge civitai-neo-badge-type';
+        typeBadge.textContent = info.baseModelShort ? `${typeLabel} | ${info.baseModelShort}` : typeLabel;
+        if (info.baseModelShort) typeBadge.title = info.baseModel || info.baseModelShort;
+        topRow.appendChild(typeBadge);
+    }
+
+    if (info.loraCategory) {
+        const catBadge = document.createElement('span');
+        catBadge.className = `civitai-neo-badge lora-category-badge ${info.loraCategory.toLowerCase()}`;
+        catBadge.textContent = info.loraCategory;
+        topRow.appendChild(catBadge);
+    }
+
+    let bottom = cardDiv.querySelector('.civitai-neo-bottom');
+    if (!bottom) {
+        bottom = document.createElement('div');
+        bottom.className = 'civitai-neo-bottom';
+
+        // Action buttons sit above the name/version block.
+        const actionsRow = document.createElement('div');
+        actionsRow.className = 'civitai-neo-bottom-actions';
+        // buttonRow's own stopPropagation listener (added in createCivitAICardButtons)
+        // stays behind on the native button-row when its children are relocated here —
+        // without re-adding it, clicks on any button (goto-civitbrowser, trigger-word,
+        // native edit/copy/refresh) bubble up to the card's native click handler, which
+        // inserts the LoRA/embedding into the prompt as if the card itself was clicked.
+        actionsRow.addEventListener('click', function (event) {
+            event.stopPropagation();
+        });
+        bottom.appendChild(actionsRow);
+
+        const titleBlock = document.createElement('div');
+        titleBlock.className = 'civitai-neo-title-block';
+
+        const nameEl = document.createElement('div');
+        nameEl.className = 'civitai-neo-name';
+        titleBlock.appendChild(nameEl);
+
+        const versionEl = document.createElement('div');
+        versionEl.className = 'civitai-neo-version';
+        titleBlock.appendChild(versionEl);
+
+        bottom.appendChild(titleBlock);
+
+        cardDiv.appendChild(bottom);
+    }
+
+    const nameEl = bottom.querySelector('.civitai-neo-name');
+    nameEl.textContent = displayName;
+    nameEl.title = displayName;
+
+    const versionEl = bottom.querySelector('.civitai-neo-version');
+    versionEl.textContent = info.version || '';
+    versionEl.style.display = info.version ? '' : 'none';
+
+    // Relocate whatever is currently in button-row (native buttons + ours) into our own
+    // bottom bar — runs every scan so buttons that appear later (async-rendered edit/copy
+    // buttons) still get picked up, not just on first creation.
+    const actionsRow = bottom.querySelector('.civitai-neo-bottom-actions');
+    Array.from(buttonRow.children).forEach((el) => actionsRow.appendChild(el));
 }
 
 function createSVGIcon(fontSize) {
@@ -654,6 +873,7 @@ function addOnClickToButtons() {
         if (button) {
             button.addEventListener('click', (event) => {
                 createCivitAICardButtons(button);
+                requestNativeBadgeData();
             });
         }
     });
@@ -664,6 +884,7 @@ function addOnClickToButtons() {
             buttons.forEach((button) => {
                 button.addEventListener('click', (event) => {
                     createCivitAICardButtons(button);
+                    requestNativeBadgeData();
                 });
             });
         }
@@ -677,20 +898,32 @@ function modelInfoPopUp(modelName = null, content_type = null, no_message = fals
         sendToBrowser = sendToBrowserElement.checked;
     }
     if (modelName) {
-        select_model(modelName, null, true, content_type, sendToBrowser);
+        try {
+            select_model(modelName, null, true, content_type, sendToBrowser);
+        } catch (e) {
+            console.warn('[CivitAI Browser] select_model error:', e);
+        }
     }
     if (sendToBrowser) {
         const tabNav = document.querySelector('.tab-nav');
-        const buttons = tabNav.querySelectorAll('button');
+        const buttons = tabNav ? tabNav.querySelectorAll('button') : [];
+        let browserTabFound = false;
         for (const button of buttons) {
-            if (button.textContent.includes('Browser+')) {
+            if (button.textContent.includes('Browser+') || button.textContent.includes('CivitAI Browser')) {
                 button.click();
-
-                const firstButton = document.querySelector('#tab_civitai_interface > div > div > div > button');
+                browserTabFound = true;
+                const tabId = document.querySelector('#tab_civitai_interface_neo')
+                    ? '#tab_civitai_interface_neo'
+                    : '#tab_civitai_interface';
+                const firstButton = document.querySelector(`${tabId} > div > div > div > button`);
                 if (firstButton) {
                     firstButton.click();
                 }
+                break;
             }
+        }
+        if (!browserTabFound) {
+            createCivitaiOverlay(no_message);
         }
     } else {
         createCivitaiOverlay(no_message);
@@ -888,6 +1121,7 @@ function metaToTxt2Img(event, type, element) {
     const prompt = gradioApp().querySelector('#txt2img_prompt textarea');
     const neg_prompt = gradioApp().querySelector('#txt2img_neg_prompt textarea');
     const cfg_scale = gradioApp().querySelector('#txt2img_cfg_scale > div:nth-child(2) > div > input');
+    if (!genButton || !prompt || !neg_prompt || !cfg_scale) return;
     let final = '';
     let cfg = 'CFG scale: ' + cfg_scale.value + ', ';
     let prompt_addon = cfg + cfg + cfg;
@@ -915,30 +1149,68 @@ function metaToTxt2Img(event, type, element) {
     sendClick(genButton);
 }
 
-// Creates a list of the selected models
+// Creates a list of the selected models.
+// The Browser and Local Models grids both render .model-checkbox cards, so the
+// selection is scoped per grid: checkboxes inside #local_list_html feed the Local
+// arrays (read by updateSelectedLocalModels), everything else feeds the Browser
+// arrays (read by "Download all selected" via #selected_model_list). Without this
+// split, a card checked in Local Models leaked into the Browser's download.
 var selectedModels = [];
 var selectedTypes = [];
-function multi_model_select(modelName, modelType, isChecked) {
+var selectedModelsLocal = [];
+var selectedTypesLocal = [];
+
+// True when the toggled checkbox element lives in the Local Models grid.
+// Gradio 4 may wrap HTML content in ways that break el.closest('#local_list_html'),
+// so we also rely on an explicit data-local marker stamped by the Python renderer.
+function _isLocalCheckbox(el) {
+    if (!el) return false;
+    if (el.dataset && el.dataset.local === 'true') return true;
+    return !!(el.closest && el.closest('#local_list_html'));
+}
+
+function multi_model_select(modelName, modelType, isChecked, el) {
     if (arguments.length === 0) {
         selectedModels = [];
         selectedTypes = [];
+        selectedModelsLocal = [];
+        selectedTypesLocal = [];
         return;
     }
+    const isLocal = _isLocalCheckbox(el);
+    // Defensive: if the Python renderer stamped data-local="true" but we still
+    // failed to detect it as local, log the mismatch so we can diagnose paginated
+    // selection bugs without needing a live reproduction.
+    const hasLocalMarker = !!(el && el.dataset && el.dataset.local === 'true');
+    if (hasLocalMarker && !isLocal) {
+        console.warn('[CivitAI Browser Neo] checkbox has data-local=true but _isLocalCheckbox returned false', el);
+    }
+    const models = isLocal ? selectedModelsLocal : selectedModels;
+    const types  = isLocal ? selectedTypesLocal  : selectedTypes;
+
     if (isChecked) {
-        if (!selectedModels.includes(modelName)) {
-            selectedModels.push(modelName);
+        if (!models.includes(modelName)) {
+            models.push(modelName);
         }
-        selectedTypes.push(modelType);
+        types.push(modelType);
     } else {
-        var modelIndex = selectedModels.indexOf(modelName);
+        var modelIndex = models.indexOf(modelName);
         if (modelIndex > -1) {
-            selectedModels.splice(modelIndex, 1);
+            models.splice(modelIndex, 1);
         }
-        var typesIndex = selectedTypes.indexOf(modelType);
+        var typesIndex = types.indexOf(modelType);
         if (typesIndex > -1) {
-            selectedTypes.splice(typesIndex, 1);
+            types.splice(typesIndex, 1);
         }
     }
+
+    console.log(`[CivitAI Browser Neo] multi_model_select: isLocal=${isLocal} modelName=${modelName} isChecked=${isChecked} localCount=${selectedModelsLocal.length} browserCount=${selectedModels.length}`);
+
+    // Local selection is read straight off selectedModelsLocal — no Gradio textbox sync.
+    if (isLocal) {
+        return;
+    }
+
     const selected_model_list = gradioApp().querySelector('#selected_model_list textarea');
     selected_model_list.value = JSON.stringify(selectedModels);
 
@@ -948,6 +1220,25 @@ function multi_model_select(modelName, modelType, isChecked) {
     updateInput(selected_model_list);
     updateInput(selected_type_list);
     syncUpdateBtn();
+}
+
+// Local Models tab: update only the checked (outdated) cards. Reads the
+// selectedModelsLocal array (populated by the card checkboxes via multi_model_select)
+// and feeds the existing update_selected_trigger → update_selected_models pipeline.
+function updateSelectedLocalModels() {
+    console.log('[CivitAI Browser Neo] updateSelectedLocalModels called:', selectedModelsLocal);
+    if (!selectedModelsLocal || selectedModelsLocal.length === 0) {
+        alert('Select one or more outdated models (checkbox on the cards) to update.');
+        return;
+    }
+    const trigger = gradioApp().querySelector('#update_selected_trigger textarea');
+    if (!trigger) {
+        console.warn('[CivitAI Browser Neo] updateSelectedLocalModels: #update_selected_trigger textarea not found');
+        return;
+    }
+    setCivDownloadOrigin('local');
+    trigger.value = JSON.stringify(selectedModelsLocal);
+    updateInput(trigger);
 }
 
 function sendClick(location) {
@@ -974,7 +1265,7 @@ function cancelAllDl() {
 function setSortable() {
     new Sortable(document.getElementById('queue_list'), {
         onEnd: function (evt) {
-            const gradio_input = document.querySelector('#civitai_dl_list.prose').innerHTML;
+            const gradio_input = ((document.querySelector('#civitai_dl_list.prose') || document.querySelector('#civitai_dl_list') || {}).innerHTML || '');
             const gradio_html = gradioApp().querySelector('#queue_html_input textarea');
             let output = gradioApp().querySelector('#arrange_dl_id textarea');
             output.value = evt.item.getAttribute('dl_id') + '.' + evt.newIndex;
@@ -1008,8 +1299,137 @@ function _createWorkerInterval(callback, ms) {
     return worker;
 }
 
+// "Only models with updates" view filter on the Local Models grid. Pure client-side:
+// hides every card the grid did NOT mark as outdated. Re-applied after each render so it
+// works both as a pre-filter (checked before Load) and a post-filter (toggled after Load).
+function filterLocalOutdated() {
+    const cb = document.querySelector('#localOnlyUpdates input[type="checkbox"]');
+    const onlyOutdated = cb ? cb.checked : false;
+    const grid = document.querySelector('#local_list_html');
+    if (!grid) return;
+    grid.querySelectorAll('figure.civmodelcard').forEach(card => {
+        const isOutdated = card.classList.contains('civmodelcardoutdated');
+        card.style.display = (onlyOutdated && !isOutdated) ? 'none' : '';
+    });
+}
+
+// Per-tab download progress gating. Each queue item carries a dl_origin attribute
+// ('browser' | 'local'), written by Python when the item was enqueued. The origin of
+// the item that is DOWNLOADING NOW drives which tab shows progress — so queued items
+// from different tabs hand the bars over correctly, and clicking an update in one tab
+// can't hijack the bar of a download already running from the other.
+window.civDownloadOrigin = window.civDownloadOrigin || 'browser';
+function setCivDownloadOrigin(origin) {
+    window.civDownloadOrigin = origin;
+    const b = document.body;
+    if (!b) return;
+    b.classList.toggle('civ-dl-origin-local', origin === 'local');
+    b.classList.toggle('civ-dl-origin-browser', origin === 'browser');
+}
+
+// Origin of the queue item currently downloading (the active item sits in the
+// non-queue list while still having the civitai_dl_item class).
+function _currentDlOrigin() {
+    const list = document.getElementById('civitai_dl_list');
+    const item = list && (list.querySelector('.civitai_nonqueue_list .civitai_dl_item')
+                          || list.querySelector('.civitai_dl_item'));
+    return (item && item.getAttribute('dl_origin')) || 'browser';
+}
+
+// Mirror the live #DownloadProgress bar into the Local Models tab, so updates started
+// from there (Update to latest / Update selected) show progress without switching tabs.
+function setLocalDownloadProgressBar(attempt) {
+    attempt = attempt || 0;
+    const target = document.querySelector('#local_download_progress');
+    if (!target) return;
+
+    // Wait until the native progress bar exists (download starts async), then mirror it.
+    // Give up after ~10s so an update that queues nothing (already on latest) doesn't
+    // leave a retry loop running forever.
+    const container0 = document.querySelector('#DownloadProgress');
+    const bar0 = container0 && container0.querySelector('.progress-bar');
+    if (!bar0 || !bar0.style.width) {
+        if (attempt < 20) {
+            setTimeout(() => setLocalDownloadProgressBar(attempt + 1), 500);
+        }
+        return;
+    }
+
+    // Only mirror downloads whose queue item originated in the Local tab. Checked after
+    // the bar exists so the item's dl_origin attribute is already in the DOM.
+    if (_currentDlOrigin() !== 'local') {
+        target.innerHTML = '<div style="min-height:0px;"></div>';
+        return;
+    }
+
+    const render = (pct, label, state) => {
+        const colour = state === 'failed' ? '#b54a4a' : (state === 'done' ? '#3a8f4f' : '#3b6fb5');
+        target.innerHTML =
+            '<div style="margin:6px 0;">' +
+              '<div style="font-size:12px;opacity:.8;margin-bottom:3px;">' + (label || '') + '</div>' +
+              '<div style="background:#2a2a2a;border-radius:6px;overflow:hidden;height:20px;">' +
+                '<div style="height:100%;width:' + pct + '%;background:' + colour + ';' +
+                'transition:width .2s;text-align:center;color:#fff;font-size:12px;line-height:20px;">' +
+                  pct.toFixed(1) + '%' +
+                '</div>' +
+              '</div>' +
+            '</div>';
+    };
+
+    const clearSoon = () => setTimeout(() => {
+        const t = document.querySelector('#local_download_progress');
+        if (t) t.innerHTML = '<div style="min-height:0px;"></div>';
+    }, 3000);
+
+    let sawProgress = false;
+    const worker = _createWorkerInterval(() => {
+        const container = document.querySelector('#DownloadProgress');
+        const bar = container && container.querySelector('.progress-bar');
+        const innerEl = container && container.querySelector('.progress-level-inner');
+        if (!bar || !bar.style.width) {
+            // Native bar gone/reset. If we'd already shown progress, the download finished
+            // (Gradio clears #DownloadProgress on completion) — finalize so the bar doesn't
+            // stay stuck at the last percentage.
+            if (sawProgress) {
+                render(100, 'Completed', 'done');
+                worker.stop();
+                clearSoon();
+            }
+            return;
+        }
+        const pct = parseFloat(bar.style.width) || 0;
+        const label = innerEl ? innerEl.innerText : '';
+        sawProgress = true;
+
+        if (/Encountered an error during download of|not found on CivitAI servers|requires a personal CivitAI API/.test(label)) {
+            render(0, 'Download failed', 'failed');
+            worker.stop();
+            clearSoon();
+            return;
+        }
+        if (pct >= 100) {
+            render(100, 'Completed', 'done');
+            worker.stop();
+            clearSoon();
+            return;
+        }
+        render(pct, label, 'active');
+    }, 300);
+}
+
 function setDownloadProgressBar() {
     const gradio_html = gradioApp().querySelector('#queue_html_input textarea');
+
+    // Sync the per-tab origin from the active queue item UP FRONT — before waiting for the
+    // native bar to render. A previous Local download leaves body.civ-dl-origin-local set,
+    // and the CSS hides #DownloadProgress while that class is present. If we waited for the
+    // (hidden) bar first, we'd deadlock: the bar stays hidden because the origin is still
+    // 'local', and the origin never flips to 'browser' because we never get past the wait.
+    // Flipping it here re-shows the Browser bar the moment a Browser download starts.
+    if (document.querySelector('#civitai_dl_list .civitai_dl_item')) {
+        setCivDownloadOrigin(_currentDlOrigin());
+    }
+
     let browserContainer = document.querySelector('#DownloadProgress');
     let browserProgress = browserContainer.querySelector('.progress-bar');
     if (!browserProgress || !browserProgress.style.width) {
@@ -1024,6 +1444,8 @@ function setDownloadProgressBar() {
     dlBtn.innerText = 'Cancel';
     dlBtn.setAttribute('onclick', 'cancelQueueDl()');
     let dlId = dlItem.getAttribute('dl_id');
+    // The starting item's origin decides which tab shows progress (CSS body class).
+    setCivDownloadOrigin(dlItem.getAttribute('dl_origin') || 'browser');
     let selector = '.civitai_dl_item[dl_id="' + parseInt(dlId) + '"]';
 
     let dlProgressBar = null;
@@ -1065,7 +1487,7 @@ function setDownloadProgressBar() {
             dlItem.className = 'civitai_dl_item_completed';
             dlProgressBar.textContent = 'Completed';
             dlProgressBar.style.width = '100%';
-            const gradio_input = document.querySelector('#civitai_dl_list.prose').innerHTML;
+            const gradio_input = ((document.querySelector('#civitai_dl_list.prose') || document.querySelector('#civitai_dl_list') || {}).innerHTML || '');
             gradio_html.value = gradio_input;
             updateInput(gradio_html);
             return;
@@ -1080,7 +1502,7 @@ function setDownloadProgressBar() {
             dlItem.className = 'civitai_dl_item_failed';
             dlProgressBar.textContent = 'Cancelled';
             dlProgressBar.style.width = '0%';
-            const gradio_input = document.querySelector('#civitai_dl_list.prose').innerHTML;
+            const gradio_input = ((document.querySelector('#civitai_dl_list.prose') || document.querySelector('#civitai_dl_list') || {}).innerHTML || '');
             gradio_html.value = gradio_input;
             updateInput(gradio_html);
             return;
@@ -1098,7 +1520,7 @@ function setDownloadProgressBar() {
                 nonQueue.appendChild(item);
                 item.className = 'civitai_dl_item_failed';
             });
-            const gradio_input = document.querySelector('#civitai_dl_list.prose').innerHTML;
+            const gradio_input = ((document.querySelector('#civitai_dl_list.prose') || document.querySelector('#civitai_dl_list') || {}).innerHTML || '');
             gradio_html.value = gradio_input;
             updateInput(gradio_html);
             return;
@@ -1110,7 +1532,7 @@ function setDownloadProgressBar() {
             dlItem.className = 'civitai_dl_item_failed';
             dlProgressBar.textContent = 'Failed';
             dlProgressBar.style.width = '0%';
-            const gradio_input = document.querySelector('#civitai_dl_list.prose').innerHTML;
+            const gradio_input = ((document.querySelector('#civitai_dl_list.prose') || document.querySelector('#civitai_dl_list') || {}).innerHTML || '');
             gradio_html.value = gradio_input;
             updateInput(gradio_html);
             return;
@@ -1172,14 +1594,21 @@ function removeDlItem(dl_id, element) {
     output.value = dl_id;
     updateInput(output);
 
-    const gradio_input = document.querySelector('#civitai_dl_list.prose').innerHTML;
+    const gradio_input = ((document.querySelector('#civitai_dl_list.prose') || document.querySelector('#civitai_dl_list') || {}).innerHTML || '');
     gradio_html.value = gradio_input;
     updateInput(gradio_html);
 }
 
 // Selects all models
+// Browser-only checkboxes (exclude the Local Models grid so its selection is
+// never toggled by the Browser's Select All / Download all selected actions).
+function _browserCheckboxes() {
+    return Array.from(document.querySelectorAll('.model-checkbox'))
+        .filter((cb) => !cb.closest('#local_list_html'));
+}
+
 function selectAllModels() {
-    const checkboxes = Array.from(document.querySelectorAll('.model-checkbox'));
+    const checkboxes = _browserCheckboxes();
     const allChecked = checkboxes.every((checkbox) => checkbox.checked);
     const allUnchecked = checkboxes.every((checkbox) => !checkbox.checked);
     if (allChecked || allUnchecked) {
@@ -1189,10 +1618,10 @@ function selectAllModels() {
     }
 }
 
-// Deselects all models
+// Deselects all models (Browser grid only)
 function deselectAllModels() {
     setTimeout(() => {
-        const checkboxes = Array.from(document.querySelectorAll('.model-checkbox'));
+        const checkboxes = _browserCheckboxes();
         checkboxes.filter((checkbox) => checkbox.checked).forEach(sendClick);
     }, 1000);
 }
@@ -1205,6 +1634,53 @@ function sendImgUrl(image_url) {
     const input = gradioApp().querySelector('#civitai_text2img_input textarea');
     input.value = paddedNumber + '.' + image_url;
     updateInput(input);
+    hideCivitaiOverlay();
+    sendClick(genButton);
+}
+
+// "Send to txt2img" — build the infotext from the meta ALREADY rendered on the
+// card (the same API meta shown to the user), instead of re-downloading the image
+// and reading its embedded PNG-info (which CivitAI may strip/re-encode, so it can
+// differ from what's shown). Falls back to the embedded-info path (sendImgUrl) only
+// when this image has no meta rows on the card.
+function sendToTxt2img(btn, image_url) {
+    const block = btn.closest('.image-block');
+    const rows = block ? block.querySelectorAll('[data-key]') : [];
+    if (!rows || rows.length === 0) {
+        sendImgUrl(image_url);
+        return;
+    }
+    // CivitAI meta key -> A1111 infotext parameter label. Remaining keys (e.g.
+    // "Denoising strength", "Hires upscale") are already A1111-style → passed as-is.
+    const LABELS = {
+        sampler: 'Sampler', steps: 'Steps', cfgScale: 'CFG scale',
+        clipSkip: 'Clip skip', 'Clip skip': 'Clip skip', seed: 'Seed',
+        Size: 'Size', Model: 'Model',
+    };
+    let positive = '';
+    let negative = '';
+    const params = [];
+    rows.forEach(row => {
+        const key = row.getAttribute('data-key');
+        const dd = row.querySelector('dd');
+        if (!key || !dd) return;
+        const value = dd.textContent.trim();
+        if (value === '') return;
+        if (key === 'prompt') { positive = value; return; }
+        if (key === 'negativePrompt') { negative = value; return; }
+        params.push(`${LABELS[key] || key}: ${value}`);
+    });
+    if (!positive && !negative && params.length === 0) {
+        sendImgUrl(image_url);
+        return;
+    }
+    // Always emit the "Negative prompt:" line (even when empty): the WebUI's #paste
+    // parser needs that structure to apply the prompt — a bare single-line positive
+    // prompt is otherwise ignored (so a card with only a prompt sent nothing).
+    let final = `${positive}\nNegative prompt: ${negative}`;
+    if (params.length) final += `\n${params.join(', ')}`;
+    const genButton = gradioApp().querySelector('#txt2img_extra_tabs > div > button');
+    genInfo_to_txt2img(final, false);
     hideCivitaiOverlay();
     sendClick(genButton);
 }
@@ -1260,6 +1736,7 @@ function sendTagsToPrompt(tags) {
     const prompt = gradioApp().querySelector('#txt2img_prompt textarea');
     const neg_prompt = gradioApp().querySelector('#txt2img_neg_prompt textarea');
     const cfg_scale = gradioApp().querySelector('#txt2img_cfg_scale > div:nth-child(2) > div > input');
+    if (!genButton || !prompt || !neg_prompt || !cfg_scale) return;
     const cfg = 'CFG scale: ' + cfg_scale.value + ', ';
     const prompt_addon = cfg + cfg + cfg;
     const cleanTags = tags.trimEnd().replace(/,\s*$/, '');
@@ -1275,14 +1752,28 @@ function sendTagsToPrompt(tags) {
 function genInfo_to_txt2img(genInfo, do_slice = true) {
     let insert = gradioApp().querySelector('#txt2img_prompt textarea');
     let pasteButton = gradioApp().querySelector('#paste');
-    if (genInfo) {
+    if (genInfo && insert && pasteButton) {
         insert.value = do_slice ? genInfo.slice(5) : genInfo;
-        // updateInput notifies Gradio 4's React layer that the value changed
+        // updateInput notifies Gradio's frontend store that the value changed.
         updateInput(insert);
-        // Must use .click() or MouseEvent — generic Event('click') is silently
-        // ignored by Gradio 4's button handler in some browser/focus states
-        pasteButton.click();
+        // Defer the #paste click until Gradio has committed the new prompt value.
+        // Clicking in the SAME tick intermittently makes #paste read a stale/empty
+        // prompt, so it parses nothing and clears the field — the "giant infotext
+        // appears, then the field empties" bug. Two animation frames reliably land
+        // after the input->state sync. (.click() — not Event('click') — is required;
+        // Gradio 4 ignores synthetic click events in some focus states.)
+        requestAnimationFrame(() => requestAnimationFrame(() => pasteButton.click()));
     }
+}
+
+// Local Models pagination: write the target page to the hidden trigger so Python
+// re-renders that slice of the (already sorted, in-memory) grid. The '.<rand>'
+// suffix guarantees the Gradio change event fires even for a repeated page number.
+function localGoToPage(page) {
+    const trigger = gradioApp().querySelector('#local_page_trigger textarea');
+    if (!trigger) return;
+    trigger.value = String(page) + '.' + Math.floor(Math.random() * 1000);
+    updateInput(trigger);
 }
 
 // Hide installed models
@@ -1336,6 +1827,8 @@ function reapplyFilters() {
     if (hideBannedToggle && bannedListInput) {
         refreshBannedCreators(bannedListInput.value, hideBannedToggle.checked);
     }
+
+    filterLocalOutdated();
 }
 
 // Toggle description visibility
@@ -1391,6 +1884,33 @@ function initDescriptionToggle(prefix = '') {
         content.style.maxHeight = '400px';
         button.textContent = 'Show More';
     }
+
+    // Descriptions often embed <img> tags whose natural size isn't known yet
+    // at this point, so scrollHeight above can be measured before the images
+    // finish loading. Re-measure once each image settles so the toggle button
+    // reflects the true content height instead of only working when images
+    // happen to load from cache in time.
+    const images = content.querySelectorAll('img');
+    images.forEach(img => {
+        if (img.complete) return;
+        const recheck = () => {
+            // Only relevant while still in the initial collapsed/hidden state -
+            // don't fight the user if they've already expanded/collapsed it.
+            if (content.classList.contains('expanded')) return;
+            const newScrollHeight = content.scrollHeight;
+            if (newScrollHeight <= 400) {
+                overlay.classList.add('hidden');
+                button.classList.add('hidden');
+                content.style.maxHeight = 'none';
+            } else {
+                overlay.classList.remove('hidden');
+                button.classList.remove('hidden');
+                content.style.maxHeight = '400px';
+            }
+        };
+        img.addEventListener('load', recheck, { once: true });
+        img.addEventListener('error', recheck, { once: true });
+    });
 }
 
 function submitNewSubfolder(subfolderId, subfolderValue) {
@@ -1624,9 +2144,78 @@ function onPageLoad() {
     }
 
     addOnClickToButtons();
+    initNativeCardTheme();
     createCivitAICardButtons();
     adjustFilterBoxAndButtons();
     setupClickOutsideListener();
+    watchNativeBadgeData();
+    requestNativeBadgeData();
+    initNativeCardObserver();
+}
+
+// Cards aren't only added at page-load/refresh-click time — Gradio lazily re-renders the
+// Extra Networks grid on tab switches, checkpoint changes, and scroll, and none of those
+// go through addOnClickToButtons's listeners. Without this, buttons/badges only appear
+// after the user manually clicks the native refresh button. Debounced since grid updates
+// can fire many mutations in a row; re-running createCivitAICardButtons() is safe/idempotent
+// since every insertion point already checks whether its element exists first.
+let _nativeCardObserverTimer = null;
+function initNativeCardObserver() {
+    const app = gradioApp();
+    if (!app || app.__civitaiCardObserverAttached) return;
+    app.__civitaiCardObserverAttached = true;
+
+    const observer = new MutationObserver((mutations) => {
+        const hasNewCard = mutations.some((m) =>
+            Array.from(m.addedNodes).some((node) =>
+                node.nodeType === 1 && (node.matches?.('.card') || node.querySelector?.('.card'))
+            )
+        );
+        if (!hasNewCard) return;
+
+        clearTimeout(_nativeCardObserverTimer);
+        _nativeCardObserverTimer = setTimeout(() => {
+            createCivitAICardButtons();
+        }, 250);
+    });
+
+    observer.observe(app, { childList: true, subtree: true });
+}
+
+// The Settings tab's checkbox may not be mounted yet at onUiLoaded time, so poll briefly
+// (matches the existing checkSettingsLoad pattern) instead of silently no-op'ing.
+function initNativeCardTheme() {
+    let attempts = 0;
+    const tryInit = setInterval(() => {
+        attempts++;
+        const checkbox = gradioApp().querySelector('#setting_civitai_native_card_theme input[type=checkbox]');
+        if (checkbox) {
+            clearInterval(tryInit);
+            syncNativeCardThemeSetting();
+        } else if (attempts > 25) {
+            clearInterval(tryInit);
+        }
+    }, 200);
+}
+
+// Watches the hidden #native_badge_data output textarea for the JSON blob written by
+// civitai_file_manage.get_native_card_badge_json, and re-applies badges once it lands.
+function watchNativeBadgeData() {
+    const output = gradioApp().querySelector('#native_badge_data textarea');
+    if (!output) return;
+
+    const parseAndApply = () => {
+        try {
+            window.__civitaiNativeBadges = JSON.parse(output.value || '{}');
+        } catch (e) {
+            window.__civitaiNativeBadges = {};
+        }
+        createCivitAICardButtons();
+    };
+
+    const observer = new MutationObserver(parseAndApply);
+    observer.observe(output, { attributes: true, childList: true, characterData: true, subtree: true });
+    output.addEventListener('input', parseAndApply);
 }
 
 onUiLoaded(onPageLoad);
@@ -1932,24 +2521,27 @@ function deleteInstalledModel(event, modelString, sha256, installedCount = 1) {
         return;
     }
     
-    // Set SHA256 value
+    // Set SHA256 value and let Gradio's reactive store register it before we click.
     sha256Input.value = sha256;
     updateInput(sha256Input);
-    
-    // Wait a bit for the SHA256 to be set, then trigger delete
-    setTimeout(() => {
-        // Trigger delete by updating delete_trigger_btn click
+
+    const triggerDelete = () => {
         const deleteButton = gradioApp().querySelector('#delete_trigger_btn');
-        if (deleteButton) {
-            deleteButton.click();
-            // After deletion completes, update the card visually (remove installed state).
-            // Skip pressRefresh() fallback to avoid expensive full-page API re-fetch.
-            setTimeout(() => updateCard(modelString + '.None', false), 500);
-        } else {
+        if (!deleteButton) {
             console.error('Could not find #delete_trigger_btn element');
             alert('Error: Delete button not found. Please try using the delete button in the model details panel.');
+            return;
         }
-    }, 100);
+        deleteButton.click();
+        // After deletion completes, update the card visually (remove installed state).
+        // Skip pressRefresh() fallback to avoid expensive full-page API re-fetch.
+        setTimeout(() => updateCard(modelString + '.None', false), 500);
+    };
+
+    // Two animation frames guarantee the 'input' event has propagated into Gradio's
+    // store, so the backend reads the SHA256 we just set — not a stale/empty value.
+    // (Replaces a fixed 100ms timeout that could fire before propagation under load.)
+    requestAnimationFrame(() => requestAnimationFrame(triggerDelete));
 }
 
 
@@ -1962,6 +2554,7 @@ function deleteInstalledModel(event, modelString, sha256, installedCount = 1) {
 function updateAllModels() {
     const trigger = gradioApp().querySelector('#update_all_trigger textarea');
     if (!trigger) return;
+    setCivDownloadOrigin('local');
     trigger.value = String(Date.now());
     updateInput(trigger);
 }
@@ -1974,6 +2567,7 @@ function updateOrSelectedModels() {
     if (selectedModels.length > 0) {
         const trigger = gradioApp().querySelector('#update_selected_trigger textarea');
         if (!trigger) return;
+        setCivDownloadOrigin('local');
         trigger.value = JSON.stringify(selectedModels);
         updateInput(trigger);
         // Visual feedback: dim checked cards
@@ -1993,7 +2587,7 @@ function syncUpdateBtn() {
     const btn = gradioApp().querySelector('#civupdate-update-btn');
     if (!btn) return;
     const n     = selectedModels.length;
-    const total = gradioApp().querySelectorAll('.model-checkbox').length;
+    const total = _browserCheckboxes().length;
     btn.textContent = n > 0
         ? `\u2b06\ufe0f Update Selected (${n})`
         : `\u2b06\ufe0f Update All (${total})`;
@@ -2041,4 +2635,139 @@ function exitUpdateMode() {
     // Immediately clear the banner
     const banner = gradioApp().querySelector('#update_mode_banner');
     if (banner) banner.innerHTML = '';
+}
+/**
+ * Trigger the Python backend to mark a local model file for review.
+ * Called by the "Mark for review" button injected into the overlay HTML.
+ * @param {string} filePath - absolute path to the local model file
+ */
+function markForReviewOverlay(filePath) {
+    const trigger = gradioApp().querySelector('#mark_review_overlay_trigger textarea');
+    if (!trigger) return;
+    trigger.value = filePath;
+    updateInput(trigger);
+}
+
+// ── LoraDex ──────────────────────────────────────────────────────────────────
+
+function _loradexSetCommand(payload) {
+    const input = gradioApp().querySelector('#loradex_command_state textarea');
+    if (!input) {
+        console.error('[LoraDex] command state input not found');
+        return;
+    }
+    input.value = JSON.stringify(payload);
+    updateInput(input);
+}
+
+function loradexMarkPending(select) {
+    const row = select.closest('.loradex-row');
+    const saved = select.dataset.saved;
+    const current = select.value;
+    if (current !== saved) {
+        row.classList.add('loradex-pending');
+    } else {
+        row.classList.remove('loradex-pending');
+    }
+    loradexSyncActionButtons();
+}
+
+function loradexSyncActionButtons() {
+    const pendingRows = document.querySelectorAll('.loradex-pending');
+    const anyPending = pendingRows.length > 0;
+    const applyBtn = gradioApp().querySelector('#loradex_apply_all_btn');
+    const resetBtn = gradioApp().querySelector('#loradex_reset_all_btn');
+    if (applyBtn) applyBtn.disabled = !anyPending;
+    if (resetBtn) resetBtn.disabled = !anyPending;
+}
+
+function loradexApplyLine(btnOrPath) {
+    const filePath = typeof btnOrPath === 'string' ? btnOrPath : btnOrPath.closest('.loradex-row')?.dataset?.filepath;
+    if (!filePath) return;
+    const row = document.querySelector(`.loradex-row[data-filepath="${CSS.escape(filePath)}"]`);
+    if (!row) return;
+    const select = row.querySelector('.loradex-cat');
+    if (!select) return;
+    _loradexSetCommand({
+        command: 'apply',
+        data: { file_path: filePath, category: select.value }
+    });
+}
+
+function loradexResetLine(btnOrPath) {
+    const filePath = typeof btnOrPath === 'string' ? btnOrPath : btnOrPath.closest('.loradex-row')?.dataset?.filepath;
+    if (!filePath) return;
+    const row = document.querySelector(`.loradex-row[data-filepath="${CSS.escape(filePath)}"]`);
+    if (!row) return;
+    const select = row.querySelector('.loradex-cat');
+    if (!select) return;
+    select.value = select.dataset.saved;
+    row.classList.remove('loradex-pending');
+    _loradexSetCommand({
+        command: 'reset',
+        data: { file_path: filePath }
+    });
+    loradexSyncActionButtons();
+}
+
+function loradexApplyAll() {
+    const rows = document.querySelectorAll('.loradex-pending');
+    const pending = [];
+    rows.forEach(row => {
+        const select = row.querySelector('.loradex-cat');
+        if (select) {
+            pending.push({ file_path: select.dataset.filepath, category: select.value });
+        }
+    });
+    if (!pending.length) return;
+    _loradexSetCommand({ command: 'apply-all', data: pending });
+}
+
+function loradexResetAll() {
+    const rows = document.querySelectorAll('.loradex-pending');
+    const pendingPaths = [];
+    rows.forEach(row => {
+        const select = row.querySelector('.loradex-cat');
+        if (select) {
+            select.value = select.dataset.saved;
+            row.classList.remove('loradex-pending');
+            pendingPaths.push(select.dataset.filepath);
+        }
+    });
+    _loradexSetCommand({ command: 'reset-all', data: pendingPaths });
+    loradexSyncActionButtons();
+}
+
+function loradexGoToPage(n) {
+    const trigger = gradioApp().querySelector('#loradex_page_trigger textarea');
+    if (!trigger) return;
+    trigger.value = String(n) + '.' + String(Date.now()).slice(-3);
+    updateInput(trigger);
+}
+
+let _loradexZoomEl = null;
+function loradexHoverZoom(event, imgSrc) {
+    if (_loradexZoomEl) return;
+    const zoom = document.createElement('div');
+    zoom.className = 'loradex-zoom-preview';
+    zoom.style.backgroundImage = `url("${imgSrc}")`;
+    document.body.appendChild(zoom);
+    _loradexZoomEl = zoom;
+    loradexMoveZoom(event);
+    document.addEventListener('mousemove', loradexMoveZoom);
+}
+
+function loradexMoveZoom(event) {
+    if (!_loradexZoomEl) return;
+    const x = event.clientX + 20;
+    const y = event.clientY + 20;
+    _loradexZoomEl.style.left = x + 'px';
+    _loradexZoomEl.style.top = y + 'px';
+}
+
+function loradexHideZoom() {
+    if (!_loradexZoomEl) return;
+    document.removeEventListener('mousemove', loradexMoveZoom);
+    _loradexZoomEl.remove();
+    _loradexZoomEl = null;
 }

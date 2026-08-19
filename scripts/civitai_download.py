@@ -21,7 +21,7 @@ import scripts.civitai_file_manage as _file
 import scripts.civitai_global as gl
 import scripts.civitai_api as _api
 import scripts.download_log as _dl_log
-from scripts.civitai_api import is_early_access, is_model_nsfw
+from scripts.civitai_api import is_model_nsfw
 from scripts.civitai_global import print, debug_print
 
 try:
@@ -54,7 +54,7 @@ def resolve_ambiguity(choice_index):
     try:
         idx = int(str(choice_index).strip())
     except Exception:
-        return gr.update(value=''), gr.update(), gr.update(), gr.update()
+        return gr.update(value=''), gr.update(value=None), gr.update(value=None), gr.update(value=None)
 
     for item in gl.download_queue:
         if item.get('ambiguous_candidates') and not item.get('ambiguous_selected'):
@@ -82,9 +82,9 @@ def resolve_ambiguity(choice_index):
             item['ambiguous_selected'] = True
 
             # Clear ambiguity HTML and resume download by nudging download_finish
-            return gr.update(value=''), gr.update(value=item.get('model_name')), gr.update(value=random_number()), gr.update()
+            return gr.update(value=''), gr.update(value=item.get('model_name')), gr.update(value=random_number()), gr.update(value=None)
 
-    return gr.update(value=''), gr.update(), gr.update(), gr.update()
+    return gr.update(value=''), gr.update(value=None), gr.update(value=None), gr.update(value=None)
 
 
 gl.init()
@@ -158,24 +158,27 @@ elif os_type == 'Linux':
 class TimeOutFunction(Exception):
     pass
 
-def create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch=False, old_file_path=None, version_id=None):
+def create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch=False, old_file_path=None, version_id=None, origin='browser'):
     global dl_manager_count
-    if model_id:
-        model_id = int(model_id)
     if model_sha256:
         model_sha256 = model_sha256.upper()
     if model_sha256 == 'UNKNOWN':
         model_sha256 = None
 
     filtered_items = []
+    main_folder = None
 
-    for item in gl.json_data['items']:
-        if int(item['id']) == int(model_id):
+    for item in _all_known_items():
+        if _api.model_id_matches(item.get('id'), model_id):
             filtered_items.append(item)
             content_type = item['type']
             desc = item['description']
             main_folder = _api.contenttype_folder(content_type, desc)
             break
+
+    if main_folder is None:
+        debug_print(f"create_model_item: model {model_id} not found in any tab dataset — skipped")
+        return None
 
     sub_folder = os.path.normpath(os.path.relpath(install_path, main_folder))
 
@@ -207,13 +210,30 @@ def create_model_item(dl_url, model_filename, install_path, model_name, version_
         'sub_folder': sub_folder,
         '_api_ready': False,
         'old_file_path': old_file_path,  # retention: path of old file being replaced (may differ from new filename)
+        'origin': origin,  # which tab started this download ('browser' | 'local') — drives per-tab progress bars
     }
 
     _dl_log.log_queued(item)
     return item
 
 
-def _resolve_versions_to_download(versions_list, model_folder):
+def _pick_filtered_or_first(versions_list, base_filter):
+    """Newest version whose baseModel is in base_filter, else the first version.
+
+    versions_list is newest-first, so the first match is the newest match. Keeps a
+    filtered bulk download from grabbing a newer version of an UNSELECTED base
+    (e.g. Anima/Chroma when the user filtered Illustrious/NoobAI in the search).
+    """
+    if base_filter:
+        wanted = {str(b).strip().lower() for b in base_filter if b}
+        if wanted:
+            for ver in versions_list:
+                if (ver.get('baseModel') or '').strip().lower() in wanted:
+                    return ver
+    return versions_list[0]
+
+
+def _resolve_versions_to_download(versions_list, model_folder, base_filter=None, installed_scan=None):
     """Return the list of model versions to download for a batch update.
 
     For models with multiple installed families (e.g. Pony V1 AND Illustrious V1
@@ -227,23 +247,38 @@ def _resolve_versions_to_download(versions_list, model_folder):
     if not versions_list:
         return []
 
-    # Collect SHA256 hashes from local JSON files in the model folder
-    installed_hashes = set()
-    if model_folder and os.path.isdir(str(model_folder)):
-        for root, _, files in os.walk(str(model_folder), followlinks=True):
-            for fname in files:
-                if fname.endswith('.json'):
-                    try:
-                        data = _api.safe_json_load(os.path.join(root, fname))
-                        if data:
-                            sha = data.get('sha256', '')
-                            if sha:
-                                installed_hashes.add(sha.upper())
-                    except Exception:
-                        pass
+    # Collect SHA256 hashes AND cached modelVersionIds from local JSON files in the
+    # model folder. The cached versionId is a second identity signal: when a sidecar
+    # lacks a sha256 (or it diverges), matching by versionId still lets us detect the
+    # installed family/baseModel — aligning this with version_match, so an installed
+    # model never falls through to the global-newest version (wrong family) fallback.
+    if installed_scan is not None:
+        # Batch path: reuse the index built once for the whole download (no per-model walk).
+        installed_hashes, installed_cached_ver_ids = installed_scan
+    else:
+        installed_hashes = set()
+        installed_cached_ver_ids = set()
+        if model_folder and os.path.isdir(str(model_folder)):
+            for root, _, files in os.walk(str(model_folder), followlinks=True):
+                for fname in files:
+                    if fname.endswith('.json'):
+                        try:
+                            data = _api.safe_json_load(os.path.join(root, fname))
+                            if data:
+                                sha = data.get('sha256', '')
+                                if sha:
+                                    installed_hashes.add(sha.upper())
+                                vid = data.get('modelVersionId')
+                                if vid is not None:
+                                    try:
+                                        installed_cached_ver_ids.add(int(vid))
+                                    except (ValueError, TypeError):
+                                        pass
+                        except Exception:
+                            pass
 
-    if not installed_hashes:
-        return [versions_list[0]]
+    if not installed_hashes and not installed_cached_ver_ids:
+        return [_pick_filtered_or_first(versions_list, base_filter)]
 
     # Build two parallel maps:
     #  - family  (extracted from version name) — more precise when it works
@@ -265,15 +300,19 @@ def _resolve_versions_to_download(versions_list, model_folder):
         if bm and bm not in latest_by_base:
             latest_by_base[bm] = ver
 
-        for file_entry in ver.get('files', []):
-            sha = file_entry.get('hashes', {}).get('SHA256', '').upper()
-            if sha and sha in installed_hashes:
-                installed_ver_ids.add(vid)
-                if family:
-                    installed_families.add(family)
-                if bm:
-                    installed_bases.add(bm)
-                break
+        is_installed = vid in installed_cached_ver_ids
+        if not is_installed:
+            for file_entry in ver.get('files', []):
+                sha = file_entry.get('hashes', {}).get('SHA256', '').upper()
+                if sha and sha in installed_hashes:
+                    is_installed = True
+                    break
+        if is_installed:
+            installed_ver_ids.add(vid)
+            if family:
+                installed_families.add(family)
+            if bm:
+                installed_bases.add(bm)
 
     # --- Phase 1: family-based resolution (preferred, more precise) ---
     seen_ids = set()
@@ -304,15 +343,47 @@ def _resolve_versions_to_download(versions_list, model_folder):
                 base_result.append(ver)
                 seen_ids.add(vid)
 
-    return base_result if base_result else [versions_list[0]]
+    # Mirror Phase 1: only return the base-resolved versions when at least one is NEW.
+    # Without this, an already-installed up-to-date model (Phase 1 found nothing new)
+    # falls through here and re-downloads its newest version (which is the installed
+    # one) — the "Download all selected re-downloads an installed model" bug.
+    base_updates_anything = any(
+        ver.get('id') not in installed_ver_ids for ver in base_result
+    )
+    if base_updates_anything:
+        return base_result
+
+    # Installed but already up to date across every detected family/base → nothing to do.
+    # (Only reachable when some version of THIS model is on disk.)
+    if installed_families or installed_bases:
+        return []
+
+    # Not installed at all → fresh download of the newest (filtered) version.
+    return [_pick_filtered_or_first(versions_list, base_filter)]
 
 
-def selected_to_queue(model_list, subfolder, download_start, create_json, current_html, forced_version_ids=None):
+def _all_known_items():
+    """Model items from both tab datasets — Browser (gl.json_data) first, then Local
+    Models (gl.local_json_data). The tabs keep separate datasets so one doesn't clobber
+    the other, but download/update flows may be fed from either."""
+    items = []
+    for data in (gl.json_data, getattr(gl, 'local_json_data', None)):
+        if isinstance(data, dict):
+            items.extend(data.get('items', []))
+    return items
+
+
+def selected_to_queue(model_list, subfolder, download_start, create_json, current_html, forced_version_ids=None, keep_installed=False, origin='browser', base_filter=None, forced_file_labels=None):
     """Enqueue models for download.
 
     Args:
         forced_version_ids: Optional dict mapping model_id (str) -> list of version IDs.
             When provided, those specific versions are used instead of auto-resolution.
+        keep_installed: When True, do NOT resolve/pass the old installed file path, so the
+            currently-installed version is kept alongside the newly downloaded one
+            (retention is skipped). Default False = replace the old version.
+        origin: which tab initiated the download ('browser' | 'local') — carried on each
+            queue item so the UI can show progress only in the originating tab.
     """
     global total_count, current_count
     if gl.download_queue:
@@ -323,22 +394,26 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
         current_count = 0
 
     model_list = json.loads(model_list)
-    total_queued = len(model_list)
-    debug_print(f"[Queue] Batch enqueue started: {total_queued} model(s) selected")
     skipped_names = []
 
     ## === ANXETY EDITs ===
-    for idx, model_string in enumerate(model_list, 1):
+    known_items = _all_known_items()
+    # Scan the model tree ONCE for the whole batch (installed hashes/version-ids for
+    # version resolution + modelId->paths for retention), instead of re-walking it
+    # per model in _resolve_versions_to_download and find_installed_file_by_model_id.
+    _batch_index = _file.build_installed_index()
+    _batch_scan = (_batch_index['hashes'], _batch_index['ver_ids'])
+    for model_string in model_list:
         model_name, model_id = _api.extract_model_info(model_string)
         item_found = None
-        for item in gl.json_data['items']:
-            if int(item['id']) == int(model_id):
+        for item in known_items:
+            if _api.model_id_matches(item.get('id'), model_id):
                 item_found = item
                 break
 
         if not item_found:
             skipped_names.append(model_name)
-            debug_print(f"[Queue] ({idx}/{total_queued}) Skipped model {model_name} ({model_id}) — not found in json_data")
+            debug_print(f"Skipped model {model_name} ({model_id}) — not found in json_data")
             continue
 
         desc = item_found['description']
@@ -361,27 +436,41 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
             versions_to_download = [v for v in versions_list if v.get('id') in selected_ids]
         else:
             # Auto-resolve: one per installed family for multi-family models
-            versions_to_download = _resolve_versions_to_download(versions_list, model_folder)
+            versions_to_download = _resolve_versions_to_download(
+                versions_list, model_folder, base_filter=base_filter, installed_scan=_batch_scan)
 
         for version in versions_to_download:
             version_name = version.get('name')
             version_id = version.get('id')
-            debug_print(f"[Queue] ({idx}/{total_queued}) Enqueuing: {model_name} — version '{version_name}' (id={version_id})")
             output_basemodel = version.get('baseModel')
             files = version.get('files', [])
-            primary_file = next((f for f in files if f.get('primary', False)), None)
+            chosen_file = None
 
-            if primary_file:
-                model_filename = _api.cleaned_name(primary_file.get('name'))
-                model_sha256 = primary_file.get('hashes', {}).get('SHA256')
-                dl_url = primary_file.get('downloadUrl')
-            elif files:
-                model_filename = _api.cleaned_name(files[0].get('name'))
-                model_sha256 = files[0].get('hashes', {}).get('SHA256')
-                dl_url = files[0].get('downloadUrl')
+            forced_label = (forced_file_labels or {}).get(str(model_id))
+            if forced_label and files:
+                for f in files:
+                    f_metadata = f.get('metadata') or {}
+                    f_size = f_metadata.get('size', 'Unknown')
+                    f_format = f_metadata.get('format') or f.get('format') or 'Unknown'
+                    f_fp = f_metadata.get('fp', 'Unknown')
+                    f_size_kb = _api._file_size_kb(f)
+                    f_size_b = f_size_kb * 1024
+                    f_filesize = convert_size(f_size_b)
+                    if f"{f_size} {f_format} {f_fp} ({f_filesize})" == forced_label:
+                        chosen_file = f
+                        break
+
+            if not chosen_file:
+                chosen_file = next((f for f in files if f.get('primary', False)), None)
+            if not chosen_file and files:
+                chosen_file = files[0]
+
+            if chosen_file:
+                model_filename = _api.cleaned_name(chosen_file.get('name'))
+                model_sha256 = chosen_file.get('hashes', {}).get('SHA256')
+                dl_url = chosen_file.get('downloadUrl')
             else:
                 skipped_names.append(f"{model_name} ({version_name})")
-                debug_print(f"[Queue] ({idx}/{total_queued}) Skipped {model_name} ({version_name}) — no files in version")
                 continue
 
             # Check if auto-organization is enabled
@@ -394,9 +483,30 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
 
             if auto_organize and output_basemodel and (not is_wildcard or wildcard_by_base):
                 # Use auto-organization: determine folder from baseModel
-                from scripts.civitai_file_manage import normalize_base_model
+                from scripts.civitai_file_manage import normalize_base_model, categorize_lora_by_tags, get_lora_category_from_sidecar
                 base_folder = normalize_base_model(output_basemodel)
                 if base_folder:
+                    # Optional LoRA category subfolder based on tags
+                    lora_category_sort = getattr(opts, 'civitai_neo_lora_category_sort', False)
+                    if lora_category_sort and content_type == 'LORA':
+                        tags = version.get('tags', []) or []
+                        # Honor any manual category saved on an existing installed file,
+                        # and fall back to persisted modelTags if the API response has none.
+                        manual_category = None
+                        installed_paths = (
+                            _batch_index.get('by_model_id', {}).get(int(model_id), [])
+                            if _batch_index and str(model_id).lstrip('-').isdigit()
+                            else []
+                        )
+                        for installed_path in installed_paths:
+                            manual_category = get_lora_category_from_sidecar(installed_path)
+                            if manual_category:
+                                break
+                            if not tags:
+                                tags = _file._read_model_tags_from_sidecar(installed_path)
+                        category = categorize_lora_by_tags(tags, manual_category=manual_category)
+                        if category:
+                            base_folder = os.path.join(base_folder, category)
                     if not base_folder.startswith(os.sep):
                         base_folder = os.sep + base_folder
                     install_path = str(model_folder) + base_folder
@@ -433,17 +543,25 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
 
             # For update-mode queuing: find the old installed file path from gl.update_items
             # so retention can be applied even when old and new filenames differ.
+            # keep_installed=True skips this entirely → old version is kept alongside the new.
             old_file_path = None
-            if gl.update_items:
-                for _upd in gl.update_items:
-                    if _upd.get('model_id') == int(model_id):
-                        upd_family = (_upd.get('family') or '').upper()
-                        new_family = (output_basemodel or '').upper()
-                        if not upd_family or not new_family or upd_family == new_family:
-                            old_file_path = _upd.get('old_file', '') or None
-                            break
+            if not keep_installed:
+                if gl.update_items:
+                    for _upd in gl.update_items:
+                        if _api.model_id_matches(_upd.get('model_id'), model_id):
+                            upd_family = (_upd.get('family') or '').upper()
+                            new_family = (output_basemodel or '').upper()
+                            if not upd_family or not new_family or upd_family == new_family:
+                                old_file_path = _upd.get('old_file', '') or None
+                                break
 
-            model_item = create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch, old_file_path=old_file_path, version_id=version_id)
+                # Fallback: no update-scan ran (e.g. update triggered from Local Models), so
+                # locate the currently-installed file for this model on disk so retention can
+                # still remove/trash the old version when the new filename differs.
+                if not old_file_path:
+                    old_file_path = _file.find_installed_file_by_model_id(model_id, model_filename, index=_batch_index) or None
+
+            model_item = create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch, old_file_path=old_file_path, version_id=version_id, origin=origin)
             if model_item:
                 gl.download_queue.append(model_item)
                 total_count += 1
@@ -480,7 +598,7 @@ def _build_model_list_for_update(items):
     return json.dumps(model_list)
 
 
-def update_all_models(download_start, create_json, current_html):
+def update_all_models(download_start, create_json, current_html, keep_installed=False):
     """Enqueue all models in gl.update_items for update (respects retention policy)."""
     items = list(gl.update_items)
     if not items:
@@ -495,27 +613,45 @@ def update_all_models(download_start, create_json, current_html):
             gr.update(value=html)
         )
     model_list_json = _build_model_list_for_update(items)
-    return selected_to_queue(model_list_json, None, download_start, create_json, current_html)
+    return selected_to_queue(model_list_json, None, download_start, create_json, current_html, keep_installed=keep_installed, origin='local')
 
 
-def update_selected_models(trigger_value, download_start, create_json, current_html):
+def _keep_from_mode(update_mode):
+    """'Keep installed...' radio value -> keep_installed bool. Default = replace."""
+    return str(update_mode or '').strip().lower().startswith('keep')
+
+
+def update_selected_models(trigger_value, download_start, create_json, current_html, update_mode='Replace installed'):
     """Enqueue only the checked/selected models (by model string list) from Update Mode."""
+    keep = _keep_from_mode(update_mode)
+    print(f"[CivitAI Browser Neo] update_selected_models triggered with {trigger_value!r}")
     try:
         model_list = json.loads(trigger_value)  # plain list of "Name (id)" strings
-    except Exception:
-        return update_all_models(download_start, create_json, current_html)
+    except Exception as e:
+        print(f"[CivitAI Browser Neo] update_selected_models: failed to parse trigger_value: {e}")
+        return update_all_models(download_start, create_json, current_html, keep_installed=keep)
+    # Defensive: reject empty entries so a race/pagination bug doesn't enqueue a
+    # phantom item with an empty model_string.
+    filtered = [s for s in model_list if isinstance(s, str) and s.strip()]
+    if len(filtered) != len(model_list):
+        print(f"[CivitAI Browser Neo] update_selected_models: removed {len(model_list) - len(filtered)} empty entries from {model_list}")
+        model_list = filtered
     if not model_list:
-        return update_all_models(download_start, create_json, current_html)
-    return selected_to_queue(json.dumps(model_list), None, download_start, create_json, current_html)
+        print("[CivitAI Browser Neo] update_selected_models: model_list empty after filtering, falling back to update_all_models")
+        return update_all_models(download_start, create_json, current_html, keep_installed=keep)
+    print(f"[CivitAI Browser Neo] update_selected_models: enqueuing {len(model_list)} model(s): {model_list}")
+    return selected_to_queue(json.dumps(model_list), None, download_start, create_json, current_html, keep_installed=keep, origin='local')
 
 
-def download_single_update(trigger_value, download_start, create_json, current_html):
+def download_single_update(trigger_value, download_start, create_json, current_html, update_mode='Replace installed'):
     """Enqueue a single model update.
 
     trigger_value formats:
       - Legacy:  'model_id|family'
       - Revamp:  'model_id|family|[456, 789]'  (JSON array of selected version IDs)
+      - Revamp+: 'model_id|family|[456]|file_label'  (also forces a specific file)
     """
+    keep = _keep_from_mode(update_mode)
     if not trigger_value or '|' not in trigger_value:
         html = download_manager_html(current_html)
         number = download_start
@@ -528,25 +664,31 @@ def download_single_update(trigger_value, download_start, create_json, current_h
             gr.update(value=html)
         )
 
-    # Parse trigger value: model_id|family|json_version_ids
+    # Parse trigger value: model_id|family|json_version_ids|file_label
     try:
-        parts = trigger_value.split('|', 2)
+        parts = trigger_value.split('|', 3)
         model_id_str = parts[0].strip()
         family_str   = parts[1].strip().upper() if len(parts) > 1 else ''
         version_ids_json = parts[2] if len(parts) > 2 else '[]'
+        file_label = parts[3].strip() if len(parts) > 3 else None
         model_id_int = int(model_id_str)
         selected_version_ids = json.loads(version_ids_json) if version_ids_json else []
     except Exception:
-        return update_all_models(download_start, create_json, current_html)  # fallback
+        return update_all_models(download_start, create_json, current_html, keep_installed=keep)  # fallback
 
-    matched = [i for i in gl.update_items
-               if i['model_id'] == model_id_int and
-               (i.get('family') or '').upper() == family_str]
-    if not matched:
-        # Try without family match (no-family models)
-        matched = [i for i in gl.update_items if i['model_id'] == model_id_int]
-
-    if not matched:
+    # Resolve the model fresh from the current datasets (the Local browser publishes to
+    # gl.local_json_data). We deliberately do NOT consult gl.update_items here: it is a
+    # Browser/Maintenance-scan artifact, and a stale entry would otherwise leak a wrong
+    # version/retention target into a Local update ("updates misturados"). selected_to_queue
+    # auto-resolves the newest version per installed family (or the forced version below).
+    item = next((it for it in _all_known_items()
+                 if str(it.get('id')) == str(model_id_int)), None)
+    # 'partial' items only carry the installed version (recovered via by-hash) —
+    # "updating" them would re-download the installed version itself. Refuse.
+    if item and item.get('partial'):
+        print(f"Model {model_id_int} has no full version list (recovered card) — update skipped.")
+        item = None
+    if not item:
         html = download_manager_html(current_html)
         return (
             gr.update(interactive=False, visible=False),
@@ -556,15 +698,19 @@ def download_single_update(trigger_value, download_start, create_json, current_h
             gr.update(value='<div style="min-height: 100px;"></div>'),
             gr.update(value=html)
         )
-
-    model_list_json = _build_model_list_for_update(matched[:1])
+    model_name = item.get('name') or f'Model {model_id_int}'
+    model_list_json = json.dumps([f"{model_name} ({model_id_int})"])
 
     # If user selected specific versions (revamp), pass them to selected_to_queue
     forced_version_ids = None
     if selected_version_ids:
         forced_version_ids = {str(model_id_int): selected_version_ids}
 
-    return selected_to_queue(model_list_json, None, download_start, create_json, current_html, forced_version_ids=forced_version_ids)
+    forced_file_labels = None
+    if file_label:
+        forced_file_labels = {str(model_id_int): file_label}
+
+    return selected_to_queue(model_list_json, None, download_start, create_json, current_html, forced_version_ids=forced_version_ids, forced_file_labels=forced_file_labels, keep_installed=keep, origin='local')
 
 
 def gr_progress_threadable():
@@ -606,10 +752,71 @@ def gr_progress_threadable():
     return progress
 
 
+def _resolve_auto_organize_path(model_id, install_path):
+    """If auto-organize is enabled and the chosen install path is the raw content-type
+    root (e.g. Stable-diffusion/), fetch the model's baseModel and return the proper
+    subfolder. This guards against race conditions where the detail panel has not yet
+    updated install_path when the user clicks Download."""
+    if not getattr(opts, 'civitai_neo_auto_organize', False):
+        return install_path
+    if not model_id:
+        return install_path
+
+    # Determine which content-type root we are under
+    root_folder = None
+    content_type = None
+    for ct in ['Checkpoint', 'LORA', 'TextualInversion', 'Poses', 'Controlnet', 'VAE', 'Wildcards', 'AestheticGradient', 'MotionModule', 'Workflows', 'Upscaler', 'Detection', 'Other']:
+        folder = _api.contenttype_folder(ct)
+        if folder and os.path.normpath(install_path).lower() == os.path.normpath(folder).lower():
+            root_folder = folder
+            content_type = ct
+            break
+    if not root_folder:
+        return install_path
+
+    # Fetch baseModel from cached API data or a fresh single-model request
+    base_model = None
+    json_data = getattr(gl, 'json_info', None) or {}
+    if isinstance(json_data, dict):
+        for item in json_data.get('items', []):
+            if _api.model_id_matches(item.get('id'), model_id):
+                for ver in item.get('modelVersions', []):
+                    base_model = ver.get('baseModel')
+                    if base_model:
+                        break
+            if base_model:
+                break
+
+    if not base_model:
+        try:
+            url = f"https://{_api.get_civitai_domain()}/api/v1/models/{model_id}"
+            proxies, ssl = _api.get_proxies()
+            response = requests.get(url, headers=_api.get_headers(), timeout=(15, 15), proxies=proxies, verify=ssl)
+            if response.status_code == 200:
+                data = response.json()
+                for ver in data.get('modelVersions', []):
+                    base_model = ver.get('baseModel')
+                    if base_model:
+                        break
+        except Exception as e:
+            debug_print(f"[auto-organize defense] failed to fetch baseModel for {model_id}: {e}")
+
+    if not base_model:
+        return install_path
+
+    base_folder = _file.normalize_base_model(base_model)
+    if not base_folder:
+        return install_path
+    if not base_folder.startswith(os.sep):
+        base_folder = os.sep + base_folder
+    return str(root_folder) + base_folder
+
+
 def download_start(download_start, dl_url, model_filename, install_path, model_string, version_name, model_sha256, model_id, create_json, current_html):
     global total_count, current_count
     if model_string:
         model_name, _ = _api.extract_model_info(model_string)
+    install_path = _resolve_auto_organize_path(model_id, install_path)
     model_item = create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json)
 
     if model_item:
@@ -645,7 +852,6 @@ def download_start(download_start, dl_url, model_filename, install_path, model_s
 
 def download_finish(model_filename, version, model_id):
     if model_id:
-        model_id = int(model_id)
         model_versions = _api.update_model_versions(model_id)
     else:
         model_versions = None
@@ -653,9 +859,9 @@ def download_finish(model_filename, version, model_id):
         version_choices = model_versions.get('choices', [])
     else:
         version_choices = []
-    prev_version = gl.last_version + " [Installed]"
+    prev_version = f"{gl.last_version} [Installed]" if gl.last_version else None
 
-    if prev_version in version_choices:
+    if prev_version and prev_version in version_choices:
         version = prev_version
         Del = True
         Down = False
@@ -670,26 +876,18 @@ def download_finish(model_filename, version, model_id):
     gl.download_fail = False
     gl.cancel_status = False
 
-    # In Update Mode, remove the updated model from gl.update_items so the card disappears.
-    if gl.update_mode and model_id:
-        gl.update_items = [i for i in gl.update_items if i.get('model_id') != model_id]
-
-    # In Update Mode, do not touch the version dropdown — it can reset the user's selection.
-    version_update = gr.update(value=version, choices=version_choices) if not gl.update_mode else gr.update()
-
     return (
         gr.update(interactive=model_filename, visible=Down, value="Download model"),  # Download Button
         gr.update(interactive=False, visible=False),  # Cancel Button
         gr.update(interactive=False, visible=False),  # Cancel All Button
         gr.update(interactive=Del, visible=Del),  # Delete Button
         gr.update(value='<div style="min-height: 0px;"></div>'),  # Download Progress
-        version_update  # Version Dropdown
+        gr.update(value=version, choices=version_choices)  # Version Dropdown
     )
 
 def download_cancel():
     gl.cancel_status = True
-    # Do NOT set gl.download_fail — cancel is not a failure.
-    # Setting it would mark the item as failed and could bleed into the next queue item.
+    gl.download_fail = True
     if gl.download_queue:
         item = gl.download_queue[0]
     else:
@@ -703,8 +901,7 @@ def download_cancel():
 
 def download_cancel_all():
     gl.cancel_status = True
-    # Do NOT set gl.download_fail — cancel is not a failure.
-    # Setting it would mark the item as failed and could bleed into the next queue item.
+    gl.download_fail = True
 
     if gl.download_queue:
         item = gl.download_queue[0]
@@ -734,54 +931,73 @@ def _is_signed_civitai_download(url):
         return False
     return 'civitai.red' in host or 'b2.civitai.com' in host or 'b2.civitai.red' in host
 
+# CivitAI answers /api/download/models/{id} with a 3xx whose Location is either
+# the real CDN/file URL or an HTML page explaining why the file cannot be
+# downloaded (login wall, purchase/early-access page, or the version page
+# itself). Those page redirects are RELATIVE — e.g. "/model-versions/3188880" —
+# and handing them straight to Aria2 fails with
+# "Unrecognized URI or unsupported protocol", which hides the real reason.
+_CIVITAI_PAGE_HOSTS = ('civitai.com', 'civitai.red')
+_CIVITAI_PAGE_PATHS = ('/login', '/models/', '/model-versions/', '/purchase', '/checkout', '/buzz', '/user/')
+
+def _classify_download_redirect(link):
+    """Classify a resolved redirect target: 'file', 'no_api', 'page' or 'invalid'."""
+    try:
+        parsed = urllib.parse.urlparse(link)
+    except Exception:
+        return 'invalid'
+
+    if parsed.scheme not in ('http', 'https') or not parsed.netloc:
+        return 'invalid'
+
+    host = parsed.netloc.lower().split(':')[0]
+    if not any(host == h or host.endswith('.' + h) for h in _CIVITAI_PAGE_HOSTS):
+        # Any other host (R2/B2 CDN, mirrors) is a real file URL.
+        return 'file'
+
+    path = (parsed.path or '/').lower()
+    if path.startswith('/login') or 'returnurl' in (parsed.query or '').lower():
+        return 'no_api'
+    if any(path.startswith(p) for p in _CIVITAI_PAGE_PATHS):
+        return 'page'
+    return 'file'
+
 def get_download_link(url, model_id):
     headers = _api.get_headers(model_id)
     proxies, ssl = _api.get_proxies()
 
-    response = requests.get(url, headers=headers, allow_redirects=False, proxies=proxies, verify=ssl, timeout=30)
+    response = requests.get(url, headers=headers, allow_redirects=False, proxies=proxies, verify=ssl)
+
+    if response.status_code == 401:
+        return 'NO_API'
 
     if 300 <= response.status_code <= 308:
         if 'login?returnUrl' in response.text and 'reason=download-auth' in response.text:
             return 'NO_API'
 
-        download_link = response.headers['Location']
+        location = response.headers.get('Location')
+        if not location:
+            debug_print(f"[Download] {url} answered {response.status_code} without a Location header")
+            return None
+
+        # Resolve relative Locations against the request URL before anything
+        # downstream (Aria2 / requests) ever sees them.
+        download_link = urllib.parse.urljoin(url, location)
+        kind = _classify_download_redirect(download_link)
+
+        if kind == 'no_api':
+            return 'NO_API'
+        if kind == 'invalid':
+            debug_print(f"[Download] {url} redirected to an unusable target: {location}")
+            return None
+        if kind == 'page':
+            print(f"CivitAI redirected the download to a web page ({download_link}) instead of a file — "
+                  f"the model likely requires a purchase, an API key, or is no longer downloadable.")
+            return None
+
         return download_link
     else:
         return None
-
-def _get_download_link_with_retry(url, model_id, file_name, progress=None):
-    """Fetch download link with 1 retry on timeout.
-    Returns the link, 'NO_API', or None on failure.
-    Sets gl.download_fail and updates progress on failure so the caller
-    can simply return and let the queue advance to the next item."""
-    for attempt in range(2):
-        try:
-            link = get_download_link(url, model_id)
-            return link
-        except (requests.exceptions.Timeout, requests.exceptions.ReadTimeout) as e:
-            if attempt == 0:
-                msg = f"Timeout getting download link for '{file_name}', retrying in 3s..."
-                print(msg)
-                debug_print(f"[Download] {msg}")
-                if progress is not None:
-                    progress(0, desc=msg)
-                time.sleep(3)
-            else:
-                msg = f"Timeout getting download link for '{file_name}' after retry — skipping item."
-                print(msg)
-                debug_print(f"[Download] {msg}")
-                if progress is not None:
-                    progress(0, desc=msg)
-                gl.download_fail = True
-                return None
-        except Exception as e:
-            msg = f"Error getting download link for '{file_name}': {e}"
-            print(msg)
-            debug_print(f"[Download] {msg}")
-            if progress is not None:
-                progress(0, desc=f"Error downloading '{file_name}' — skipped.")
-            gl.download_fail = True
-            return None
 
 def download_file(url, file_path, install_path, model_id, progress=gr.Progress() if queue else None):
     try:
@@ -792,23 +1008,40 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
         aria2_rpc_url = "http://localhost:24000/jsonrpc"
 
         file_name = os.path.basename(file_path)
-        debug_print(f"[Download] aria2 start: {file_name}")
 
         ## === ANXETY EDITs ===
         # Find the model item in the download queue (by model_id and file_name)
-        early_access = False
+        access_kind = _api.ACCESS_FREE
+        gated_version = None
         for item in gl.download_queue:
-            if int(item.get('model_id', -1)) == int(model_id):
+            if _api.model_id_matches(item.get('model_id'), model_id):
                 model_json = item.get('model_json', {})
                 items = model_json.get('items', [])
                 if items and 'modelVersions' in items[0]:
-                    version = items[0]['modelVersions'][0]
-                    if is_early_access(version):
-                        early_access = True
+                    versions = items[0]['modelVersions'] or []
+                    # Check the version actually queued, not modelVersions[0]:
+                    # a model can mix free and paid versions, so the first entry
+                    # says nothing about the one being downloaded.
+                    queued_id = item.get('version_id')
+                    version = next(
+                        (v for v in versions if queued_id and str(v.get('id')) == str(queued_id)),
+                        versions[0] if versions else None
+                    )
+                    if version:
+                        access_kind = _api.get_access_kind(version)
+                        gated_version = version
                 break
 
-        if early_access:
-            msg = f"File: '{file_name}' is marked as Early Access on CivitAI. You need to purchase this model to download it."
+        if access_kind != _api.ACCESS_FREE:
+            # Tell the two gates apart: waiting is a real option for early access,
+            # never for a permanent paid version.
+            label = _api.get_availability_label(gated_version)
+            if access_kind == _api.ACCESS_PAID:
+                msg = (f"File: '{file_name}' is a paid model on CivitAI ({label}). "
+                       f"You need to buy it with Buzz before it can be downloaded.")
+            else:
+                msg = (f"File: '{file_name}' is in Early Access on CivitAI ({label}). "
+                       f"Spend Buzz to unlock it now, or wait until the early-access window ends.")
             print(msg)
             gl.download_fail = 'EARLY_ACCESS'
             if progress is not None:
@@ -816,15 +1049,13 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
                 time.sleep(5)
             return
 
-        download_link = _get_download_link_with_retry(url, model_id, file_name, progress)
-        if download_link is None:
-            return
+        download_link = get_download_link(url, model_id)
         if not download_link:
             msg = f"File: '{file_name}' not found on CivitAI servers, it looks like the file is not available for download."
-            debug_print(f"[Download] Failed to get download link for {file_name}")
             print(msg)
             gl.download_fail = True
             return
+
         elif download_link == 'NO_API':
             msg = f"File: '{file_name}' requires a personal CivitAI API to be downloaded, you can set your own API key in the CivitAI Browser+ settings in the SD-WebUI settings tab"
             print(msg)
@@ -833,8 +1064,6 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
                 progress(0, desc=msg)
                 time.sleep(5)
             return
-        else:
-            debug_print(f"[Download] Got download link for {file_name}")
 
         signed_download = _is_signed_civitai_download(download_link)
 
@@ -862,23 +1091,28 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
             'out': file_name
         }
 
-        payload = json.dumps({
-            'jsonrpc': '2.0',
-            'id': '1',
-            'method': 'aria2.addUri',
-            'params': ['token:' + rpc_secret, [download_link], options]
-        })
-
-        try:
-            response = requests.post(aria2_rpc_url, data=payload, timeout=10)
+        def _aria2_add_uri(uri):
+            payload = json.dumps({
+                'jsonrpc': '2.0',
+                'id': '1',
+                'method': 'aria2.addUri',
+                'params': ['token:' + rpc_secret, [uri], options]
+            })
+            response = requests.post(aria2_rpc_url, data=payload)
             data = json.loads(response.text)
             if 'result' not in data:
                 raise ValueError(f"Failed to start download: {data}")
-            gid = data['result']
+            return data['result']
+
+        try:
+            gid = _aria2_add_uri(download_link)
         except Exception as e:
             print(f"Failed to start download: {e}")
             gl.download_fail = True
             return
+
+        # Rate-limit handling: Aria2 errorCode 29 with HTTP 429 in errorMessage
+        rate_limit_retries = 5
 
         while True:
             if gl.cancel_status:
@@ -888,7 +1122,7 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
                     'method': 'aria2.remove',
                     'params': ['token:' + rpc_secret, gid]
                 })
-                requests.post(aria2_rpc_url, data=payload, timeout=10)
+                requests.post(aria2_rpc_url, data=payload)
                 if progress != None:
                     progress(0, desc="Download cancelled.")
                 return
@@ -901,7 +1135,7 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
                     'params': ['token:' + rpc_secret, gid]
                 })
 
-                response = requests.post(aria2_rpc_url, data=payload, timeout=10)
+                response = requests.post(aria2_rpc_url, data=payload)
                 status_info = json.loads(response.text)['result']
 
                 total_length = int(status_info['totalLength'])
@@ -922,13 +1156,47 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
                 if status_info['status'] == 'complete':
                     msg = f"Model saved to: {file_path}"
                     print(msg)
-                    debug_print(f"[Download] aria2 complete: {file_name}")
                     if progress != None:
                         progress(1, desc=msg)
                     gl.download_fail = False
                     return
 
                 if status_info['status'] == 'error':
+                    error_code = str(status_info.get('errorCode', ''))
+                    error_message = str(status_info.get('errorMessage', '')).lower()
+                    is_rate_limited = error_code == '29' and ('429' in error_message or 'too many requests' in error_message)
+
+                    if is_rate_limited and rate_limit_retries > 0:
+                        rate_limit_retries -= 1
+                        backoff = min(2 ** (5 - rate_limit_retries), 60)
+                        print(f"Rate limited by CivitAI ({file_name}), retrying in {backoff}s... ({rate_limit_retries} retries left)")
+                        if progress != None:
+                            progress(0, desc=f"Rate limited by CivitAI, retrying in {backoff}s... ({rate_limit_retries} retries left)")
+
+                        # Remove failed download from Aria2
+                        try:
+                            requests.post(aria2_rpc_url, data=json.dumps({
+                                'jsonrpc': '2.0', 'id': '1', 'method': 'aria2.remove',
+                                'params': ['token:' + rpc_secret, gid]
+                            }))
+                        except Exception:
+                            pass
+
+                        time.sleep(backoff)
+
+                        # Refresh signed download link and re-add
+                        try:
+                            download_link = get_download_link(url, model_id)
+                            if not download_link or download_link == 'NO_API':
+                                raise ValueError("Could not refresh download link")
+                            gid = _aria2_add_uri(download_link)
+                            print(f"Retrying download of '{file_name}' with fresh link.")
+                            continue
+                        except Exception as e:
+                            print(f"Failed to retry download: {e}")
+                            gl.download_fail = True
+                            return
+
                     if progress != None:
                         progress(0, desc=f"Encountered an error during download of: '{file_name}' Please try again.")
                     gl.download_fail = True
@@ -949,18 +1217,12 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
                 start_aria2_rpc()
                 time.sleep(3)
                 try:
-                    _reconnect_resp = requests.post(aria2_rpc_url, timeout=5, data=json.dumps({
-                        'jsonrpc': '2.0', 'id': '1', 'method': 'aria2.addUri',
-                        'params': ['token:' + rpc_secret, [download_link], options]
-                    }))
-                    _reconnect_data = json.loads(_reconnect_resp.text)
-                    if 'result' in _reconnect_data:
-                        gid = _reconnect_data['result']
-                        print(f"Aria2 reconnected, resumed download of '{file_name}'.")
+                    gid = _aria2_add_uri(download_link)
+                    print(f"Aria2 reconnected, resumed download of '{file_name}'.")
                 except Exception:
                     pass
                 time.sleep(2)
-    except:
+    except Exception:
         if progress != None:
             progress(0, desc=f"Encountered an error during download of: '{file_name}' Please try again.")
         gl.download_fail = True
@@ -984,20 +1246,17 @@ def download_file_old(url, file_path, model_id, progress=gr.Progress() if queue 
     try:
         gl.download_fail = False
         max_retries = 5
-        tokens = re.split(re.escape(os.sep), file_path)
-        file_name_display = tokens[-1]
-        debug_print(f"[Download] fallback start: {file_name_display}")
         if os.path.exists(file_path):
             os.remove(file_path)
 
         downloaded_size = 0
+        tokens = re.split(re.escape(os.sep), file_path)
+        file_name_display = tokens[-1]
         start_time = time.time()
         last_update_time = 0
         update_interval = 0.25
 
-        download_link = _get_download_link_with_retry(url, model_id, file_name_display, progress)
-        if download_link is None:
-            return
+        download_link = get_download_link(url, model_id)
         if not download_link:
             msg = f"File: '{file_name_display}' not found on CivitAI servers, it looks like the file is not available for download."
             print(msg)
@@ -1047,7 +1306,7 @@ def download_file_old(url, file_path, model_id, progress=gr.Progress() if queue 
                                 gl.download_fail = True
                                 return
                             total_size = int(response.headers.get('Content-Length', 0))
-                        except:
+                        except Exception:
                             raise TimeOutFunction('Timed Out')
 
                         if total_size == 0:
@@ -1100,7 +1359,6 @@ def download_file_old(url, file_path, model_id, progress=gr.Progress() if queue 
                 if not gl.cancel_status:
                     msg = f"Model saved to: {file_path}"
                     print(msg)
-                    debug_print(f"[Download] fallback complete: {file_name_display}")
                     if progress != None:
                         progress(1, desc=msg)
                     gl.download_fail = False
@@ -1113,7 +1371,7 @@ def download_file_old(url, file_path, model_id, progress=gr.Progress() if queue 
                 gl.download_fail = True
                 if os.path.exists(file_path):
                     os.remove(file_path)
-    except:
+    except Exception:
         if progress != None:
             progress(0, desc=f"Encountered an error during download of: {file_name_display}, please try again.")
         gl.download_fail = True
@@ -1123,375 +1381,334 @@ def download_file_old(url, file_path, model_id, progress=gr.Progress() if queue 
 
 def download_create_thread(download_finish, queue_trigger, progress=gr_progress_threadable() if queue else None):
     global current_count
-
-    # Auto-exit update mode when queue is empty on entry
-    auto_exit_update = False
-    if gl.update_mode and not gl.download_queue:
-        gl.update_mode = False
-        gl.update_items = []
-        auto_exit_update = True
+    current_count += 1
 
     if not gl.download_queue:
         return (
             gr.update(),  # Download Progress HTML
             gr.update(value=None),  # Current Model
             gr.update(value=random_number(download_finish)),  # Download Finish Trigger
-            gr.update(),  # Queue Trigger — no update to prevent re-trigger loop
-            gr.update(value='') if auto_exit_update else gr.update()  # Update Mode Banner
+            gr.update(value=queue_trigger)  # Queue Trigger
         )
 
-    card_name = None
-    # Process the entire queue in an internal loop to eliminate gaps
-    # caused by Gradio event queue round-trips between items.
-    while gl.download_queue:
-        current_count += 1
-        item = gl.download_queue[0]
-        # If the user clicked Cancel between items (during time.sleep), respect it.
-        if gl.cancel_status:
-            _dl_log.log_cancelled(item['dl_id'])
-            debug_print(f"[Download] Cancelled between items: '{item['model_name']}'")
-            if len(gl.download_queue) != 0:
-                gl.download_queue.pop(0)
-            gl.cancel_status = False  # Reset after handling this single-item cancellation
-            continue
-        gl.cancel_status = False
-        gl.download_fail = False
-        use_aria2 = getattr(opts, 'use_aria2', True)
-        unpack_zip = getattr(opts, 'unpack_zip', False)
-        save_all_images = getattr(opts, 'auto_save_all_img', False)
-        gl.recent_model = item['model_name']
-        gl.last_version = item['version_name']
-        debug_print(f"[Download] Starting item {current_count}/{total_count}: '{item['model_name']}' v'{item['version_name']}' → {item['install_path']}")
+    item = gl.download_queue[0]
+    gl.cancel_status = False
+    use_aria2 = getattr(opts, 'use_aria2', True)
+    unpack_zip = getattr(opts, 'unpack_zip', False)
+    save_all_images = getattr(opts, 'auto_save_all_img', False)
+    gl.recent_model = item['model_name']
+    gl.last_version = item['version_name']
 
-        # #2 Lazy API fetch: deferred from enqueue time for batch performance
-        if not item.get('_api_ready'):
-            debug_print(f"[Download] Lazy API fetch for '{item['model_name']}' (id={item['model_id']})")
-            _lazy_versions = _api.update_model_versions(item['model_id'])
-            if _lazy_versions:
-                item['model_versions'] = _lazy_versions
-                debug_print(f"[Download] Loaded model versions for '{item['model_name']}'")
-            try:
-                _lazy_result = _api.update_model_info(None, (item['model_versions'] or {}).get('value'), False, item['model_id'])
-                item['preview_html'] = _lazy_result[0].get('value', '') if isinstance(_lazy_result[0], dict) else ''
-                item['existing_path'] = (_lazy_result[11].get('value') if isinstance(_lazy_result[11], dict) else None) or item['install_path']
-                debug_print(f"[Download] Loaded preview + existing_path for '{item['model_name']}'")
-            except Exception as _e:
-                debug_print(f"[Lazy fetch] Could not load API data for {item['model_name']}: {_e}")
-            item['_api_ready'] = True
-
-        # === Ambiguity check for SHA256: query both civitai.com and civitai.red by-hash
+    # #2 Lazy API fetch: deferred from enqueue time for batch performance.
+    # Resolve against the item's OWN model_json (carried from whichever tab started
+    # the download), NOT the default gl.json_data — that holds only the Browser tab's
+    # current search, so a Local-tab update whose model isn't in that search would
+    # resolve to nothing, leaving preview_html empty and making save_images silently
+    # download no gallery images.
+    if not item.get('_api_ready'):
+        _mj = item.get('model_json')
+        _mj = _mj if isinstance(_mj, dict) and _mj.get('items') else None
+        _lazy_versions = _api.update_model_versions(item['model_id'], json_input=_mj)
+        if _lazy_versions:
+            item['model_versions'] = _lazy_versions
         try:
-            if item.get('model_sha256') and not item.get('ambiguous_checked'):
-                sha = item.get('model_sha256')
-                candidates = []
-                try:
-                    # helper: ask both domains for candidates
-                    def _find_sha_candidates(sha_val):
-                        res = []
-                        seen = set()
-                        for domain in ('https://civitai.com', 'https://civitai.red'):
-                            try:
-                                url = f"{domain}/api/v1/model-versions/by-hash/{sha_val}"
-                                data = _api.request_civit_api(url)
-                                if isinstance(data, dict) and data.get('id'):
-                                    vid = data.get('id')
-                                    mid = data.get('modelId')
-                                    vname = data.get('name')
-                                    files = data.get('files', [])
-                                    # use first file entry as representative
-                                    for f in files:
-                                        file_sha = (f.get('hashes', {}) or {}).get('SHA256', '')
-                                        dl = f.get('downloadUrl') or data.get('downloadUrl') or ''
-                                        fname = f.get('name')
-                                        key = (mid, vid)
-                                        if key in seen:
-                                            continue
-                                        seen.add(key)
-                                        res.append({
-                                            'modelId': mid,
-                                            'versionId': vid,
-                                            'version_name': vname,
-                                            'file_name': fname,
-                                            'sha256': (file_sha or '').upper(),
-                                            'downloadUrl': dl,
-                                            'domain': domain
-                                        })
-                            except Exception:
-                                pass
-                        return res
+            # Resolve preview_html for the version we actually queued (item['version_name']),
+            # NOT update_model_versions()'s default choice. That default prioritizes whichever
+            # version is currently marked [Installed] on disk — and for an update-in-progress
+            # the OLD file is still on disk at this point (the new one hasn't replaced it yet),
+            # so the dropdown's "value" pointed at the OLD version. That silently regenerated
+            # the .html/.json sidecar with the previous version's data on every "Replace
+            # installed" update, making it look like the update never refreshed anything.
+            _target_version = item.get('version_name') or (item['model_versions'] or {}).get('value')
+            _lazy_result = _api.update_model_info(None, _target_version, False, item['model_id'], json_input=_mj)
+            item['preview_html'] = _lazy_result[0].get('value', '') if isinstance(_lazy_result[0], dict) else ''
+            item['existing_path'] = (_lazy_result[11].get('value') if isinstance(_lazy_result[11], dict) else None) or item['install_path']
+        except Exception as _e:
+            debug_print(f"[Lazy fetch] Could not load API data for {item['model_name']}: {_e}")
+        item['_api_ready'] = True
 
-                    candidates = _find_sha_candidates(sha)
-                except Exception:
-                    candidates = []
-
-                item['ambiguous_checked'] = True
-                item['ambiguous_candidates'] = candidates
-
-                # Log ambiguity for debugging and traceability
-                try:
-                    debug_print(f"[Debug] Ambiguous SHA detected for {sha}: {len(candidates)} candidates")
-                    for c in candidates:
-                        debug_print(f"[Debug] Candidate -> modelId={c.get('modelId')} versionId={c.get('versionId')} file={c.get('file_name')} domain={c.get('domain')}")
-                except Exception:
-                    pass
-
-                # If multiple distinct candidates exist and none matches the queued model id/version, pause and ask user
-                if len(candidates) > 1:
-                    match = False
-                    for c in candidates:
+    # === Ambiguity check for SHA256: query both civitai.com and civitai.red by-hash
+    try:
+        if item.get('model_sha256') and not item.get('ambiguous_checked'):
+            sha = item.get('model_sha256')
+            candidates = []
+            try:
+                # helper: ask both domains for candidates
+                def _find_sha_candidates(sha_val):
+                    res = []
+                    seen = set()
+                    for domain in ('https://civitai.com', 'https://civitai.red'):
                         try:
-                            if int(c.get('modelId', -1)) == int(item.get('model_id', -1)):
-                                # prefer candidate that matches the queued model id
-                                item['dl_url'] = c.get('downloadUrl') or item['dl_url']
-                                match = True
-                                break
-                        except Exception:
-                            continue
-
-                    if not match:
-                        try:
-                            debug_print(f"[Debug] No matching queued model for SHA {sha}; prompting user to choose candidate for '{item.get('model_name')}'")
+                            url = f"{domain}/api/v1/model-versions/by-hash/{sha_val}"
+                            data = _api.request_civit_api(url)
+                            if isinstance(data, dict) and data.get('id'):
+                                vid = data.get('id')
+                                mid = data.get('modelId')
+                                vname = data.get('name')
+                                files = data.get('files', [])
+                                # use first file entry as representative
+                                for f in files:
+                                    file_sha = (f.get('hashes', {}) or {}).get('SHA256', '')
+                                    dl = f.get('downloadUrl') or data.get('downloadUrl') or ''
+                                    fname = f.get('name')
+                                    key = (mid, vid)
+                                    if key in seen:
+                                        continue
+                                    seen.add(key)
+                                    res.append({
+                                        'modelId': mid,
+                                        'versionId': vid,
+                                        'version_name': vname,
+                                        'file_name': fname,
+                                        'sha256': (file_sha or '').upper(),
+                                        'downloadUrl': dl,
+                                        'domain': domain
+                                    })
                         except Exception:
                             pass
-                        # Prepare an HTML chooser and return early so the UI can show selection
-                        html = '<div style="padding:12px;background:#1f1f1f;border-radius:8px;color:#fff">'
-                        html += '<h3>Ambiguous SHA256 detected</h3>'
-                        html += '<p>More than one model/version matches this SHA. Please choose which one to download:</p>'
-                        html += '<ul style="list-style:none;padding:0;margin:0">'
-                        for i, c in enumerate(candidates):
-                            display = f"{c.get('modelId')} / {c.get('versionId')} — {c.get('version_name') or ''} — {c.get('file_name') or ''} ({c.get('domain')})"
-                            # radio inputs; when confirmed they set hidden ambiguity_choice and click hidden confirm button
-                            html += f'<li style="margin:6px 0;padding:6px;border:1px solid #333;border-radius:6px;background:#111"><label style="cursor:pointer"><input type="radio" name="ambig_choice" value="{i}"> {display}</label></li>'
-                        html += '</ul>'
-                        html += '<div style="margin-top:10px"><button onclick="(function(){let v=document.querySelector(\'input[name=\\\'ambig_choice\\\']:checked\'); if(v){let ta=document.getElementById(\'ambiguity_choice\'); if(ta){ta.value=v.value; ta.dispatchEvent(new Event(\'input\'));} let btn=document.getElementById(\'ambiguity_confirm\'); if(btn){btn.click();}} else {alert(\'Please select an option to continue\');}})()">Confirm selection</button></div>'
-                        html += '</div>'
+                    return res
 
-                        return (
-                            gr.update(value=html),  # Download Progress HTML -> shows chooser
-                            gr.update(value=item.get('model_name')),  # Current Model
-                            gr.update(),  # Download Finish Trigger — no update
-                            gr.update(),  # Queue Trigger — no update to prevent loop
-                            gr.update()  # Update Mode Banner — no change
-                        )
-        except Exception:
-            pass
+                candidates = _find_sha_candidates(sha)
+            except Exception:
+                candidates = []
 
-        # Fix #3: do not mutate item dict — use a local effective path
-        # Fallback to install_path if existing_path is None (e.g. lazy fetch returned value=None)
-        effective_install_path = (item['existing_path'] or item['install_path']) if item['from_batch'] else item['install_path']
+            item['ambiguous_checked'] = True
+            item['ambiguous_candidates'] = candidates
 
-        gl.isDownloading = True
-        _not_downloading.clear()  # signal: download in progress
-        _dl_log.log_downloading(item['dl_id'])
-        _file.make_dir(effective_install_path)
+            # Log ambiguity for debugging and traceability
+            try:
+                _label = 'Ambiguous SHA detected' if len(candidates) > 1 else 'SHA lookup'
+                debug_print(f"[Debug] {_label} for {sha}: {len(candidates)} candidates")
+                for c in candidates:
+                    debug_print(f"[Debug] Candidate -> modelId={c.get('modelId')} versionId={c.get('versionId')} file={c.get('file_name')} domain={c.get('domain')}")
+            except Exception:
+                pass
 
-        path_to_new_file = os.path.join(effective_install_path, item['model_filename'])
-        debug_print(f"[Download] File target: {path_to_new_file}")
+            # If multiple distinct candidates exist and none matches the queued model id/version, pause and ask user
+            if len(candidates) > 1:
+                match = False
+                for c in candidates:
+                    if _api.model_id_matches(c.get('modelId'), item.get('model_id')):
+                        # prefer candidate that matches the queued model id
+                        item['dl_url'] = c.get('downloadUrl') or item['dl_url']
+                        match = True
+                        break
 
-        if use_aria2 and os_type != 'Darwin':
-            debug_print(f"[Download] Using aria2 for '{item['model_filename']}'")
-            thread = threading.Thread(target=download_file, args=(item['dl_url'], path_to_new_file, effective_install_path, item['model_id'], progress))
+                if not match:
+                    try:
+                        debug_print(f"[Debug] No matching queued model for SHA {sha}; prompting user to choose candidate for '{item.get('model_name')}'")
+                    except Exception:
+                        pass
+                    # Prepare an HTML chooser and return early so the UI can show selection
+                    html = '<div style="padding:12px;background:#1f1f1f;border-radius:8px;color:#fff">'
+                    html += '<h3>Ambiguous SHA256 detected</h3>'
+                    html += '<p>More than one model/version matches this SHA. Please choose which one to download:</p>'
+                    html += '<ul style="list-style:none;padding:0;margin:0">'
+                    for i, c in enumerate(candidates):
+                        display = f"{c.get('modelId')} / {c.get('versionId')} — {c.get('version_name') or ''} — {c.get('file_name') or ''} ({c.get('domain')})"
+                        # radio inputs; when confirmed they set hidden ambiguity_choice and click hidden confirm button
+                        html += f'<li style="margin:6px 0;padding:6px;border:1px solid #333;border-radius:6px;background:#111"><label style="cursor:pointer"><input type="radio" name="ambig_choice" value="{i}"> {display}</label></li>'
+                    html += '</ul>'
+                    html += '<div style="margin-top:10px"><button onclick="(function(){let v=document.querySelector(\'input[name=\\\'ambig_choice\\\']:checked\'); if(v){let ta=document.getElementById(\'ambiguity_choice\'); if(ta){ta.value=v.value; ta.dispatchEvent(new Event(\'input\'));} let btn=document.getElementById(\'ambiguity_confirm\'); if(btn){btn.click();}} else {alert(\'Please select an option to continue\');}})()">Confirm selection</button></div>'
+                    html += '</div>'
+
+                    return (
+                        gr.update(value=html),  # Download Progress HTML -> shows chooser
+                        gr.update(value=item.get('model_name')),  # Current Model
+                        gr.update(value=None),  # Download Finish Trigger (no-op)
+                        gr.update(value=None)  # Queue Trigger (no-op)
+                    )
+    except Exception:
+        pass
+
+    # Fix #3: do not mutate item dict — use a local effective path
+    # Fallback to install_path if existing_path is None (e.g. lazy fetch returned value=None)
+    effective_install_path = (item['existing_path'] or item['install_path']) if item['from_batch'] else item['install_path']
+
+    gl.isDownloading = True
+    _not_downloading.clear()  # signal: download in progress
+    _dl_log.log_downloading(item['dl_id'])
+    _file.make_dir(effective_install_path)
+
+    path_to_new_file = os.path.join(effective_install_path, item['model_filename'])
+
+    if use_aria2 and os_type != 'Darwin':
+        thread = threading.Thread(target=download_file, args=(item['dl_url'], path_to_new_file, effective_install_path, item['model_id'], progress))
+    else:
+        thread = threading.Thread(target=download_file_old, args=(item['dl_url'], path_to_new_file, item['model_id'], progress))
+    thread.start()
+    try:
+        if progress != None and hasattr(progress, 'join'):
+            progress.join(thread)
         else:
-            debug_print(f"[Download] Using fallback downloader for '{item['model_filename']}'")
-            thread = threading.Thread(target=download_file_old, args=(item['dl_url'], path_to_new_file, item['model_id'], progress))
-        thread.start()
-        try:
-            if progress != None and hasattr(progress, 'join'):
-                progress.join(thread)
-            else:
-                thread.join()
-        except Exception:
-            # If the progress channel throws (client disconnected / screen locked),
-            # fall back to a plain join so download always completes before cleanup.
             thread.join()
+    except Exception:
+        # If the progress channel throws (client disconnected / screen locked),
+        # fall back to a plain join so download always completes before cleanup.
+        thread.join()
 
-        # Fix #1: SHA256 integrity check after download
-        if not gl.cancel_status and not gl.download_fail and item.get('model_sha256') and os.path.exists(path_to_new_file):
-            if progress is not None:
-                progress(0.99, desc=f"Verifying integrity: {item['model_filename']}...")
-            sha256_hash = hashlib.sha256()
-            with open(path_to_new_file, 'rb') as _f:
-                for _chunk in iter(lambda: _f.read(8 * 1024 * 1024), b''):
-                    sha256_hash.update(_chunk)
-            actual_sha256 = sha256_hash.hexdigest().upper()
-            if actual_sha256 != item['model_sha256'].upper():
-                sha_mismatch_resolved = False
-                version_id = item.get('version_id')
-                if version_id:
-                    try:
-                        domain = _api.get_civitai_domain()
-                        api_url = f"https://{domain}/api/v1/model-versions/{version_id}"
-                        proxies, ssl = _api.get_proxies()
-                        response = requests.get(api_url, headers=_api.get_headers(), timeout=(60, 30), proxies=proxies, verify=ssl)
-                        if response.status_code == 200:
-                            data = response.json()
-                            files = data.get('files', [])
-                            primary_file = next((f for f in files if f.get('primary', False)), None)
-                            if not primary_file and files:
-                                primary_file = files[0]
-                            if primary_file:
-                                api_sha = primary_file.get('hashes', {}).get('SHA256', '').upper()
-                                if api_sha and api_sha == actual_sha256:
-                                    print(f"SHA256 updated silently for '{item['model_filename']}': old={item['model_sha256'][:12]}…, new={actual_sha256[:12]}…")
-                                    item['model_sha256'] = actual_sha256
-                                    sha_mismatch_resolved = True
-                    except Exception as e:
-                        debug_print(f"[SHA256 recheck] API error for version {version_id}: {e}")
+    # Fix #1: SHA256 integrity check after download
+    if not gl.cancel_status and not gl.download_fail and item.get('model_sha256') and os.path.exists(path_to_new_file):
+        if progress is not None:
+            progress(0.99, desc=f"Verifying integrity: {item['model_filename']}...")
+        sha256_hash = hashlib.sha256()
+        with open(path_to_new_file, 'rb') as _f:
+            for _chunk in iter(lambda: _f.read(1024 * 1024), b''):
+                sha256_hash.update(_chunk)
+        actual_sha256 = sha256_hash.hexdigest().upper()
+        if actual_sha256 != item['model_sha256'].upper():
+            sha_mismatch_resolved = False
+            version_id = item.get('version_id')
+            if version_id:
+                try:
+                    domain = _api.get_civitai_domain()
+                    api_url = f"https://{domain}/api/v1/model-versions/{version_id}"
+                    proxies, ssl = _api.get_proxies()
+                    response = requests.get(api_url, headers=_api.get_headers(), timeout=(60, 30), proxies=proxies, verify=ssl)
+                    if response.status_code == 200:
+                        data = response.json()
+                        files = data.get('files', [])
+                        primary_file = next((f for f in files if f.get('primary', False)), None)
+                        if not primary_file and files:
+                            primary_file = files[0]
+                        if primary_file:
+                            api_sha = primary_file.get('hashes', {}).get('SHA256', '').upper()
+                            if api_sha and api_sha == actual_sha256:
+                                print(f"SHA256 updated silently for '{item['model_filename']}': old={item['model_sha256'][:12]}…, new={actual_sha256[:12]}…")
+                                item['model_sha256'] = actual_sha256
+                                sha_mismatch_resolved = True
+                except Exception as e:
+                    debug_print(f"[SHA256 recheck] API error for version {version_id}: {e}")
 
-                if not sha_mismatch_resolved:
-                    file_size = os.path.getsize(path_to_new_file)
-                    print(f"SHA256 mismatch for '{item['model_filename']}': expected {item['model_sha256'][:12]}…, got {actual_sha256[:12]}… (size: {file_size} bytes)")
-                    gl.download_fail = True
-                    if progress is not None:
-                        progress(0, desc=f"Integrity check failed for '{item['model_filename']}' — file may be corrupted.")
+            if not sha_mismatch_resolved:
+                file_size = os.path.getsize(path_to_new_file)
+                print(f"SHA256 mismatch for '{item['model_filename']}': expected {item['model_sha256'][:12]}…, got {actual_sha256[:12]}… (size: {file_size} bytes)")
+                gl.download_fail = True
+                if progress is not None:
+                    progress(0, desc=f"Integrity check failed for '{item['model_filename']}' — file may be corrupted.")
 
-        if not gl.cancel_status and not gl.download_fail:
-            if os.path.exists(path_to_new_file):
-                debug_print(f"[Download] Download succeeded for '{item['model_name']}'; starting post-processing")
-                # Determine content type once — used for both zip extraction and post-download saves
-                _item_content_type = ((item.get('model_json') or {}).get('items') or [{}])[0].get('type', '')
-                _is_wildcard_dl = _item_content_type == 'Wildcards'
-                unpackList = []
-                if unpack_zip:
-                    try:
-                        if path_to_new_file.endswith('.zip'):
-                            directory = Path(os.path.dirname(path_to_new_file))
-                            if _is_wildcard_dl:
-                                # Wildcards: flat extraction — files only, no internal folder structure.
-                                # Prevents double-nesting (e.g. wildcards/pack/pack/file.txt).
-                                import zipfile as _zipfile
-                                with _zipfile.ZipFile(path_to_new_file, 'r') as zf:
-                                    for member in zf.infolist():
-                                        if member.is_dir():
-                                            continue
-                                        filename = os.path.basename(member.filename)
-                                        if not filename:
-                                            continue
-                                        target_path = os.path.join(str(directory), filename)
-                                        with zf.open(member) as src, open(target_path, 'wb') as dst:
-                                            dst.write(src.read())
-                                        unpackList.append(filename)
-                            else:
-                                zip_handler = ZipHandler(path_to_new_file)
+    # Only save metadata / run post-processing when the download actually succeeded.
+    # The previous condition `or gl.download_fail` was a logic error: truthy fail values
+    # (e.g. 'EARLY_ACCESS') caused saves to run even though nothing was downloaded.
+    if not gl.cancel_status and not gl.download_fail:
+        if os.path.exists(path_to_new_file):
+            # Determine content type once — used for both zip extraction and post-download saves
+            _item_content_type = ((item.get('model_json') or {}).get('items') or [{}])[0].get('type', '')
+            _is_wildcard_dl = _item_content_type == 'Wildcards'
+            unpackList = []
+            if unpack_zip:
+                try:
+                    if path_to_new_file.endswith('.zip'):
+                        directory = Path(os.path.dirname(path_to_new_file))
+                        if _is_wildcard_dl:
+                            # Wildcards: flat extraction — files only, no internal folder structure.
+                            # Prevents double-nesting (e.g. wildcards/pack/pack/file.txt).
+                            import zipfile as _zipfile
+                            with _zipfile.ZipFile(path_to_new_file, 'r') as zf:
+                                for member in zf.infolist():
+                                    if member.is_dir():
+                                        continue
+                                    filename = os.path.basename(member.filename)
+                                    if not filename:
+                                        continue
+                                    target_path = os.path.join(str(directory), filename)
+                                    with zf.open(member) as src, open(target_path, 'wb') as dst:
+                                        dst.write(src.read())
+                                    unpackList.append(filename)
+                        else:
+                            zip_handler = ZipHandler(path_to_new_file)
 
-                                for _, decoded_name in zip_handler.name_map.items():
-                                    unpackList.append(decoded_name)
+                            for _, decoded_name in zip_handler.name_map.items():
+                                unpackList.append(decoded_name)
 
-                                zip_handler.extract_all(directory)
-                                zip_handler.zip_ref.close()
+                            zip_handler.extract_all(directory)
+                            zip_handler.zip_ref.close()
 
-                            print(f"Successfully extracted {item['model_filename']} to {directory}")
-                            os.remove(path_to_new_file)
-                    except ImportError:
-                        print('Python module "ZipUnicode" has not been imported correctly, cannot extract zip file. Please try to restart or install it manually.')
-                    except Exception as e:
-                        print(f"Failed to extract {item['model_filename']} with error: {e}")
-                if not gl.cancel_status:
-                    if item['create_json']:
-                        _file.save_model_info(effective_install_path, item['model_filename'], item['sub_folder'], item['model_sha256'], item['preview_html'], api_response=item['model_json'])
-                    info_to_json(path_to_new_file, item['model_id'], item['model_sha256'], unpackList)
+                        print(f"Successfully extracted {item['model_filename']} to {directory}")
+                        os.remove(path_to_new_file)
+                except ImportError:
+                    print('Python module "ZipUnicode" has not been imported correctly, cannot extract zip file. Please try to restart or install it manually.')
+                except Exception as e:
+                    print(f"Failed to extract {item['model_filename']} with error: {e}")
+            if not gl.cancel_status:
+                if item['create_json']:
+                    _file.save_model_info(effective_install_path, item['model_filename'], item['sub_folder'], item['model_sha256'], item['preview_html'], overwrite_toggle=True, api_response=item['model_json'])
+                info_to_json(path_to_new_file, item['model_id'], item['model_sha256'], unpackList)
 
-                    if _item_content_type == 'Checkpoint' and os.path.exists(path_to_new_file):
-                        sidecar_path = os.path.splitext(path_to_new_file)[0] + '.json'
-                        sidecar_data = _api.safe_json_load(sidecar_path) if os.path.exists(sidecar_path) else {}
-                        sidecar_data = sidecar_data if isinstance(sidecar_data, dict) else {}
-                        _file.sync_checkpoint_sha256_on_download(
-                            path_to_new_file,
-                            sidecar_data.get('sha256') or item.get('model_sha256'),
-                            model_id=sidecar_data.get('modelId') or item.get('model_id'),
-                            model_version_id=sidecar_data.get('modelVersionId')
-                        )
+                if _item_content_type == 'Checkpoint' and os.path.exists(path_to_new_file):
+                    sidecar_path = os.path.splitext(path_to_new_file)[0] + '.json'
+                    sidecar_data = _api.safe_json_load(sidecar_path) if os.path.exists(sidecar_path) else {}
+                    sidecar_data = sidecar_data if isinstance(sidecar_data, dict) else {}
+                    _file.sync_checkpoint_sha256_on_download(
+                        path_to_new_file,
+                        sidecar_data.get('sha256') or item.get('model_sha256'),
+                        model_id=sidecar_data.get('modelId') or item.get('model_id'),
+                        model_version_id=sidecar_data.get('modelVersionId')
+                    )
 
-                    if not _is_wildcard_dl:
-                        _file.save_preview(path_to_new_file, item['model_json'], True, item['model_sha256'])
-                        if save_all_images:
-                            _file.save_images(item['preview_html'], item['model_filename'], effective_install_path, item['sub_folder'], api_response=item['model_json'])
+                if not _is_wildcard_dl:
+                    _file.save_preview(path_to_new_file, item['model_json'], True, item['model_sha256'])
+                    if save_all_images:
+                        _file.save_images(item['preview_html'], item['model_filename'], effective_install_path, item['sub_folder'], api_response=item['model_json'])
 
-                    # Retention policy for updates where old and new filenames differ.
-                    # (Same-filename case is already handled inside download_file via handle_existing_model_file.)
-                    old_fp = item.get('old_file_path', '')
-                    if old_fp and os.path.exists(old_fp) and os.path.abspath(old_fp) != os.path.abspath(path_to_new_file):
-                        _file.handle_existing_model_file(old_fp)
+                # Retention policy for updates where old and new filenames differ.
+                # (Same-filename case is already handled inside download_file via handle_existing_model_file.)
+                old_fp = item.get('old_file_path', '')
+                if old_fp and os.path.exists(old_fp) and os.path.abspath(old_fp) != os.path.abspath(path_to_new_file):
+                    _file.handle_existing_model_file(old_fp)
 
-        base_name = os.path.splitext(item['model_filename'])[0]
-        base_name_preview = base_name + '.preview'
+    base_name = os.path.splitext(item['model_filename'])[0]
+    base_name_preview = base_name + '.preview'
 
-        if gl.download_fail:
-            # EARLY_ACCESS and NO_API: download never started, no file was created by
-            # this attempt — preserve any pre-existing file from a previous good download.
-            download_never_started = gl.download_fail in ('EARLY_ACCESS', 'NO_API')
-            if not download_never_started:
-                for root, dirs, files in os.walk(effective_install_path, followlinks=True):
-                    for file in files:
-                        file_base_name = os.path.splitext(file)[0]
-                        if file_base_name == base_name or file_base_name == base_name_preview:
-                            path_file = os.path.join(root, file)
-                            os.remove(path_file)
-
-            if gl.cancel_status:
-                print(f"Cancelled download of '{item['model_filename']}'")
-            else:
-                if gl.download_fail not in ('NO_API', 'EARLY_ACCESS'):
-                    print(f"Error occured during download of '{item['model_filename']}'")
+    if gl.download_fail:
+        # EARLY_ACCESS and NO_API: download never started, no file was created by
+        # this attempt — preserve any pre-existing file from a previous good download.
+        download_never_started = gl.download_fail in ('EARLY_ACCESS', 'NO_API')
+        if not download_never_started:
+            for root, dirs, files in os.walk(effective_install_path, followlinks=True):
+                for file in files:
+                    file_base_name = os.path.splitext(file)[0]
+                    if file_base_name == base_name or file_base_name == base_name_preview:
+                        path_file = os.path.join(root, file)
+                        os.remove(path_file)
 
         if gl.cancel_status:
-            card_name = None
+            print(f"Cancelled download of '{item['model_filename']}'")
         else:
-            model_string = f"{item['model_name']} ({item['model_id']})"
-            (card_name, _, _) = _file.card_update(item['model_versions'], model_string, item['version_name'], True)
+            if gl.download_fail not in ('NO_API', 'EARLY_ACCESS'):
+                print(f"Error occured during download of '{item['model_filename']}'")
 
-        # Log final download status before removing from queue
-        if gl.cancel_status:
-            _dl_log.log_cancelled(item['dl_id'])
-            debug_print(f"[Download] Cancelled: '{item['model_name']}'")
-            if len(gl.download_queue) != 0:
-                gl.download_queue.pop(0)
-        elif gl.download_fail:
-            # Permanent errors (Early Access, missing API key) should not be retried
-            permanent_error = gl.download_fail in ('EARLY_ACCESS', 'NO_API')
-            if not permanent_error:
-                retry_count = item.get('retry_count', 0) + 1
-                item['retry_count'] = retry_count
-                if retry_count < 3:
-                    # Move to end of queue for automatic retry
-                    debug_print(f"[Download] Retry {retry_count}/3 for '{item['model_name']}' — moving to end of queue")
-                    gl.download_queue.pop(0)
-                    gl.download_queue.append(item)
-                else:
-                    debug_print(f"[Download] Failed permanently after 3 retries: '{item['model_name']}'")
-                    _dl_log.log_failed(item['dl_id'])
-                    if len(gl.download_queue) != 0:
-                        gl.download_queue.pop(0)
-            else:
-                debug_print(f"[Download] Failed permanently (non-retryable): '{item['model_name']}'")
-                _dl_log.log_failed(item['dl_id'])
-                if len(gl.download_queue) != 0:
-                    gl.download_queue.pop(0)
-        else:
-            _dl_log.log_completed(item['dl_id'])
-            debug_print(f"[Download] Completed: '{item['model_name']}' → {path_to_new_file}")
-            if len(gl.download_queue) != 0:
-                gl.download_queue.pop(0)
+    if gl.cancel_status:
+        card_name = None
+    else:
+        model_string = f"{item['model_name']} ({item['model_id']})"
+        (card_name, _, _) = _file.card_update(item['model_versions'], model_string, item['version_name'], True)
 
-        gl.isDownloading = False
-        _not_downloading.set()  # signal: download finished, safe to cancel/cleanup
-        time.sleep(2)
+    # Log final download status before removing from queue
+    if gl.cancel_status:
+        _dl_log.log_cancelled(item['dl_id'])
+    elif gl.download_fail:
+        _dl_log.log_failed(item['dl_id'])
+    else:
+        _dl_log.log_completed(item['dl_id'])
 
-    # Queue exhausted — return final result
-    # Auto-exit update mode when all downloads finish
-    auto_exit_update = False
-    if gl.update_mode and not gl.download_queue:
-        gl.update_mode = False
-        gl.update_items = []
-        auto_exit_update = True
+    if len(gl.download_queue) != 0:
+        gl.download_queue.pop(0)
+    gl.isDownloading = False
+    _not_downloading.set()  # signal: download finished, safe to cancel/cleanup
+    time.sleep(2)
 
-    finish_nr = random_number(download_finish)
+    if len(gl.download_queue) == 0:
+        finish_nr = random_number(download_finish)
+        queue_nr = queue_trigger
+    else:
+        finish_nr = download_finish
+        queue_nr = random_number(queue_trigger)
     return (
         gr.update(),  # Download Progress HTML
         gr.update(value=card_name),  # Current Model
         gr.update(value=finish_nr),  # Download Finish Trigger
-        gr.update(),  # Queue Trigger — no update to prevent re-trigger loop
-        gr.update(value='') if auto_exit_update else gr.update()  # Update Mode Banner
+        gr.update(value=queue_nr),  # Queue Trigger
     )
 
 def remove_from_queue(dl_id):
@@ -1525,7 +1742,7 @@ def download_manager_html(current_html):
     for item in gl.download_queue:
         if item['dl_id'] not in existing_item_ids:
             download_item = (
-                f'<div class="civitai_dl_item" dl_id="{item["dl_id"]}" style="display: flex; font-size: var(--section-header-text-size);">'
+                f'<div class="civitai_dl_item" dl_id="{item["dl_id"]}" dl_origin="{item.get("origin") or "browser"}" style="display: flex; font-size: var(--section-header-text-size);">'
                 f'<div class="dl_name" style="{get_style(1, False)}"><span title="{item["model_name"]}">{item["model_name"]}</span></div>'
                 f'<div class="dl_ver" style="{get_style(0.75, True)}"><span title="{item["version_name"]}">{item["version_name"]}</span></div>'
                 f'<div class="dl_path" style="{get_style(1.5, True)}"><span title="{item["install_path"]}">{item["install_path"]}</span></div>'

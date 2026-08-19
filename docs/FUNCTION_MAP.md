@@ -41,7 +41,10 @@
 
 | Function | Description | Dependencies | Returns |
 |----------|-------------|--------------|---------|
-| `is_early_access(version_data)` | Checks if a version is marked as early access. | — | `bool` |
+| `get_access_kind(version_data)` | Classifies a version's paywall as `ACCESS_FREE`, `ACCESS_EARLY` (timed window, turns free) or `ACCESS_PAID` (permanent Buzz purchase). | `_is_future_timestamp` | `str` |
+| `is_access_gated(version_data)` | True when a version is not free to download — either gated kind. | `get_access_kind` | `bool` |
+| `get_availability_label(version_data)` | Human-readable availability for the detail panel; names the gate instead of echoing `'Public'`. | `get_access_kind`, `_format_timestamp_date` | `str` |
+| `strip_version_suffixes(version_display)` | Recovers the raw version name from a dropdown label (`[Installed]`, `(Early Access)`, `(Paid)`). | `VERSION_NAME_SUFFIXES` | `str` |
 | `get_status_badge_type(item)` | Returns `'new'`, `'updated'`, or `''` based on version publish age. | `datetime`, `timedelta` | `str` |
 | `is_model_nsfw(model_data, nsfw_level)` | Determines NSFW status from metadata and first-image NSFW level. | — | `bool` |
 
@@ -72,7 +75,7 @@
 | Function | Description | Dependencies | Returns |
 |----------|-------------|--------------|---------|
 | `model_list_html(json_data)` | Builds full HTML card grid. Detects installed/outdated/cross-family status. | `filter_versions`, `collect_existing_files`, `get_model_card`, `contenttype_folder`, `_file.FavoriteCreators`, `_file.extract_version_from_ver_name`, `_file.compare_version_parts` | `str` |
-| `filter_versions(item, hide_early_access, current_time)` *(nested)* | Filters out versions with no files or early-access versions. | — | `list` |
+| `filter_versions(item, hide_early_access, hide_paid, current_time)` *(nested)* | Filters out versions with no files; hides early-access and permanently-paid versions independently. | `get_access_kind` | `list` |
 | `collect_existing_files(model_folders)` *(nested)* | Walks folders to collect existing filenames and SHA256 hashes. | `os.walk`, `json.load` | `(dict, dict)` |
 | `get_model_card(item, ...)` *(nested)* | Builds HTML for a single model card (badges, preview, actions). | `_api.get_base_model_short`, `_api.is_model_nsfw` | `str` |
 
@@ -96,7 +99,7 @@
 
 | Function | Description | Dependencies | Returns |
 |----------|-------------|--------------|---------|
-| `update_model_versions(model_id, json_input, base_filter)` | Builds version dropdown, marks installed & early-access versions. | `gl.json_data`, `contenttype_folder`, `normalize_sha256`, `is_early_access` | `gr.update` |
+| `update_model_versions(model_id, json_input, base_filter)` | Builds version dropdown, marks installed, early-access `(Early Access)` and paid `(Paid)` versions. | `gl.json_data`, `contenttype_folder`, `normalize_sha256`, `get_access_kind` | `gr.update` |
 | `update_file_info(model_string, model_version, file_metadata)` | Updates UI fields when a file is selected. Detects install status & misclassification. | `extract_model_info`, `gl.json_data`, `contenttype_folder`, `normalize_sha256`, `sub_folder_value`, `cleaned_name`, `_dl.convert_size` | `tuple[gr.update, ...]` (8 items) |
 | `update_model_info(...)` | Main preview-panel builder (description, permissions, samples, trigger words, install path). | `extract_model_info`, `gl.json_data`, `contenttype_folder`, `is_model_nsfw`, `get_civitai_domain`, `request_civit_api`, `fetch_and_process_image`, `get_local_trigger_words`, `_file.getSubfolders`, `_file.get_companion_banner`, `_file.convertCustomFolder`, `_dl.convert_size` | `tuple[gr.update, ...]` (13 items) |
 
@@ -759,6 +762,25 @@ config_states/*.jsonl      Queue persistence
 6. **Frontend ↔ Backend**
    `select_model()` (JS) → hidden textarea → Python callback → `update_models_dropdown()` → `update_model_info()` → HTML → `inputHTMLPreviewContent()` (JS) → overlay
 
+7. **Local Models Browser (revamp)**
+   `local_load_btn` → `render_local_browser()` → `model_list_html(target='local')` → card → `select_model(..., 'local')` (JS, routes to `#local_model_select`) → `update_local_model_info()` → detail panel. Per-model actions: `rename_installed_model()` (rename file + sidecars), `delete_installed_by_sha256()` (delete), `trigger_local_update()` → existing `update_single_trigger` pipeline.
+
+---
+
+## Local Models Browser (revamp)
+
+| Function | File | Description |
+|----------|------|-------------|
+| `render_local_browser(content_type, base_filter, use_search_term, search_term, tile_count, nsfw)` | `civitai_file_manage.py` | Single-pass scan of local folders (cached SHA256/model-id, `gen_hash=False`). Builds `gl.url_list` + `gl.local_browser_fallback_items`, then renders the grid via `initial_model_page(..., target='local')`. Returns the HTML update for `local_list_html_input`. |
+| `rename_installed_model(sha256, new_name, finish_trigger)` | `civitai_file_manage.py` | Renames the model file located by SHA256 + all sidecars (reuses `_move_associated_files`). Sanitizes the name, preserves extension, aborts if the target already exists. |
+| `_find_model_by_sha256(sha256)` | `civitai_file_manage.py` | Shared helper (used by rename + delete): locates `(root, model_filename, json_path)` by matching the `.json` sidecar's SHA256. |
+| `_get_all_model_folders()` | `civitai_file_manage.py` | Returns all on-disk model folders across known content types. |
+| `update_local_model_info(input)` | `civitai_gui.py` | Local-tab card-click handler; reuses `_api.update_model_info` and routes outputs to the `local_*` detail components. Disables Update for `local_only` (negative id) items. |
+| `model_list_html(json_data, target='')` | `civitai_api.py` | `target='local'` emits card onclick `select_model(..., 'local')` so clicks route to the Local tab selector. Default keeps Browser behavior. |
+| `select_model(..., targetPrefix='')` | `civitai-html.js` | `targetPrefix='local'` writes to `#local_model_select` instead of `#model_select`. |
+
+> Note (v1): rename/delete locate files via the `.json` sidecar SHA256 (same as the existing card delete). Local-only files without a sidecar may not be found. Pagination and move-to-subfolder are planned for v2.
+
 ---
 
 ## Change Log
@@ -766,3 +788,4 @@ config_states/*.jsonl      Queue persistence
 | Date | Version | Notes |
 |------|---------|-------|
 | 2026-05-09 | v0.9.0 | Initial `FUNCTION_MAP.md` covering all major functions across 7 modules. |
+| 2026-06-06 | v0.10.0-revamp | Local Models tab turned into a self-contained browser (card grid + detail + rename/delete/update); bulk organize/validate tools moved into a Maintenance accordion. New: `render_local_browser`, `rename_installed_model`, `_find_model_by_sha256`, `update_local_model_info`; `target` param on `model_list_html`/`initial_model_page`; `targetPrefix` on JS `select_model`. |

@@ -26,11 +26,12 @@ def init():
     if not os.path.exists(config_folder):
         os.mkdir(config_folder)
 
-    global download_queue, last_version, cancel_status, recent_model, last_url, json_data, json_info, main_folder, previous_inputs, download_fail, sortNewest, isDownloading, scan_files, from_update_tab, url_list, print, subfolder_json, organization_backup_file, last_organization_backup, update_mode, update_items, local_browser_fallback_items
+    global download_queue, last_version, cancel_status, recent_model, last_url, json_data, local_json_data, json_info, main_folder, previous_inputs, download_fail, sortNewest, isDownloading, scan_files, from_update_tab, url_list, print, subfolder_json, organization_backup_file, last_organization_backup, update_mode, update_items, local_browser_fallback_items, lora_dex_data, lora_dex_page, lora_dex_page_size, lora_dex_pending, current_browser_source
 
     cancel_status = None
     recent_model = None
     json_data = None
+    local_json_data = None   # Local Models tab dataset — kept separate so the tabs don't clobber each other
     json_info = None
     main_folder = None
     previous_inputs = None
@@ -60,6 +61,12 @@ def init():
     update_mode = False
     update_items = []
     local_browser_fallback_items = []
+    current_browser_source = 'civitai'
+    lora_dex_data = []
+    lora_dex_page = 0
+    lora_dex_page_size = 25
+    lora_dex_pending = {}
+    lora_dex_filters = {}
 
 _print = print
 def print(print_message):

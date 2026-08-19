@@ -10,6 +10,7 @@ import re
 import os
 import io
 import shutil
+import html
 import gradio as gr
 from urllib.parse import urlparse
 from pathlib import Path
@@ -23,6 +24,7 @@ import scripts.civitai_download as _download
 import scripts.civitai_file_manage as _file
 import scripts.civitai_global as gl
 import scripts.civitai_api as _api
+import scripts.browser_sources as _browser_sources
 from scripts.civitai_global import print, debug_print
 
 
@@ -44,6 +46,94 @@ css_path = Path(__file__).resolve().parents[1] / 'style_html.css'
 no_update = False
 last_update_scan = None  # Stores last update scan results for Dashboard summary
 last_dashboard_data = None  # Stores last dashboard scan raw data (categories, top files, orphans)
+
+# LoRA category mapping based on model tags/description (heuristic, same idea as models-info)
+LORA_CATEGORIES = {
+    "Character":  {"character", "celebrity", "person", "people"},
+    "Style":      {"style", "art style", "aesthetic"},
+    "Clothing":   {"clothing", "fashion", "outfit", "costume", "dress", "shirt"},
+    "Concept":    {"concept", "theme", "object", "item", "weapon", "vehicle"},
+    "Pose":       {"pose", "action", "stance", "position", "standing", "sitting"},
+    "Background": {"background", "environment", "scenery", "landscape", "indoor", "outdoor"},
+    "Utility":    {"utility", "tool", "helper", "noise", "offset", "detail"},
+    "Slider":     {"slider", "increase", "decrease", "boost", "reduce", "enhance", "diminish",
+                   "more", "less", "intensify", "weaken", "adjust", "strength"},
+}
+
+
+def _detect_slider_semantics(text):
+    """Detect strong slider semantics in free text.
+
+    Matches patterns like:
+      - "X slider", "slider for X", "slider of X"
+      - "increase X", "decrease X", "boost X", "reduce X"
+      - "more X", "less X", "enhance X", "weaken X"
+      - "X adjuster", "X booster"
+    Returns True if the text strongly suggests a slider LoRA.
+    """
+    if not text:
+        return False
+    t = str(text).lower()
+    slider_patterns = [
+        r'\w+\s+slider',
+        r'slider\s+(?:for|of)\s+\w+',
+        r'(?:increase|decrease|boost|reduce|enhance|diminish|intensify|weaken|adjust)\s+\w+',
+        r'(?:more|less)\s+\w+',
+        r'\w+\s+(?:adjuster|booster)',
+    ]
+    return any(re.search(p, t) for p in slider_patterns)
+
+
+def categorize_lora_by_tags(tags, manual_category=None, description=None, name_hints=None):
+    """Return a category folder name for a LoRA based on its tags/description.
+
+    Args:
+        tags: list of tags from the model/API.
+        manual_category: optional category saved in the .json sidecar
+            (loraCategory). Takes precedence over heuristics. 'Auto'
+            means "fall back to heuristic"; None disables auto-detection.
+        description: optional model description text. Used as a fallback
+            when tags do not match any known category.
+        name_hints: optional list of strings (e.g. CivitAI model name, filename)
+            that can also be inspected by the heuristic. Useful for installed
+            files whose filename or model name contains category clues that are
+            not present in tags/description.
+    """
+    if manual_category and str(manual_category).strip().lower() not in ('', 'auto'):
+        return manual_category
+    if manual_category is None:
+        return None
+
+    hints = list(name_hints or [])
+
+    # Strong slider semantics take precedence over generic keyword matching.
+    all_texts = list(tags or []) + hints + ([description] if description else [])
+    for text in all_texts:
+        if _detect_slider_semantics(text):
+            return 'Slider'
+
+    def _match(texts):
+        for text in texts:
+            if not text:
+                continue
+            text_lower = str(text).strip().lower()
+            for category, keywords in LORA_CATEGORIES.items():
+                for keyword in keywords:
+                    if keyword in text_lower:
+                        return category
+        return None
+
+    category = _match(tags or [])
+    if category:
+        return category
+    category = _match(hints)
+    if category:
+        return category
+    if description:
+        category = _match([description])
+        if category:
+            return category
+    return None
 
 
 def _format_size(size_bytes: int) -> str:
@@ -381,29 +471,35 @@ def delete_model(delete_finish=None, model_filename=None, model_string=None, lis
         model_versions = model_ver
 
     (model_name, ver_value, ver_choices) = _file.card_update(model_versions, model_string, list_versions, False)
-    if not model_json:
-        if model_id != None:
-            selected_content_type = None
-            for item in gl.json_data['items']:
-                if int(item['id']) == int(model_id):
-                    selected_content_type = item['type']
-                    desc = item['description']
-                    break
-
-            if selected_content_type == None:
-                print('Model ID not found in json_data. (delete_model)')
-                return
-    else:
+    selected_content_type = None
+    desc = None
+    if model_json:
         for item in model_json['items']:
             selected_content_type = item['type']
             desc = item['description']
+    elif model_id is not None:
+        items = gl.json_data.get('items', []) if isinstance(gl.json_data, dict) else []
+        for item in items:
+            if _api.model_id_matches(item.get('id'), model_id):
+                selected_content_type = item['type']
+                desc = item['description']
+                break
 
-    model_folder = os.path.join(_api.contenttype_folder(selected_content_type, desc))
+    # Resolve which folders to search. When the content type is unknown — e.g. the
+    # model isn't in the Browser's current json_data, which is common on the isolated
+    # Local tab — fall back to scanning every known model folder instead of aborting.
+    search_folders = []
+    if selected_content_type is not None:
+        folder = _api.contenttype_folder(selected_content_type, desc)
+        if folder:
+            search_folders = [folder]
+    if not search_folders:
+        search_folders = _get_all_model_folders()
 
     # Delete based on provided SHA-256 hash
     if sha256:
         sha256_upper = sha256.upper()
-        for root, _, files in os.walk(model_folder, followlinks=True):
+        for root, files in _walk_model_folders(search_folders):
             for file in files:
                 if file.endswith('.json'):
                     file_path = os.path.join(root, file)
@@ -449,7 +545,7 @@ def delete_model(delete_finish=None, model_filename=None, model_string=None, lis
     filename_to_delete = os.path.splitext(model_filename)[0]
     aria2_file = model_filename + '.aria2'
     if not deleted:
-        for root, dirs, files in os.walk(model_folder, followlinks=True):
+        for root, files in _walk_model_folders(search_folders):
             for file in files:
                 current_file_name = os.path.splitext(file)[0]
                 if filename_to_delete == current_file_name or aria2_file == file:
@@ -481,21 +577,22 @@ def delete_model(delete_finish=None, model_filename=None, model_string=None, lis
         gr.update(value=ver_value, choices=ver_choices)  # Version List
     )
 
-def delete_installed_by_sha256(sha256, delete_finish=None):
+def _walk_model_folders(folders):
+    """Yield (root, files) for every directory under each model folder.
+
+    Flattens os.walk across multiple roots so delete paths can search either a
+    single content-type folder or every known model folder with identical code.
     """
-    Simplified delete function for installed models using only SHA256.
-    Searches all model folders for a match and deletes the model.
-    """
-    if not sha256:
-        print("No SHA256 provided for deletion")
-        return gr.update(value=_download.random_number(delete_finish))
-    
-    sha256_upper = sha256.upper()
-    
-    # Get all content types to search
-    content_types = ['Checkpoint', 'LORA', 'LoCon', 'DoRA', 'VAE', 'Controlnet', 'Poses', 
+    for folder in folders:
+        for root, _, files in os.walk(folder, followlinks=True):
+            yield root, files
+
+
+def _get_all_model_folders():
+    """Return all on-disk model folders across known content types."""
+    content_types = ['Checkpoint', 'LORA', 'LoCon', 'DoRA', 'VAE', 'Controlnet', 'Poses',
                      'TextualInversion', 'Upscaler', 'MotionModule', 'Workflows', 'Detection', 'Other', 'Wildcards']
-    
+
     folders_to_check = []
     for content_type in content_types:
         if content_type == 'Upscaler':
@@ -507,67 +604,265 @@ def delete_installed_by_sha256(sha256, delete_finish=None):
             folder = _api.contenttype_folder(content_type)
             if folder and folder not in folders_to_check:
                 folders_to_check.append(folder)
-    
-    deleted = False
-    for model_folder in folders_to_check:
-        if deleted:
-            break
+    return folders_to_check
+
+
+def _find_model_by_sha256(sha256):
+    """Locate an installed model file by its SHA256 (matched via the .json sidecar).
+
+    The saved JSON has no 'file.name' key, so we find the model file that shares the
+    same base name as the matching sidecar (json_base must be joined with root for exists()).
+
+    Returns (root_dir, model_filename, json_path) or (None, None, None).
+    """
+    if not sha256:
+        return None, None, None
+
+    sha256_upper = sha256.upper()
+    model_extensions = ['.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.zip', '.vae', '.th', '.gguf']
+
+    def _sidecar_matches(data):
+        """True if the sidecar metadata carries the target SHA256.
+
+        Handles both the flat 'sha256' field written by this extension and the
+        nested files[].hashes.SHA256 form found in full model / .api_info.json blobs.
+        """
+        if not data:
+            return False
+        if (data.get('sha256') or '').upper() == sha256_upper:
+            return True
+        files = data.get('files')
+        if isinstance(files, list):
+            for entry in files:
+                hashes = entry.get('hashes') if isinstance(entry, dict) else None
+                if isinstance(hashes, dict) and (hashes.get('SHA256') or '').upper() == sha256_upper:
+                    return True
+        return False
+
+    for model_folder in _get_all_model_folders():
         for root, _, files in os.walk(model_folder, followlinks=True):
             for file in files:
-                if file.endswith('.json'):
-                    file_path = os.path.join(root, file)
-                    data = _api.safe_json_load(file_path)
-                    if not data:
+                if not file.endswith('.json'):
+                    continue
+                json_path = os.path.join(root, file)
+                if not _sidecar_matches(_api.safe_json_load(json_path)):
+                    continue
+
+                # Strip '.json' and an optional '.api_info' to get the model base name.
+                json_base = os.path.splitext(file)[0]
+                if json_base.endswith('.api_info'):
+                    json_base = json_base[:-len('.api_info')]
+                for ext in model_extensions:
+                    candidate = os.path.join(root, json_base + ext)
+                    if os.path.exists(candidate):
+                        return root, os.path.basename(candidate), json_path
+    return None, None, None
+
+
+MODEL_FILE_EXTENSIONS = ['.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.zip', '.vae', '.th', '.gguf']
+
+
+def build_installed_index():
+    """Walk every model folder ONCE and index installed files for batch operations.
+
+    A bulk download otherwise re-walks the whole model tree per model (once in
+    _resolve_versions_to_download for installed-version detection, once in
+    find_installed_file_by_model_id for retention) — O(models x files). This
+    single pass returns reusable lookups so the per-model cost drops to O(1):
+
+      {'hashes': {SHA256...}, 'ver_ids': {modelVersionId...},
+       'by_model_id': {modelId: [model_file_path, ...]}}
+    """
+    index = {'hashes': set(), 'ver_ids': set(), 'by_model_id': {}}
+    for model_folder in _get_all_model_folders():
+        for root, _, files in os.walk(model_folder, followlinks=True):
+            fileset = set(files)
+            for file in files:
+                if not file.endswith('.json'):
+                    continue
+                data = _api.safe_json_load(os.path.join(root, file))
+                if not data:
+                    continue
+                sha = data.get('sha256') or ''
+                if sha:
+                    index['hashes'].add(sha.upper())
+                vid = data.get('modelVersionId')
+                if vid is not None:
+                    try:
+                        index['ver_ids'].add(int(vid))
+                    except (ValueError, TypeError):
+                        pass
+                sidecar_id = data.get('modelId')
+                if sidecar_id is None and isinstance(data.get('model'), dict):
+                    sidecar_id = data['model'].get('id')
+                try:
+                    mid = int(sidecar_id)
+                except (TypeError, ValueError):
+                    continue
+                json_base = os.path.splitext(file)[0]
+                for ext in MODEL_FILE_EXTENSIONS:
+                    if (json_base + ext) in fileset:
+                        index['by_model_id'].setdefault(mid, []).append(os.path.join(root, json_base + ext))
+                        break
+    return index
+
+
+def find_installed_file_by_model_id(model_id, exclude_filename=None, index=None):
+    """Locate an installed model file by its CivitAI modelId (via the .json sidecar).
+
+    Retention fallback for updates triggered without a prior update-scan (e.g. from the
+    Local Models browser): when gl.update_items has no entry, we still need the path of
+    the currently-installed version so it can be removed/trashed per the retention policy.
+
+    Returns the full path of an installed file for this model whose base name differs
+    from exclude_filename, or '' if none is found. Pass a prebuilt index from
+    build_installed_index() to avoid re-walking the tree (used by batch downloads).
+    """
+    try:
+        target_id = int(model_id)
+    except (TypeError, ValueError):
+        return ''
+
+    exclude_base = os.path.splitext(exclude_filename)[0] if exclude_filename else None
+    model_extensions = MODEL_FILE_EXTENSIONS
+
+    if index is not None:
+        for path in index.get('by_model_id', {}).get(target_id, []):
+            if exclude_base and os.path.splitext(os.path.basename(path))[0] == exclude_base:
+                continue
+            return path
+        return ''
+
+    for model_folder in _get_all_model_folders():
+        for root, _, files in os.walk(model_folder, followlinks=True):
+            for file in files:
+                if not file.endswith('.json'):
+                    continue
+                data = _api.safe_json_load(os.path.join(root, file))
+                if not data:
+                    continue
+                sidecar_id = data.get('modelId')
+                if sidecar_id is None and isinstance(data.get('model'), dict):
+                    sidecar_id = data['model'].get('id')
+                try:
+                    if int(sidecar_id) != target_id:
                         continue
-                    
-                    file_sha256 = data.get('sha256', '').upper()
-                    if file_sha256 == sha256_upper:
-                        # Found matching model!
-                        model_name = data.get('model', {}).get('name', 'Unknown Model')
-                        print(f"Found model to delete: {model_name} (SHA256: {sha256_upper})")
-                        
-                        # Find the model file that shares the same base name as this
-                        # JSON sidecar. The saved JSON has no 'file.name' key, so we
-                        # scan the directory directly using a full path (json_base is
-                        # just a filename — joining with root is required for exists()).
-                        json_base = os.path.splitext(file)[0]
-                        model_extensions = ['.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.zip', '.vae', '.th']
-                        model_filename = ''
-                        for ext in model_extensions:
-                            candidate = os.path.join(root, json_base + ext)
-                            if os.path.exists(candidate):
-                                model_filename = os.path.basename(candidate)
-                                break
-                        
-                        if model_filename:
-                            # Delete model file
-                            model_file_path = os.path.join(root, model_filename)
-                            if os.path.exists(model_file_path):
-                                try:
-                                    send2trash(model_file_path)
-                                    print(f"Model moved to trash: {model_file_path}")
-                                except:
-                                    os.remove(model_file_path)
-                                    print(f"Model deleted: {model_file_path}")
-                                
-                                # Delete associated files
-                                base_filename = os.path.splitext(model_filename)[0]
-                                delete_associated_files(root, base_filename)
-                                
-                                deleted = True
-                                break
-                        else:
-                            print(f"Could not find model file for JSON: {file_path}")
-            
-            if deleted:
+                except (TypeError, ValueError):
+                    continue
+
+                json_base = os.path.splitext(file)[0]
+                if exclude_base and json_base == exclude_base:
+                    continue
+                for ext in model_extensions:
+                    candidate = os.path.join(root, json_base + ext)
+                    if os.path.exists(candidate):
+                        return candidate
+    return ''
+
+
+def delete_installed_by_sha256(sha256, delete_finish=None, model_id=None, model_filename=None):
+    """
+    Delete an installed model located primarily by SHA256, with fallbacks so models
+    whose sidecar hash is missing/mismatched (manually-added or renamed files) can
+    still be removed:
+      1. SHA256 match via sidecar (.json / .api_info.json).
+      2. CivitAI modelId via sidecar.
+      3. On-disk filename base-name scan.
+    """
+    root, found_filename, _ = _find_model_by_sha256(sha256) if sha256 else (None, None, None)
+
+    # Fallback 1: locate by CivitAI modelId via sidecar.
+    if not found_filename and model_id:
+        path = find_installed_file_by_model_id(model_id)
+        if path:
+            root, found_filename = os.path.dirname(path), os.path.basename(path)
+
+    # Fallback 2: locate by on-disk filename base name.
+    if not found_filename and model_filename:
+        target_base = os.path.splitext(os.path.basename(model_filename))[0]
+        model_extensions = ('.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.zip', '.vae', '.th', '.gguf')
+        for model_folder in _get_all_model_folders():
+            for r, _, files in os.walk(model_folder, followlinks=True):
+                for f in files:
+                    base, ext = os.path.splitext(f)
+                    if base == target_base and ext.lower() in model_extensions:
+                        root, found_filename = r, f
+                        break
+                if found_filename:
+                    break
+            if found_filename:
                 break
-    
-    if deleted:
-        print(f"Successfully deleted model with SHA256: {sha256_upper}")
-    else:
-        print(f"Could not find model with SHA256: {sha256_upper}")
-    
+
+    if not found_filename:
+        print(f"Delete failed: could not locate model "
+              f"(sha256={(sha256 or '').upper() or 'none'}, "
+              f"model_id={model_id or 'none'}, filename={model_filename or 'none'})")
+        return gr.update(value=_download.random_number(delete_finish))
+
+    model_file_path = os.path.join(root, found_filename)
+    use_trash = getattr(opts, 'civitai_neo_delete_to_trash', True)
+    try:
+        if use_trash:
+            send2trash(model_file_path)
+            print(f"Model moved to trash: {model_file_path}")
+        else:
+            os.remove(model_file_path)
+            print(f"Model deleted: {model_file_path}")
+    except Exception:
+        os.remove(model_file_path)
+        print(f"Model deleted: {model_file_path}")
+
+    # Delete associated files (sidecars, previews, numbered images)
+    base_filename = os.path.splitext(found_filename)[0]
+    delete_associated_files(root, base_filename)
+
+    print(f"Successfully deleted model: {model_file_path}")
     return gr.update(value=_download.random_number(delete_finish))
+
+
+def rename_installed_model(sha256, new_name, finish_trigger=None):
+    """Rename an installed model file (and all sidecars) on disk, located by SHA256.
+
+    `new_name` is the desired base name (extension is preserved). Renaming is a move
+    within the same directory, so we reuse _move_associated_files() for the sidecar
+    cascade (.json, .preview.png, .api_info.json, .html, numbered images, etc.).
+    """
+    if not sha256 or not new_name or not new_name.strip():
+        print("Rename aborted: missing SHA256 or new name")
+        return gr.update(value=_download.random_number(finish_trigger))
+
+    root, model_filename, _ = _find_model_by_sha256(sha256)
+    if not model_filename:
+        print(f"Rename aborted: could not find model with SHA256: {sha256.upper()}")
+        return gr.update(value=_download.random_number(finish_trigger))
+
+    # Sanitize: keep only the base name, strip path separators and invalid characters
+    clean_name = os.path.splitext(os.path.basename(new_name.strip()))[0]
+    clean_name = re.sub(r'[<>:"/\\|?*]', '_', clean_name).strip().rstrip('.')
+    if not clean_name:
+        print("Rename aborted: new name is empty after sanitization")
+        return gr.update(value=_download.random_number(finish_trigger))
+
+    ext = os.path.splitext(model_filename)[1]
+    old_path = os.path.join(root, model_filename)
+    new_path = os.path.join(root, clean_name + ext)
+
+    if os.path.normcase(old_path) == os.path.normcase(new_path):
+        print("Rename skipped: new name is identical to current name")
+        return gr.update(value=_download.random_number(finish_trigger))
+
+    if os.path.exists(new_path):
+        print(f"Rename aborted: a file named '{clean_name + ext}' already exists")
+        return gr.update(value=_download.random_number(finish_trigger))
+
+    try:
+        shutil.move(old_path, new_path)
+        _move_associated_files(old_path, new_path)
+        print(f"Renamed model: {model_filename} -> {clean_name + ext}")
+    except Exception as e:
+        print(f"Rename failed: {e}")
+
+    return gr.update(value=_download.random_number(finish_trigger))
 
 ## === ANXETY EDITs ===
 def delete_associated_files(directory, base_name):
@@ -635,22 +930,53 @@ def _trash_associated_files(directory, base_name, trash_dir):
                 print(f'[Retention] Moved adjacent image to _Trash: {dest}')
 
 
-def _resize_image_bytes(image_bytes, target_size=512):
-    """Resize image bytes to target_size on the longer side, keeping aspect ratio"""
+def _resize_image_bytes(image_bytes, target_size=512, fmt='PNG', quality=90):
+    """Resize image bytes to target_size on the longer side, keeping aspect ratio.
+    If target_size is None, only encode/re-encode without resizing."""
     image = Image.open(io.BytesIO(image_bytes))
-    width, height = image.size
 
-    if width > height:
-        new_size = (target_size, int(height * target_size / width))
+    if target_size is not None:
+        width, height = image.size
+        if width > height:
+            new_size = (target_size, int(height * target_size / width))
+        else:
+            new_size = (int(width * target_size / height), target_size)
+        resized_image = image.resize(new_size, Image.LANCZOS)
     else:
-        new_size = (int(width * target_size / height), target_size)
+        resized_image = image
 
-    resized_image = image.resize(new_size, Image.LANCZOS)
+    # JPEG cannot encode alpha; flatten transparency onto white background
+    if fmt.upper() == 'JPEG':
+        if resized_image.mode in ('RGBA', 'LA') or (resized_image.mode == 'P' and 'transparency' in resized_image.info):
+            background = Image.new('RGB', resized_image.size, (255, 255, 255))
+            background.paste(resized_image, mask=resized_image.split()[3] if resized_image.mode == 'RGBA' else None)
+            resized_image = background
+        elif resized_image.mode != 'RGB':
+            resized_image = resized_image.convert('RGB')
 
     output = io.BytesIO()
-    resized_image.save(output, format="PNG")
+    save_kwargs = {'format': fmt.upper()}
+    if fmt.upper() == 'JPEG':
+        save_kwargs['quality'] = quality
+    resized_image.save(output, **save_kwargs)
     output.seek(0)
     return output.getvalue()  # Return bytes, not BytesIO object
+
+
+def _preview_file_matches(file_entry, local_file, sha256=None):
+    """Match a canonical file by SHA256, falling back to its exact filename."""
+    expected_hash = str(sha256 or '').strip().upper()
+    entry_hash = str((file_entry.get('hashes') or {}).get('SHA256') or '').strip().upper()
+    if expected_hash and entry_hash and expected_hash == entry_hash:
+        return True, 'sha256'
+
+    entry_name = Path(str(file_entry.get('name') or '')).name.casefold()
+    local_name = Path(local_file).name.casefold()
+    if entry_name and entry_name == local_name:
+        return True, 'filename'
+
+    return False, None
+
 
 def save_preview(file_path, api_response, overwrite_toggle=False, sha256=None):
     proxies, ssl = _api.get_proxies()
@@ -658,10 +984,22 @@ def save_preview(file_path, api_response, overwrite_toggle=False, sha256=None):
     install_path = file_path.parent
     name = file_path.stem
     json_file = file_path.with_suffix('.json')
-    image_path = install_path / f"{name}.preview.png"
 
-    if not overwrite_toggle and image_path.exists():
-        return
+    preview_fmt = getattr(opts, 'preview_format', 'PNG')
+    jpeg_quality = getattr(opts, 'preview_jpeg_quality', 90)
+    ext = '.preview.jpg' if preview_fmt == 'JPEG' else '.preview.png'
+    image_path = install_path / f"{name}{ext}"
+    alt_ext = '.preview.png' if preview_fmt == 'JPEG' else '.preview.jpg'
+    alt_image_path = install_path / f"{name}{alt_ext}"
+
+    debug_print(
+        f"[Preview] start file={file_path.name!r} target={image_path.name!r} "
+        f"sha256={str(sha256 or '')[:12]}... overwrite={overwrite_toggle}"
+    )
+
+    if not overwrite_toggle and (image_path.exists() or alt_image_path.exists()):
+        debug_print(f"[Preview] skipped: preview already exists for {file_path.name!r}")
+        return False
 
     if not sha256 and json_file.exists():
         data = json.loads(json_file.read_text(encoding='utf-8'))
@@ -670,41 +1008,107 @@ def save_preview(file_path, api_response, overwrite_toggle=False, sha256=None):
     elif sha256:
         sha256 = sha256.upper()
 
-    for item in api_response['items']:
-        for version in item['modelVersions']:
-            for file_entry in version['files']:
-                if file_entry['hashes'].get('SHA256') == sha256:
-                    for image in version['images']:
-                        if image['type'] == 'image':
-                            url_with_width = re.sub(r'/width=\d+', f"/width={image['width']}", image['url'])
-                            response = requests.get(url_with_width, proxies=proxies, verify=ssl)
+    items = api_response.get('items', []) if isinstance(api_response, dict) else []
+    if not items:
+        debug_print(f"[Preview] skipped: model JSON has no items for {file_path.name!r}")
+        return False
 
-                            if response.status_code == 200:
-                                # Check if resize is enabled for saved previews
-                                resize_saved = getattr(opts, 'resize_preview_on_save', True)
-                                if resize_saved:
-                                    resize_size = getattr(opts, 'resize_preview_size', 512)
-                                    image_data = _resize_image_bytes(response.content, resize_size)
-                                else:
-                                    # Save original size
-                                    image_data = response.content
+    available_files = []
+    for item in items:
+        for version in item.get('modelVersions', []):
+            for file_entry in version.get('files', []):
+                available_files.append({
+                    'name': file_entry.get('name'),
+                    'sha256': (file_entry.get('hashes') or {}).get('SHA256'),
+                })
+                matched, matched_by = _preview_file_matches(file_entry, file_path, sha256)
+                if not matched:
+                    continue
 
-                                if IS_KAGGLE:
-                                    import sd_image_encryption  # Import Module for Encrypt Image
-                                    img = Image.open(io.BytesIO(image_data))
-                                    imginfo = img.info or {}
-                                    if not all(key in imginfo for key in ['Encrypt', 'EncryptPwdSha']):
-                                        sd_image_encryption.EncryptedImage.from_image(img).save(image_path)
-                                else:
-                                    image_path.write_bytes(image_data)
+                images = version.get('images', [])
+                debug_print(
+                    f"[Preview] matched by {matched_by}: file={file_entry.get('name')!r}, "
+                    f"images={len(images)}"
+                )
+                for image in images:
+                    if image.get('type', 'image') != 'image':
+                        continue
+                    image_url = image.get('url')
+                    if not image_url:
+                        debug_print("[Preview] skipped image entry without URL")
+                        continue
+                    image_width = image.get('width')
+                    url_with_width = (
+                        re.sub(r'/width=\d+', f"/width={image_width}", image_url)
+                        if image_width else image_url
+                    )
+                    try:
+                        response = requests.get(
+                            url_with_width,
+                            headers=_api.get_headers(),
+                            proxies=proxies,
+                            verify=ssl,
+                            timeout=(60, 30),
+                        )
+                    except requests.exceptions.RequestException as exc:
+                        debug_print(f"[Preview] image request failed: {exc}")
+                        continue
 
-                                print(f"Preview saved at: {image_path}")
-                            else:
-                                print(f"Failed to save preview. Status code: {response.status_code}")
-                            return
+                    debug_print(f"[Preview] image response status={response.status_code}")
+                    if response.status_code != 200:
+                        continue
 
-                    print(f"No preview images found for '{name}'")
-                    return
+                    try:
+                        resize_saved = getattr(opts, 'resize_preview_on_save', True)
+                        resize_size = getattr(opts, 'resize_preview_size', 512)
+
+                        if preview_fmt == 'JPEG':
+                            image_data = _resize_image_bytes(
+                                response.content,
+                                resize_size if resize_saved else None,
+                                fmt='JPEG',
+                                quality=jpeg_quality
+                            )
+                        elif resize_saved:
+                            image_data = _resize_image_bytes(response.content, resize_size)
+                        else:
+                            image_data = response.content
+
+                        if IS_KAGGLE:
+                            import sd_image_encryption  # Import Module for Encrypt Image
+                            img = Image.open(io.BytesIO(image_data))
+                            imginfo = img.info or {}
+                            if not all(key in imginfo for key in ['Encrypt', 'EncryptPwdSha']):
+                                sd_image_encryption.EncryptedImage.from_image(img).save(image_path)
+                        else:
+                            image_path.write_bytes(image_data)
+                    except Exception as exc:
+                        debug_print(f"[Preview] image processing failed: {type(exc).__name__}: {exc}")
+                        continue
+
+                    if alt_image_path.exists():
+                        try:
+                            send2trash(str(alt_image_path))
+                            print(f"Removed old preview: {alt_image_path}")
+                        except Exception:
+                            try:
+                                os.remove(alt_image_path)
+                                print(f"Removed old preview: {alt_image_path}")
+                            except Exception as _e:
+                                print(f"Could not remove old preview {alt_image_path}: {_e}")
+
+                    print(f"Preview saved at: {image_path}")
+                    debug_print(f"[Preview] saved successfully: {image_path}")
+                    return True
+
+                debug_print(f"[Preview] no usable preview image for matched file {file_path.name!r}")
+                return False
+
+    debug_print(
+        f"[Preview] no matching file for name={file_path.name!r}, sha256={sha256!r}; "
+        f"available={available_files}"
+    )
+    return False
 
 def get_image_path(install_path, api_response, sub_folder):
     image_location = getattr(opts, 'image_location', '')
@@ -752,6 +1156,10 @@ def save_images(preview_html, model_filename, install_path, sub_folder, api_resp
 
     name = os.path.splitext(model_filename)[0]
 
+    preview_fmt = getattr(opts, 'preview_format', 'PNG')
+    jpeg_quality = getattr(opts, 'preview_jpeg_quality', 90)
+    img_ext = '.jpg' if preview_fmt == 'JPEG' else '.png'
+
     # Setup download
     opener = urllib.request.build_opener()
     opener.addheaders = [('User-agent', 'Mozilla/5.0')]
@@ -760,7 +1168,7 @@ def save_images(preview_html, model_filename, install_path, sub_folder, api_resp
     # Download images
     downloaded_count = 0
     for i, img_url in enumerate(img_urls):
-        filename = f"{name}_{i}.png"
+        filename = f"{name}_{i}{img_ext}"
         img_url = urllib.parse.quote(img_url, safe=':/=')
         try:
             with urllib.request.urlopen(img_url) as url:
@@ -768,16 +1176,15 @@ def save_images(preview_html, model_filename, install_path, sub_folder, api_resp
 
                 # Check if resize is enabled for saved images
                 resize_saved = getattr(opts, 'resize_preview_on_save', True)
-                if resize_saved:
-                    resize_size = getattr(opts, 'resize_preview_size', 512)
-                    image_data = _resize_image_bytes(image_data, resize_size)
+                if resize_saved or preview_fmt == 'JPEG':
+                    resize_size = getattr(opts, 'resize_preview_size', 512) if resize_saved else None
+                    image_data = _resize_image_bytes(
+                        image_data, resize_size,
+                        fmt='JPEG' if preview_fmt == 'JPEG' else 'PNG',
+                        quality=jpeg_quality
+                    )
 
                 img = Image.open(io.BytesIO(image_data))
-
-                if img.mode in ('RGBA', 'LA', 'P'):
-                    pass  # Keep transparency
-                elif img.mode != 'RGB':
-                    img = img.convert('RGB')
 
                 save_path = os.path.join(image_path, filename)
 
@@ -787,9 +1194,29 @@ def save_images(preview_html, model_filename, install_path, sub_folder, api_resp
                     if not all(key in imginfo for key in ['Encrypt', 'EncryptPwdSha']):
                         sd_image_encryption.EncryptedImage.from_image(img).save(save_path)
                     else:
-                        img.save(save_path, 'PNG')
+                        if preview_fmt == 'JPEG':
+                            img.save(save_path, 'JPEG', quality=jpeg_quality)
+                        else:
+                            img.save(save_path, 'PNG')
                 else:
-                    img.save(save_path, 'PNG')
+                    if preview_fmt == 'JPEG':
+                        img.save(save_path, 'JPEG', quality=jpeg_quality)
+                    else:
+                        img.save(save_path, 'PNG')
+
+                # Remove gallery image in the alternate extension to avoid duplicates
+                alt_img_ext = '.png' if preview_fmt == 'JPEG' else '.jpg'
+                alt_img_path = os.path.join(image_path, f"{name}_{i}{alt_img_ext}")
+                if os.path.exists(alt_img_path):
+                    try:
+                        send2trash(alt_img_path)
+                        print(f"Removed old gallery image: {os.path.basename(alt_img_path)}")
+                    except Exception:
+                        try:
+                            os.remove(alt_img_path)
+                            print(f"Removed old gallery image: {os.path.basename(alt_img_path)}")
+                        except Exception as _e:
+                            print(f"Could not remove old gallery image {alt_img_path}: {_e}")
 
                 print(f"Downloaded image: {filename}")
                 downloaded_count += 1
@@ -842,7 +1269,7 @@ def card_update(gr_components, model_name, list_versions, is_install):
 
 def list_files(folders):
     model_files = []
-    extensions = ['.pt', '.ckpt', '.pth', '.safetensors', '.th', '.zip', '.vae']
+    extensions = ['.pt', '.ckpt', '.pth', '.safetensors', '.th', '.zip', '.vae', '.gguf']
 
     for folder in folders:
         if folder and os.path.exists(folder):
@@ -908,7 +1335,7 @@ def _build_local_fallback_browser_item(file_path):
 
     published_at = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime(mtime))
 
-    return {
+    item = {
         'id': local_id,
         'name': model_name,
         'type': content_type,
@@ -940,6 +1367,33 @@ def _build_local_fallback_browser_item(file_path):
             }]
         }]
     }
+
+    # If resolve_civarchive_issues() already recovered real CivitAI-style
+    # metadata for this file (removed listing found on CivArchive), use it
+    # to enrich this fallback card instead of the empty stub above — the
+    # synthetic local 'id' and modelVersions[0]['id'] are kept unchanged so
+    # any code matching cards by that id keeps working.
+    api_info_file = os.path.splitext(file_path)[0] + '.api_info.json'
+    if os.path.exists(api_info_file):
+        try:
+            api_data = _api.safe_json_load(api_info_file) or {}
+        except Exception:
+            api_data = {}
+        if api_data.get('source') == 'civarchive':
+            item['description'] = api_data.get('description') or item['description']
+            item['tags'] = api_data.get('tags') or item['tags']
+            if api_data.get('creator'):
+                item['creator'] = api_data['creator']
+            item['civarchive_url'] = api_data.get('archived_url')
+
+            archived_versions = api_data.get('modelVersions') or []
+            if archived_versions:
+                archived_version = archived_versions[0]
+                item['modelVersions'][0]['baseModel'] = archived_version.get('baseModel') or item['modelVersions'][0]['baseModel']
+                item['modelVersions'][0]['trainedWords'] = archived_version.get('trainedWords') or []
+                item['modelVersions'][0]['images'] = archived_version.get('images') or []
+
+    return item
 
 def gen_sha256(file_path):
     json_file = os.path.splitext(file_path)[0] + '.json'
@@ -1013,7 +1467,7 @@ def _save_checkpoint_hash_db(db_data):
 
 def _is_checkpoint_file(file_path):
     ext = os.path.splitext(file_path)[1].lower()
-    return ext in ('.safetensors', '.ckpt')
+    return ext in ('.safetensors', '.ckpt', '.gguf')
 
 
 def _checkpoint_cache_key(file_path):
@@ -1198,7 +1652,7 @@ def sync_checkpoint_sha256_cache(progress=gr.Progress() if queue else None):
     return gr.update(value=summary)
 
 def convert_local_images(html):
-    soup = BeautifulSoup(html)
+    soup = BeautifulSoup(html, 'html.parser')
     for simg in soup.find_all('img', attrs={'data-sampleimg': 'true'}):
         url = urlparse(simg['src'])
         path = url.path
@@ -1219,6 +1673,28 @@ def convert_local_images(html):
         simg['src'] = f"data:image/{imgtype};base64,{b64img}"
     return str(soup)
 
+# Saved .html sidecars generated before commit c57089f wired the primary
+# "Send to txt2img" button to sendImgUrl(url) — which re-downloads the image and
+# reads its embedded PNG params. CivitAI re-encodes/strips that metadata (and
+# ComfyUI images have none A1111 can read), so the button fails or pastes a giant
+# blob. The card meta is already in the cached HTML (the data-key rows), so rewire
+# the button to sendToTxt2img(this, url), which builds the infotext from that meta.
+# The no-meta retry button (class civitai-meta-retry) intentionally keeps sendImgUrl.
+_OLD_SEND_BTN_RE = re.compile(
+    r'''onclick="sendImgUrl\(('[^']*')\)"\s+class="civitai-txt2img-btn">Send to txt2img<'''
+)
+
+
+def _upgrade_cached_send_button(html: str | None) -> str | None:
+    """Rewrite the stale 'Send to txt2img' button in cached HTML to use card meta."""
+    if not html:
+        return html
+    return _OLD_SEND_BTN_RE.sub(
+        r'onclick="sendToTxt2img(this, \1)" class="civitai-txt2img-btn">Send to txt2img<',
+        html,
+    )
+
+
 def _get_cached_html_stripped(model_file) -> str | None:
     """Return stripped (no <head> section) content from the local .html cache, or None if absent."""
     if not model_file:
@@ -1231,7 +1707,7 @@ def _get_cached_html_stripped(model_file) -> str | None:
     index = html.find('</head>')
     if index != -1:
         html = html[index + len('</head>'):]
-    return html
+    return _upgrade_cached_send_button(html)
 
 
 def _wrap_html_with_css(body: str) -> str:
@@ -1242,10 +1718,18 @@ def _wrap_html_with_css(body: str) -> str:
     return f'<head><style>{css}</style></head>{body}'
 
 
+# Marks a cached .html sidecar whose sample-image gallery failed to load at save
+# time (e.g. CivitAI's model-versions endpoint 404ing on a just-published version
+# before its search index caught up — see civitai_api.py's selected_version images
+# fallback). model_from_sent uses this to treat the cache as a miss and rebuild it.
+_STALE_HTML_MARKER = 'Unable to load preview images'
+
+
 def model_from_sent(model_name, content_type):
     modelID_failed = False
     output_html = None
     model_file = None
+    needs_sidecar_rebuild = False
     use_local_html = getattr(opts, 'use_local_html', False)
     local_path_in_html = getattr(opts, 'local_path_in_html', False)
 
@@ -1260,14 +1744,33 @@ def model_from_sent(model_name, content_type):
     elif 'detection' in content_type:
         content_type = ['Detection']
 
-    extensions = ['.pt', '.ckpt', '.pth', '.safetensors', '.th', '.zip', '.vae']
+    extensions = ('.pt', '.ckpt', '.pth', '.safetensors', '.th', '.zip', '.vae', '.gguf')
 
+    # A card's name is the filename stem, so prefer an EXACT stem match
+    # (model_name == file without extension). Only fall back to a prefix match when
+    # nothing matches exactly — otherwise models sharing a prefix (e.g. "Char" vs
+    # "Char - Outfit" vs "Char v2") would resolve to the wrong file (the old code
+    # used startswith and kept the LAST match).
+    target_stem = os.path.basename(model_name)
+    exact_file = None
+    prefix_file = None
     for content_type_item in content_type:
         folder = _api.contenttype_folder(content_type_item)
         for folder_path, _, files in os.walk(folder, followlinks=True):
             for file in files:
-                if file.startswith(model_name) and file.endswith(tuple(extensions)):
-                    model_file = os.path.join(folder_path, file)
+                if not file.endswith(extensions):
+                    continue
+                full_path = os.path.join(folder_path, file)
+                if os.path.splitext(file)[0] == target_stem:
+                    exact_file = full_path
+                    break
+                if prefix_file is None and file.startswith(model_name):
+                    prefix_file = full_path
+            if exact_file:
+                break
+        if exact_file:
+            break
+    model_file = exact_file or prefix_file
 
     if not model_file:
         output_html = _api.api_error_msg('path_not_found')
@@ -1284,8 +1787,15 @@ def model_from_sent(model_name, content_type):
                 index = output_html.find('</head>')
                 if index != -1:
                     output_html = output_html[index + len('</head>'):]
+                output_html = _upgrade_cached_send_button(output_html)
                 if local_path_in_html:
                     output_html = convert_local_images(output_html)
+                if _STALE_HTML_MARKER in output_html:
+                    # Cached gallery failed to load previously — refetch below instead
+                    # of serving the broken cache again, and rebuild the sidecar so
+                    # future clicks don't hit this same stale cache.
+                    output_html = None
+                    needs_sidecar_rebuild = True
 
     if not output_html:
         api_response = None
@@ -1335,6 +1845,14 @@ def model_from_sent(model_name, content_type):
             model_versions = _api.update_model_versions(modelID, api_response)
             output_html = _api.update_model_info(None, model_versions.get('value'), True, modelID, api_response, True)
 
+        if needs_sidecar_rebuild and output_html and _STALE_HTML_MARKER not in output_html:
+            try:
+                install_path, model_filename = os.path.split(model_file)
+                sub_folder = os.path.normpath(os.path.relpath(install_path, gl.main_folder))
+                save_model_info(install_path, model_filename, sub_folder, sha256=file_sha256, preview_html=output_html, overwrite_toggle=True, api_response=api_response)
+            except Exception as e:
+                print(f"[CivitAI Browser Neo] - Could not rebuild stale sidecar for '{model_file}': {e}")
+
     css_path = Path(__file__).resolve().parents[1] / 'style_html.css'
     with open(css_path, 'r', encoding='utf-8') as css_file:
         css = css_file.read()
@@ -1342,6 +1860,11 @@ def model_from_sent(model_name, content_type):
     style_tag = f'<style>{css}</style>'
     head_section = f'<head>{style_tag}</head>'
     output_html = str(head_section + output_html)
+
+    # Inject Mark-for-review block into the overlay HTML
+    from scripts.civitai_local_review import _build_review_button_html, _inject_review_block_into_model_html
+    review_html = _build_review_button_html(model_file)
+    output_html = _inject_review_block_into_model_html(output_html, review_html)
 
     # debug_print(output_html)
     return gr.update(value=output_html, placeholder=_download.random_number()),  # Preview HTML
@@ -1360,14 +1883,33 @@ def send_to_browser(model_name, content_type, click_first_item):
         content_type = ['Checkpoint']
     elif 'lora' in content_type:
         content_type = ['LORA']
-    extensions = ['.pt', '.ckpt', '.pth', '.safetensors', '.th', '.zip', '.vae']
+    extensions = ('.pt', '.ckpt', '.pth', '.safetensors', '.th', '.zip', '.vae', '.gguf')
 
+    # A card's name is the filename stem, so prefer an EXACT stem match
+    # (model_name == file without extension). Only fall back to a prefix match when
+    # nothing matches exactly — otherwise models sharing a prefix (e.g. "Char" vs
+    # "Char - Outfit" vs "Char v2") would resolve to the wrong file (the old code
+    # used startswith and kept the LAST match).
+    target_stem = os.path.basename(model_name)
+    exact_file = None
+    prefix_file = None
     for content_type_item in content_type:
         folder = _api.contenttype_folder(content_type_item)
         for folder_path, _, files in os.walk(folder, followlinks=True):
             for file in files:
-                if file.startswith(model_name) and file.endswith(tuple(extensions)):
-                    model_file = os.path.join(folder_path, file)
+                if not file.endswith(extensions):
+                    continue
+                full_path = os.path.join(folder_path, file)
+                if os.path.splitext(file)[0] == target_stem:
+                    exact_file = full_path
+                    break
+                if prefix_file is None and file.startswith(model_name):
+                    prefix_file = full_path
+            if exact_file:
+                break
+        if exact_file:
+            break
+    model_file = exact_file or prefix_file
 
     if not model_file:
         output_html = _api.api_error_msg('path_not_found')
@@ -1556,6 +2098,25 @@ def make_dir(path):
     except Exception as e:
         print(f"Error creating directory: {e}")
 
+def _normalize_model_id(value):
+    """
+    Normalize a modelId to int for comparisons/dict lookups.
+
+    The .json sidecar has stored modelId as either an int or a string
+    across different versions of this extension, while CivitAI's API
+    always returns it as an int (or as an int-shaped string in URL
+    params). Comparing/looking-up without normalizing causes silent
+    false mismatches (e.g. "1456174" != 1456174).
+    Returns None if value can't be parsed as an int.
+    """
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 ## === ANXETY EDITs ===
 def save_model_info(install_path, file_name, sub_folder, sha256=None, preview_html=None, overwrite_toggle=False, api_response=None):
     save_path, filename = get_save_path_and_name(install_path, file_name, api_response, sub_folder)
@@ -1611,6 +2172,18 @@ def save_model_info(install_path, file_name, sub_folder, sha256=None, preview_ht
     # Falls back to gl.json_info (full model object) if the hash lookup fails.
     api_info_path = os.path.join(save_path, f'{filename}.api_info.json')
     if not os.path.exists(api_info_path) or overwrite_toggle:
+        # The by-hash endpoint (and gl.json_info, which reflects whatever model
+        # the Browser tab last had loaded) are not scoped to this specific file,
+        # so cross-check against the modelId already cached in the .json sidecar
+        # before trusting either source — otherwise a hash collision on CivitAI's
+        # side, or stale global state, can silently overwrite this file's
+        # .api_info.json with an unrelated model's data.
+        expected_model_id = None
+        if os.path.exists(json_file):
+            existing_sidecar = _api.safe_json_load(json_file)
+            if existing_sidecar:
+                expected_model_id = _normalize_model_id(existing_sidecar.get('modelId'))
+
         version_data = None
         try:
             model_file = os.path.join(save_path, file_name)
@@ -1628,8 +2201,25 @@ def save_model_info(install_path, file_name, sub_folder, sha256=None, preview_ht
                             version_data = data
         except Exception as e:
             pass  # fall through to gl.json_info below
-        _api.safe_json_save(api_info_path, version_data if version_data else gl.json_info)
-        print(f"[CivitAI Browser Neo] - API info saved to: {api_info_path}")
+
+        if version_data and expected_model_id is not None:
+            returned_model_id = _normalize_model_id(version_data.get('modelId'))
+            if returned_model_id is not None and returned_model_id != expected_model_id:
+                print(f"[CivitAI Browser Neo] ⚠ by-hash returned model {returned_model_id} but expected {expected_model_id} for '{file_name}' — discarding to avoid corrupting cached metadata")
+                version_data = None
+
+        fallback_data = gl.json_info
+        if fallback_data and expected_model_id is not None:
+            fallback_id = _normalize_model_id(fallback_data.get('id'))
+            if fallback_id is not None and fallback_id != expected_model_id:
+                fallback_data = None
+
+        final_data = version_data if version_data else fallback_data
+        if final_data:
+            _api.safe_json_save(api_info_path, final_data)
+            print(f"[CivitAI Browser Neo] - API info saved to: {api_info_path}")
+        elif expected_model_id is not None:
+            print(f"[CivitAI Browser Neo] - Skipped writing API info for '{file_name}': no matching data available for model {expected_model_id}")
 
 def find_model_version_by_sha256(api_response, sha256):
     """Find the specific model version that matches the given SHA256 hash"""
@@ -1766,7 +2356,12 @@ def find_and_save(api_response, sha256=None, file_name=None, json_file=None, no_
                 description = clean_description(description)
 
         base_model = model_version.get('baseModel', '')
-        
+
+        # Model-level tags (e.g. ["character", "style"]) are only present in the
+        # /models response, not in /model-versions/by-hash. Persist them so that
+        # organization and LoraDex can use them even when only .api_info.json exists.
+        model_tags = item.get('tags') if isinstance(item, dict) else None
+
         # Save the RAW CivitAI baseModel value (e.g. "NoobAI", "Pony", "Illustrious")
         # normalize_base_model() is only used for folder placement, never for .json storage
         if not base_model:
@@ -1788,7 +2383,7 @@ def find_and_save(api_response, sha256=None, file_name=None, json_file=None, no_
             model_file_path = os.path.join(os.path.dirname(json_file), file_name)
         if not model_file_path and json_file:
             json_stem = os.path.splitext(json_file)[0]
-            for ext in ['.safetensors', '.ckpt', '.pt', '.bin', '.pth']:
+            for ext in ['.safetensors', '.ckpt', '.pt', '.bin', '.pth', '.gguf']:
                 candidate = f'{json_stem}{ext}'
                 if os.path.exists(candidate):
                     model_file_path = candidate
@@ -1818,6 +2413,9 @@ def find_and_save(api_response, sha256=None, file_name=None, json_file=None, no_
             if 'sd version' not in content:
                 content['sd version'] = base_model
                 changed = True
+            if 'baseModel' not in content:
+                content['baseModel'] = base_model
+                changed = True
             # Add new fields for model and version information
             if 'modelId' not in content:
                 content['modelId'] = item.get('id')
@@ -1828,6 +2426,9 @@ def find_and_save(api_response, sha256=None, file_name=None, json_file=None, no_
             if 'modelPageURL' not in content:
                 content['modelPageURL'] = f"https://{_api.get_civitai_domain()}/models/{item.get('id')}?modelVersionId={model_version.get('id')}"
                 changed = True
+            if model_tags and 'modelTags' not in content:
+                content['modelTags'] = model_tags
+                changed = True
         else:
             content['activation text'] = trained_tags
             if api_groups:
@@ -1835,10 +2436,17 @@ def find_and_save(api_response, sha256=None, file_name=None, json_file=None, no_
             if save_desc:
                 content['description'] = description
             content['sd version'] = base_model
+            content['baseModel'] = base_model
             # Always update these fields when overwrite is enabled
             content['modelId'] = item.get('id')
             content['modelVersionId'] = model_version.get('id')
             content['modelPageURL'] = f"https://{_api.get_civitai_domain()}/models/{item.get('id')}?modelVersionId={model_version.get('id')}"
+            if model_tags:
+                content['modelTags'] = model_tags
+            elif 'modelTags' in content:
+                # If the API response no longer carries tags (e.g. by-hash fallback),
+                # keep the existing stored tags rather than deleting them.
+                pass
             changed = True
 
         _api.safe_json_save(json_file, content)
@@ -1981,7 +2589,7 @@ def version_match(file_paths, api_response, log=False):
         json_path = f"{os.path.splitext(path)[0]}.json"
         data = _api.safe_json_load(json_path)
         if data:
-            sha = data.get('sha256', '').upper()
+            sha = (data.get('sha256') or '').upper()
             if sha:
                 installed_hashes.add(sha)
                 vid = data.get('modelVersionId')
@@ -2032,7 +2640,7 @@ def version_match(file_paths, api_response, log=False):
             vid = ver.get('id')
             found = False
             for file_entry in ver.get('files', []):
-                sha = file_entry.get('hashes', {}).get('SHA256', '').upper()
+                sha = (file_entry.get('hashes', {}).get('SHA256') or '').upper()
                 if sha in installed_hashes:
                     bm = (ver.get('baseModel') or '').strip()
                     vname = ver.get('name', '')
@@ -2285,7 +2893,7 @@ def get_save_path_and_name(install_path, file_name, api_response, sub_folder=Non
     return save_path, name
 
 ## === ANXETY EDITs ===
-def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish, organize_finish, overwrite_toggle, tile_count, gen_hash, create_html, progress=gr.Progress() if queue else None):
+def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish, organize_finish, overwrite_toggle, tile_count, gen_hash, create_html, progress=gr.Progress() if queue else None, organize_by_base=True, organize_by_category=False):
     global no_update
     proxies, ssl = _api.get_proxies()
     gl.scan_files = True
@@ -2419,17 +3027,32 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
             yield lst[i:i + n]
 
     if not from_installed:
-        model_chunks = list(chunks(all_model_ids, 500))
+        # Chunks of 100 ids (one page each). Kept small because a single huge model
+        # (e.g. RealDream, id 153568) makes the /models endpoint 500 on ANY batch that
+        # contains it. A failed batch is retried one id at a time below, so one broken
+        # model no longer silently drops every other model in its chunk from the scan.
+        model_chunks = list(chunks(all_model_ids, 100))
 
         base_url = f"https://{_api.get_civitai_domain()}/api/v1/models?limit=100&nsfw=true"
-        url_list = [f"{base_url}{''.join(chunk)}" for chunk in model_chunks]
 
-        url_count = len(all_model_ids) // 100
-        if len(all_model_ids) % 100 != 0:
-            url_count += 1
+        def fetch_chunk_per_id(chunk_ids):
+            rescued = []
+            for id_param in chunk_ids:
+                try:
+                    single = requests.get(f"{base_url}{id_param}", timeout=(60, 30), proxies=proxies, verify=ssl)
+                    if single.status_code == 200:
+                        rescued.extend(single.json().get('items', []))
+                    else:
+                        debug_print(f"{id_param.replace('&ids=', 'id ')}: HTTP {single.status_code} (skipped)")
+                except Exception as e:
+                    debug_print(f"{id_param.replace('&ids=', 'id ')}: {type(e).__name__} (skipped)")
+            return rescued
+
+        url_count = len(model_chunks)
         url_done = 0
         api_response = {}
-        for url in url_list:
+        for chunk in model_chunks:
+            url = f"{base_url}{''.join(chunk)}"
             while url:
                 try:
                     if progress != None:
@@ -2449,10 +3072,13 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
                         )
                     else:
                         print(f"Error: Received status code {response.status_code} with URL: {url}")
+                        print('Retrying this batch one model at a time (a single broken model can fail a whole batch)...')
+                        all_items.extend(fetch_chunk_per_id(chunk))
                         url = None
                     url_done += 1
                 except requests.exceptions.Timeout:
-                    print(f"Request timed out for {url}. Skipping...")
+                    print(f"Request timed out for {url}. Retrying this batch one model at a time...")
+                    all_items.extend(fetch_chunk_per_id(chunk))
                     url = None
                 except requests.exceptions.ConnectionError:
                     print('Failed to connect to the API. The servers might be offline.')
@@ -2632,11 +3258,11 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
         if progress != None:
             progress(0, desc='Analyzing models for organization...')
         
-        organization_plan = analyze_organization_plan(folders, progress)
-        
+        organization_plan = analyze_organization_plan(folders, progress, organize_by_base, organize_by_category)
+
         # Always show preview first with statistics
         preview_html = generate_organization_preview_html(organization_plan)
-        
+
         if not organization_plan['moves']:
             # No files need organization
             gl.scan_files = False
@@ -2790,25 +3416,24 @@ def get_model_categories():
     Returns dict mapping folder names to detection patterns
     """
     # Default categories based on Forge Neo supported models
+    # Keep in sync with get_base_models() in civitai_gui.py and BASE_MODEL_SHORT
+    # in civitai_api.py. These are the base models officially supported by
+    # Forge Neo (Haoming02/sd-webui-forge-classic neo branch).
     default_categories = {
-        'SD': ['SD 1', 'SD1', 'SD 2', 'SD2'],
+        'SD': ['SD 1', 'SD1'],
         'SDXL': ['SDXL'],
-        'Pony': ['PONY', 'PONYXL', 'PONY XL', 'PONY V6', 'PONYV6'],
+        'Pony': ['PONY', 'PONYXL', 'PONY XL', 'PONY V6', 'PONYV6', 'PONY V7', 'PONYV7'],
         'Illustrious': ['ILLUSTRIOUS'],
         'NoobAI': ['NOOBAI', 'NOOB AI', 'NOOB', 'NAI'],
         'FLUX': ['FLUX'],
+        'Krea': ['KREA'],
         'Wan': ['WAN'],
+        'LTX': ['LTXV'],
         'Qwen': ['QWEN'],
-        'Z-Image': ['Z-IMAGE', 'ZIMAGE', 'Z IMAGE'],
+        'Z-Image': ['Z-IMAGE', 'ZIMAGE', 'Z IMAGE', 'ZIMAGETURBO', 'ZIMAGEBASE'],
+        'Ernie': ['ERNIE'],
         'Lumina': ['LUMINA'],
         'Anima': ['ANIMA'],
-        'Cascade': ['CASCADE'],
-        'PixArt': ['PIXART', 'PIX ART'],
-        'Playground': ['PLAYGROUND'],
-        'SVD': ['SVD', 'STABLE VIDEO'],
-        'Hunyuan': ['HUNYUAN'],
-        'Kolors': ['KOLORS'],
-        'AuraFlow': ['AURAFLOW', 'AURA FLOW'],
         'Chroma': ['CHROMA'],
     }
     
@@ -2927,6 +3552,24 @@ def _fetch_api_info_by_hash(file_path, api_info_file):
                 _debug_log(f"API returned error for {model_name}: {data.get('error')}")
                 return None
 
+            # The by-hash lookup is scoped to CivitAI's file hash index, not to this
+            # specific model — if another listing shares the same file (re-upload,
+            # duplicate, or a hash collision left behind by a takedown), the response
+            # can describe a different model entirely. Cross-check against the modelId
+            # already cached in the .json sidecar (if any) before trusting it.
+            json_file = os.path.splitext(file_path)[0] + '.json'
+            expected_model_id = None
+            if os.path.exists(json_file):
+                existing_sidecar = _api.safe_json_load(json_file)
+                if existing_sidecar:
+                    expected_model_id = _normalize_model_id(existing_sidecar.get('modelId'))
+
+            returned_model_id = _normalize_model_id(data.get('modelId'))
+            if expected_model_id is not None and returned_model_id is not None and returned_model_id != expected_model_id:
+                _debug_log(f"by-hash returned model {returned_model_id} but expected {expected_model_id} for {model_name} — discarding to avoid corrupting cached metadata")
+                print(f"[CivitAI Browser Neo] ⚠ by-hash returned model {returned_model_id} but expected {expected_model_id} for '{model_name}' — skipping .api_info.json write")
+                return None
+
             # 1. Save fresh data as .api_info.json (overwrites any stale/wrong file)
             _api.safe_json_save(api_info_file, data)
             print(f"[CivitAI Browser Neo] ✅ Fetched and saved .api_info.json for: {model_name}")
@@ -2934,17 +3577,15 @@ def _fetch_api_info_by_hash(file_path, api_info_file):
             # 2. Also patch "sd version" in the .json sidecar with the correct raw value
             #    so the .json is also self-consistent and usable offline in the future
             base_model = data.get('baseModel', '')
-            if base_model:
-                json_file = os.path.splitext(file_path)[0] + '.json'
-                if os.path.exists(json_file):
-                    try:
-                        content = _api.safe_json_load(json_file) or {}
-                        if content.get('sd version') != base_model:
-                            content['sd version'] = base_model
-                            _api.safe_json_save(json_file, content)
-                            _debug_log(f"Patched 'sd version' → '{base_model}' in {os.path.basename(json_file)}")
-                    except Exception as patch_err:
-                        _debug_log(f"Could not patch .json for {model_name}: {patch_err}")
+            if base_model and os.path.exists(json_file):
+                try:
+                    content = _api.safe_json_load(json_file) or {}
+                    if content.get('sd version') != base_model:
+                        content['sd version'] = base_model
+                        _api.safe_json_save(json_file, content)
+                        _debug_log(f"Patched 'sd version' → '{base_model}' in {os.path.basename(json_file)}")
+                except Exception as patch_err:
+                    _debug_log(f"Could not patch .json for {model_name}: {patch_err}")
 
             return data
 
@@ -2960,7 +3601,7 @@ def _fetch_api_info_by_hash(file_path, api_info_file):
         return None
 
 
-def _extract_base_model_from_api_data(data, file_path=None):
+def _extract_base_model_from_api_data(data, file_path=None, quiet=False):
     """
     Extract baseModel string from a CivitAI API response dict.
     Checks fields in priority order:
@@ -2969,33 +3610,38 @@ def _extract_base_model_from_api_data(data, file_path=None):
       3. data['modelVersions']       ← SHA256-matched or first version
       4. data['version']['baseModel']
     Returns the raw baseModel string or '' if not found.
+
+    quiet=True skips all _debug_log calls even when Debug Organization Logs is enabled —
+    used by bulk callers (e.g. build_native_card_badge_map) that run this per-file across
+    an entire library and would otherwise flood the console with one line per file.
     """
     model_name = os.path.basename(file_path) if file_path else '?'
+    log = (lambda _msg: None) if quiet else _debug_log
 
     base_model = data.get('baseModel', '')
     if base_model:
-        _debug_log(f"Found from data['baseModel']: '{base_model}'")
+        log(f"Found from data['baseModel']: '{base_model}'")
         return base_model
 
     base_model = data.get('model', {}).get('baseModel', '')
     if base_model:
-        _debug_log(f"Found from data['model']['baseModel']: '{base_model}'")
+        log(f"Found from data['model']['baseModel']: '{base_model}'")
         return base_model
 
     if 'modelVersions' in data:
         versions = data.get('modelVersions', [])
-        _debug_log(f"Found modelVersions array with {len(versions)} versions")
+        log(f"Found modelVersions array with {len(versions)} versions")
         if versions:
             matched_version = None
             if file_path:
                 file_hash = gen_sha256(file_path)
                 if file_hash:
-                    _debug_log(f"Model SHA256: {file_hash}")
+                    log(f"Model SHA256: {file_hash}")
                     for version in versions:
                         for vfile in version.get('files', []):
                             if vfile.get('hashes', {}).get('SHA256', '').upper() == file_hash.upper():
                                 matched_version = version
-                                _debug_log(f"Found matching version by SHA256: {version.get('name')} (id: {version.get('id')})")
+                                log(f"Found matching version by SHA256: {version.get('name')} (id: {version.get('id')})")
                                 break
                         if matched_version:
                             break
@@ -3003,15 +3649,51 @@ def _extract_base_model_from_api_data(data, file_path=None):
             base_model = target_version.get('baseModel', '')
             if base_model:
                 label = f"MATCHED modelVersion['{target_version.get('name')}']" if matched_version else "modelVersions[0]"
-                _debug_log(f"Found from {label}: '{base_model}'")
+                log(f"Found from {label}: '{base_model}'")
                 return base_model
 
     base_model = data.get('version', {}).get('baseModel', '')
     if base_model:
-        _debug_log(f"Found from data['version']['baseModel']: '{base_model}'")
+        log(f"Found from data['version']['baseModel']: '{base_model}'")
         return base_model
 
     return ''
+
+
+def get_lora_category_from_sidecar(file_path):
+    """Read the manual LoRA category from the .json sidecar if present.
+
+    Returns the stored string (including 'Auto'/'None') or None if unset.
+    """
+    json_file = os.path.splitext(file_path)[0] + '.json'
+    if not os.path.exists(json_file):
+        return None
+    try:
+        content = _api.safe_json_load(json_file) or {}
+        category = content.get('loraCategory')
+        if category is None:
+            return None
+        return str(category).strip()
+    except Exception as e:
+        _debug_log(f"Error reading loraCategory for {file_path}: {e}")
+        return None
+
+
+def _read_model_tags_from_sidecar(file_path):
+    """Read model-level tags persisted in the .json sidecar (modelTags field)."""
+    json_file = os.path.splitext(file_path)[0] + '.json'
+    if not os.path.exists(json_file):
+        return []
+    try:
+        content = _api.safe_json_load(json_file) or {}
+        tags = content.get('modelTags')
+        if isinstance(tags, list):
+            return tags
+        if isinstance(tags, str):
+            return [t.strip() for t in tags.split(',') if t.strip()]
+    except Exception as e:
+        _debug_log(f"Error reading modelTags for {file_path}: {e}")
+    return []
 
 
 def get_model_info_for_organization(file_path):
@@ -3028,11 +3710,14 @@ def get_model_info_for_organization(file_path):
     field may contain stale/normalised values (e.g. "Other") written by older
     extension versions, which would cause correctly-placed files to be flagged.
 
-    Returns tuple: (base_model_type, model_name)
-    Returns (None, model_name) when metadata is unavailable even after API call.
+    Returns tuple: (base_model_type, model_name, tags, manual_category)
+    Returns (None, model_name, [], manual_category) when metadata is unavailable
+    even after API call.
     """
     model_name = os.path.basename(file_path)
     base_name = os.path.splitext(file_path)[0]
+    manual_category = get_lora_category_from_sidecar(file_path)
+    sidecar_tags = _read_model_tags_from_sidecar(file_path)
 
     _debug_log(f"Checking metadata for: {model_name}")
 
@@ -3047,7 +3732,8 @@ def get_model_info_for_organization(file_path):
                 base_model = _extract_base_model_from_api_data(data, file_path)
                 if base_model:
                     _debug_log(f"SUCCESS! Final baseModel: '{base_model}' from existing .api_info.json")
-                    return base_model, model_name
+                    tags = data.get('tags') or sidecar_tags
+                    return base_model, model_name, tags, manual_category
                 _debug_log(f"No baseModel in existing .api_info.json — will fetch from API")
         except Exception as e:
             _debug_log(f"Error reading {api_info_file}: {e}")
@@ -3059,7 +3745,8 @@ def get_model_info_for_organization(file_path):
         base_model = _extract_base_model_from_api_data(data, file_path)
         if base_model:
             _debug_log(f"SUCCESS! Final baseModel: '{base_model}' from API (by hash)")
-            return base_model, model_name
+            tags = data.get('tags') or sidecar_tags
+            return base_model, model_name, tags, manual_category
 
     # --- Step 3: offline fallback — .json sidecar "sd version" field ---
     # Used only when API is unreachable or the model was deleted from CivitAI.
@@ -3073,23 +3760,31 @@ def get_model_info_for_organization(file_path):
             if sd_version and sd_version.upper() != 'OTHER':
                 _debug_log(f"Offline fallback: using 'sd version'='{sd_version}' from .json")
                 print(f"[CivitAI Browser Neo] ⚠️ Using offline .json fallback for: {model_name} (API unavailable)")
-                return sd_version, model_name
+                return sd_version, model_name, sidecar_tags, manual_category
         except Exception as e:
             _debug_log(f"Error reading .json fallback for {model_name}: {e}")
 
-    print(f"[CivitAI Browser Neo] ⚠️ Could not determine baseModel for: {model_name}")
-    return None, model_name
+    print(f"[Civitai Browser Neo] ⚠️ Could not determine baseModel for: {model_name}")
+    return None, model_name, sidecar_tags, manual_category
 
-def analyze_organization_plan(folders, progress=None):
+def analyze_organization_plan(folders, progress=None, organize_by_base=True, organize_by_category=False):
     """
-    Analyze current model files and create an organization plan
-    Returns organization plan with moves grouped by base model
+    Analyze current model files and create an organization plan.
+
+    Args:
+        folders: list of content types to scan.
+        progress: optional Gradio progress callback.
+        organize_by_base: when True, place files under base-model subfolders.
+        organize_by_category: when True, place LoRAs under category subfolders.
+            Hierarchy is always Base > Category (e.g. Lora/Anima/Character).
+
+    Returns organization plan dict with moves grouped by target folder.
     """
     folders_to_check = []
-    
+
     if 'All' in folders:
         folders = _file.get_content_choices()
-    
+
     for item in folders:
         if item == 'LORA':
             folder = _api.contenttype_folder('LORA')
@@ -3099,9 +3794,9 @@ def analyze_organization_plan(folders, progress=None):
             folder = _api.contenttype_folder(item)
             if folder:
                 folders_to_check.append(folder)
-    
+
     files = list_files(folders_to_check)
-    
+
     organization_plan = {
         'moves': [],
         'summary': {},
@@ -3109,45 +3804,27 @@ def analyze_organization_plan(folders, progress=None):
         'files_with_info': 0,
         'files_without_info': 0
     }
-    
+
     files_processed = 0
     total_files = len(files)
-    
+
+    # Nothing to do if both modes are disabled
+    if not organize_by_base and not organize_by_category:
+        organization_plan['total_files'] = total_files
+        return organization_plan
+
     for file_path in files:
         files_processed += 1
         if progress is not None:
             file_name = os.path.basename(file_path)
             progress(files_processed / total_files, desc=f"Analyzing: {file_name}")
-        
-        base_model_raw, model_name = get_model_info_for_organization(file_path)
-        
-        if not base_model_raw:
-            organization_plan['files_without_info'] += 1
-            continue
-        
-        organization_plan['files_with_info'] += 1
-        
-        # Normalize base model to folder name
-        base_model_folder = normalize_base_model(base_model_raw)
-        
-        # If normalize returns None, skip this file (leave in root)
-        if not base_model_folder:
-            continue
-        
-        # Get current directory
+
+        base_model_raw, model_name, tags, manual_category = get_model_info_for_organization(file_path)
+        file_stem = os.path.splitext(os.path.basename(file_path))[0]
+        description = _lora_dex_description(file_path)
+
+        # Get current directory and determine root model-type folder
         current_dir = os.path.dirname(file_path)
-        
-        # Check if already in correct subfolder
-        # Normalize both sides to handle multi-level folders like 'Wan/I2V'
-        norm_current = os.path.normpath(current_dir)
-        norm_target_suffix = os.path.normpath(base_model_folder)
-        if norm_current.endswith(os.sep + norm_target_suffix) or norm_current == norm_target_suffix:
-            # Already organized
-            continue
-        
-        # Create target path
-        # Determine root folder from current file location
-        # Go up levels until we find a models folder or we're at root model type folder
         root_folder = current_dir
         while os.path.basename(root_folder) not in ['Lora', 'Stable-diffusion', 'embeddings', 'VAE', 'ControlNet']:
             parent = os.path.dirname(root_folder)
@@ -3155,31 +3832,76 @@ def analyze_organization_plan(folders, progress=None):
                 root_folder = current_dir
                 break
             root_folder = parent
-        
-        target_folder = os.path.join(root_folder, base_model_folder)
+
+        is_lora = os.path.basename(root_folder) == 'Lora'
+
+        # Determine base-model folder segment (may be empty if organize_by_base is False)
+        base_model_folder = ''
+        if organize_by_base:
+            if not base_model_raw:
+                organization_plan['files_without_info'] += 1
+                continue
+            base_model_folder = normalize_base_model(base_model_raw)
+            if not base_model_folder:
+                continue
+            organization_plan['files_with_info'] += 1
+        elif base_model_raw:
+            # Count as with-info even if base model is not being used for sorting
+            organization_plan['files_with_info'] += 1
+
+        # Determine LoRA category segment (only for LoRA files)
+        category = None
+        if organize_by_category and is_lora:
+            category = categorize_lora_by_tags(
+                tags,
+                manual_category=manual_category,
+                description=description,
+                name_hints=[model_name, file_stem],
+            )
+
+        # Build target suffix in Base > Category order
+        target_parts = []
+        if base_model_folder:
+            target_parts.append(base_model_folder)
+        if category:
+            target_parts.append(category)
+
+        if not target_parts:
+            # Nothing to organize for this file
+            continue
+
+        target_suffix = os.path.normpath(os.path.join(*target_parts))
+
+        # Check if already in the correct subfolder
+        norm_current = os.path.normpath(current_dir)
+        if norm_current.endswith(os.sep + target_suffix) or norm_current == target_suffix:
+            continue
+
+        target_folder = os.path.join(root_folder, target_suffix)
         target_path = os.path.join(target_folder, os.path.basename(file_path))
-        
+
         # Add to plan
         organization_plan['moves'].append({
             'from': file_path,
             'to': target_path,
-            'base_model': base_model_folder,
+            'base_model': target_suffix,
+            'category': category or '',
             'model_name': model_name,
             'size': os.path.getsize(file_path) if os.path.exists(file_path) else 0
         })
-        
+
         # Update summary
-        if base_model_folder not in organization_plan['summary']:
-            organization_plan['summary'][base_model_folder] = {
+        if target_suffix not in organization_plan['summary']:
+            organization_plan['summary'][target_suffix] = {
                 'count': 0,
                 'size': 0
             }
-        
-        organization_plan['summary'][base_model_folder]['count'] += 1
-        organization_plan['summary'][base_model_folder]['size'] += organization_plan['moves'][-1]['size']
-    
+
+        organization_plan['summary'][target_suffix]['count'] += 1
+        organization_plan['summary'][target_suffix]['size'] += organization_plan['moves'][-1]['size']
+
     organization_plan['total_files'] = total_files
-    
+
     return organization_plan
 
 def format_size(size_bytes):
@@ -3588,7 +4310,7 @@ def organize_start(organize_start):
     number = _download.random_number(organize_start)
     return start_returns(number)
 
-def validate_organization(folders, progress=gr.Progress() if queue else None):
+def validate_organization(folders, organize_by_base=True, organize_by_category=False, progress=gr.Progress() if queue else None):
     """
     Validate that models are in their correct subfolders based on .json metadata.
     Read-only: does NOT move any files.
@@ -3605,6 +4327,14 @@ def validate_organization(folders, progress=gr.Progress() if queue else None):
         yield gr.update(value=html), gr.update(visible=False), '{}'
         return
 
+    if not organize_by_base and not organize_by_category:
+        html = '''<div style="padding:20px;text-align:center;">
+            <strong>No organization mode selected.</strong><br>
+            <span style="color:var(--body-text-color-subdued);">Enable "Organize by base model" and/or "Organize LoRAs by category" above.</span>
+        </div>'''
+        yield gr.update(value=html), gr.update(visible=False), '{}'
+        return
+
     # ── Show scanning status immediately ─────────────────────────────────────
     yield (
         gr.update(value='<div style="padding:12px 15px;border:1px solid var(--border-color-primary);border-radius:8px;margin:6px 0;">'
@@ -3617,7 +4347,7 @@ def validate_organization(folders, progress=gr.Progress() if queue else None):
     if progress is not None:
         progress(0, desc="Scanning files for validation...")
 
-    plan = analyze_organization_plan(folders, progress)
+    plan = analyze_organization_plan(folders, progress, organize_by_base, organize_by_category)
 
     misplaced  = plan['moves']             # files in wrong folder
     no_meta    = plan['files_without_info']
@@ -3695,13 +4425,21 @@ def validate_organization(folders, progress=gr.Progress() if queue else None):
     yield gr.update(value=html), gr.update(visible=True, interactive=True), plan_json
 
 
-def fix_misplaced_files(plan_json, progress=gr.Progress() if queue else None):
+def fix_misplaced_files(plan_json, organize_by_base=True, organize_by_category=False, progress=gr.Progress() if queue else None):
     """
     Execute the organization plan produced by validate_organization().
     Moves only the misplaced files; creates a backup before moving.
     Generator: yields inline HTML progress updates to the UI.
     """
     import json as _json
+
+    if not organize_by_base and not organize_by_category:
+        html = '''<div style="padding:20px;text-align:center;">
+            <strong>No organization mode selected.</strong><br>
+            <span style="color:var(--body-text-color-subdued);">Enable "Organize by base model" and/or "Organize LoRAs by category" above.</span>
+        </div>'''
+        yield gr.update(value=html), gr.update(visible=False), gr.update(visible=False), '{}'
+        return
 
     try:
         plan = _json.loads(plan_json) if plan_json else {}
@@ -3796,6 +4534,399 @@ def fix_misplaced_files(plan_json, progress=gr.Progress() if queue else None):
 
     print(f"[CivitAI Browser Neo] fix_misplaced_files: moved {completed}/{total}, errors={len(errors)}")
     yield gr.update(value=result_html), gr.update(visible=False), gr.update(visible=True), '{}'
+
+
+def _bulk_fetch_models_by_ids(ids, progress=None, progress_start=0.0, progress_end=1.0, progress_label='Checking CivitAI...'):
+    """
+    Bulk-fetch model listings from CivitAI for the given modelIds.
+
+    Mirrors the chunked / per-id-retry strategy used by the "check for updates"
+    scan in file_scan(): batches of 100 ids per request, each chunk paginated
+    via nextPage, and any batch that errors out is retried one id at a time so
+    a single broken/huge model (e.g. RealDream) doesn't drop the whole chunk.
+
+    Returns (found, unresolved):
+      found      — dict {model_id: item_dict} for every id CivitAI confirmed exists.
+      unresolved — set of ids that could NOT be checked (timeout/connection/HTTP
+                   error). Callers must not treat these as delisted — we simply
+                   failed to ask CivitAI about them, which is very different from
+                   CivitAI confirming they're gone. An id absent from both dicts
+                   was successfully checked and is genuinely missing from the
+                   response, i.e. confirmed delisted.
+    """
+    if not ids:
+        return {}, set()
+
+    headers = _api.get_headers()
+    proxies, ssl = _api.get_proxies()
+    base_url = f"https://{_api.get_civitai_domain()}/api/v1/models?limit=100&nsfw=true"
+    id_params = [f"&ids={i}" for i in ids]
+
+    def chunks(lst, n):
+        for i in range(0, len(lst), n):
+            yield lst[i:i + n]
+
+    def _id_from_param(id_param):
+        try:
+            return int(id_param.replace('&ids=', ''))
+        except ValueError:
+            return id_param.replace('&ids=', '')
+
+    def fetch_chunk_per_id(chunk_ids):
+        rescued = []
+        failed_ids = set()
+        for id_param in chunk_ids:
+            model_id = _id_from_param(id_param)
+            try:
+                single = requests.get(f"{base_url}{id_param}", headers=headers, timeout=(60, 30), proxies=proxies, verify=ssl)
+                if single.status_code == 200:
+                    rescued.extend(single.json().get('items', []))
+                else:
+                    failed_ids.add(model_id)
+                    debug_print(f"id {model_id}: HTTP {single.status_code} (unresolved, not treated as delisted)")
+            except Exception as e:
+                failed_ids.add(model_id)
+                debug_print(f"id {model_id}: {type(e).__name__} (unresolved, not treated as delisted)")
+        return rescued, failed_ids
+
+    model_chunks = list(chunks(id_params, 100))
+    all_items = []
+    unresolved = set()
+    url_count = max(len(model_chunks), 1)
+
+    for url_done, chunk in enumerate(model_chunks):
+        if progress is not None:
+            span = progress_end - progress_start
+            progress(progress_start + span * (url_done / url_count), desc=f"{progress_label} {url_done}/{url_count}")
+        url = f"{base_url}{''.join(chunk)}"
+        while url:
+            try:
+                response = requests.get(url, headers=headers, timeout=(60, 30), proxies=proxies, verify=ssl)
+                if response.status_code == 200:
+                    api_response_json = response.json()
+                    all_items.extend(api_response_json.get('items', []))
+                    metadata = api_response_json.get('metadata', {})
+                    url = metadata.get('nextPage', None)
+                else:
+                    debug_print(f"Bulk model fetch: HTTP {response.status_code} for chunk — retrying one id at a time")
+                    rescued, failed_ids = fetch_chunk_per_id(chunk)
+                    all_items.extend(rescued)
+                    unresolved |= failed_ids
+                    url = None
+            except requests.exceptions.Timeout:
+                debug_print("Bulk model fetch: timed out — retrying one id at a time")
+                rescued, failed_ids = fetch_chunk_per_id(chunk)
+                all_items.extend(rescued)
+                unresolved |= failed_ids
+                url = None
+            except requests.exceptions.ConnectionError:
+                debug_print("Bulk model fetch: connection error — CivitAI may be offline; marking chunk unresolved")
+                unresolved |= {_id_from_param(p) for p in chunk}
+                url = None
+            except Exception as e:
+                debug_print(f"Bulk model fetch: unexpected error: {e} — marking chunk unresolved")
+                unresolved |= {_id_from_param(p) for p in chunk}
+                url = None
+
+    found = {item['id']: item for item in all_items if 'id' in item}
+    return found, unresolved
+
+
+def find_metadata_issues(folders, progress=gr.Progress() if queue else None):
+    """
+    Scan locally tracked models for two kinds of metadata problems:
+      - 'orphaned': the modelId cached in the .json sidecar no longer resolves
+        on CivitAI (the model was delisted/removed).
+      - 'corrupted': the .api_info.json on disk describes a different model
+        than the one cached in the .json sidecar (e.g. from a by-hash
+        collision, possible before the write-time id-validation guard).
+
+    Read-only — does not modify any files. Yields (html_report, resolve_btn
+    update, issues_json_string) so the UI shows a status message immediately
+    while the scan runs.
+    """
+    import json as _json
+
+    if not folders:
+        html = '''<div style="padding:20px;text-align:center;">
+            <strong>No content types selected.</strong><br>
+            <span style="color:var(--body-text-color-subdued);">Select at least one type above.</span>
+        </div>'''
+        yield gr.update(value=html), gr.update(visible=False), '{}'
+        return
+
+    yield (
+        gr.update(value='<div style="padding:12px 15px;border:1px solid var(--border-color-primary);border-radius:8px;margin:6px 0;">'
+                        '🔍 <strong>Checking local models against CivitAI…</strong> This may take a while for large collections.'
+                        '</div>'),
+        gr.update(visible=False),
+        '{}'
+    )
+
+    folders_to_check = []
+    if 'All' in folders:
+        folders = _file.get_content_choices()
+    for item in folders:
+        folder = _api.contenttype_folder('LORA') if item == 'LORA' else _api.contenttype_folder(item)
+        if folder:
+            folders_to_check.append(folder)
+
+    files = list_files(folders_to_check)
+
+    candidates = []  # (file_path, sha256, cached_model_id, model_name)
+    for file_path in files:
+        json_file = os.path.splitext(file_path)[0] + '.json'
+        if not os.path.exists(json_file):
+            continue
+        sidecar = _api.safe_json_load(json_file) or {}
+        model_id = _normalize_model_id(sidecar.get('modelId'))
+        if not model_id:
+            continue
+        candidates.append((file_path, sidecar.get('sha256'), model_id, os.path.basename(file_path)))
+
+    if not candidates:
+        html = '''<div style="padding:20px;text-align:center;">
+            <strong>No locally-tracked models with a cached CivitAI ID found.</strong>
+        </div>'''
+        yield gr.update(value=html), gr.update(visible=False), '{}'
+        return
+
+    if progress is not None:
+        progress(0.05, desc="Querying CivitAI for cached model IDs...")
+
+    ids = list({c[2] for c in candidates})
+    found, unresolved = _bulk_fetch_models_by_ids(ids, progress=progress, progress_start=0.05, progress_end=0.9, progress_label="Checking CivitAI...")
+
+    if unresolved and len(unresolved) == len(ids):
+        # Every single id failed to resolve — this is a request/connectivity
+        # problem, not 100% of the library being delisted. Bail out with an
+        # explicit error instead of falsely reporting everything as orphaned.
+        html = '''<div style="padding:20px;text-align:center;">
+            <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
+            <h3 style="margin:0 0 8px 0;color:var(--error-text-color);">Could not verify against CivitAI.</h3>
+            <p style="color:var(--body-text-color-subdued);margin:0;font-size:13px;">All requests failed (network/API error) — nothing was flagged. Check your connection/proxy settings and try again.</p>
+        </div>'''
+        yield gr.update(value=html), gr.update(visible=False), '{}'
+        return
+
+    orphaned = []
+    corrupted = []
+
+    for file_path, sha256, model_id, model_name in candidates:
+        api_info_file = os.path.splitext(file_path)[0] + '.api_info.json'
+
+        if model_id in unresolved:
+            # Could not check this one specifically — skip it rather than
+            # risk a false "removed from CivitAI" claim.
+            continue
+
+        if model_id not in found:
+            orphaned.append({'file_path': file_path, 'sha256': sha256, 'model_id': model_id, 'model_name': model_name})
+            continue
+
+        if os.path.exists(api_info_file):
+            api_data = _api.safe_json_load(api_info_file) or {}
+            stored_id = api_data.get('modelId', api_data.get('id'))
+            # CivArchive-resolved files store 'id' as a string; CivitAI-native
+            # ones store ints — compare as strings so a correctly-resolved
+            # file is never re-flagged as corrupted.
+            if stored_id is not None and str(stored_id) != str(model_id):
+                corrupted.append({
+                    'file_path': file_path, 'sha256': sha256, 'model_id': model_id,
+                    'model_name': model_name, 'found_id': stored_id
+                })
+
+    if progress is not None:
+        progress(1, desc="Done.")
+
+    unresolved_note = (
+        f'<p style="color:var(--body-text-color-subdued);margin:8px 0 0 0;font-size:12px;">'
+        f'⚠️ {len(unresolved)} model(s) could not be checked (request failed) and were skipped — re-run to verify them.</p>'
+        if unresolved else ''
+    )
+
+    if not orphaned and not corrupted:
+        html = f'''
+        <div style="padding:20px;text-align:center;">
+            <div style="font-size:48px;margin-bottom:12px;">✅</div>
+            <h3 style="margin:0 0 8px 0;color:var(--body-text-color);">All {len(candidates) - len(unresolved)} checked models look consistent.</h3>
+            <p style="color:var(--body-text-color-subdued);margin:0;">No delisted or mismatched metadata found.</p>
+            {unresolved_note}
+        </div>'''
+        yield gr.update(value=html), gr.update(visible=False), '{}'
+        return
+
+    def _rows(items, extra_col=False):
+        rows = ''
+        for it in items:
+            extra = f'<td style="padding:6px 10px;text-align:center;color:#e57373;">{it["found_id"]}</td>' if extra_col else ''
+            rows += f'''
+            <tr style="border-bottom:1px solid var(--border-color-primary);">
+                <td style="padding:6px 10px;font-family:monospace;font-size:12px;">{it['model_name']}</td>
+                <td style="padding:6px 10px;text-align:center;">{it['model_id']}</td>
+                {extra}
+            </tr>'''
+        return rows
+
+    html = f'''
+    <div style="padding:15px;border:1px solid var(--border-color-primary);border-radius:8px;margin:10px 0;">
+        <h3 style="margin:0 0 12px 0;">🔍 Local Metadata Verification</h3>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
+            <div style="padding:8px 16px;background:rgba(255,193,7,0.15);border-radius:6px;font-size:14px;">
+                🗄️ <strong>{len(orphaned)}</strong> removed from CivitAI
+            </div>
+            <div style="padding:8px 16px;background:rgba(229,115,115,0.15);border-radius:6px;font-size:14px;">
+                ⚠️ <strong>{len(corrupted)}</strong> mismatched metadata
+            </div>
+        </div>
+        <details open>
+            <summary style="cursor:pointer;padding:8px;background:var(--block-background-fill);border-radius:5px;font-size:13px;margin-bottom:8px;">
+                🗄️ Removed from CivitAI ({len(orphaned)})
+            </summary>
+            <div style="max-height:250px;overflow-y:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                    <thead><tr style="background:var(--background-fill-secondary);">
+                        <th style="padding:6px 10px;text-align:left;">File</th>
+                        <th style="padding:6px 10px;text-align:center;">Expected model ID</th>
+                    </tr></thead>
+                    <tbody>{_rows(orphaned)}</tbody>
+                </table>
+            </div>
+        </details>
+        <details open style="margin-top:10px;">
+            <summary style="cursor:pointer;padding:8px;background:var(--block-background-fill);border-radius:5px;font-size:13px;margin-bottom:8px;">
+                ⚠️ Mismatched .api_info.json ({len(corrupted)})
+            </summary>
+            <div style="max-height:250px;overflow-y:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                    <thead><tr style="background:var(--background-fill-secondary);">
+                        <th style="padding:6px 10px;text-align:left;">File</th>
+                        <th style="padding:6px 10px;text-align:center;">Expected model ID</th>
+                        <th style="padding:6px 10px;text-align:center;">Found in .api_info.json</th>
+                    </tr></thead>
+                    <tbody>{_rows(corrupted, extra_col=True)}</tbody>
+                </table>
+            </div>
+        </details>
+        <div style="margin-top:12px;padding:10px;background:#fff3cd;border-radius:5px;font-size:13px;">
+            💡 Click <strong>Resolve via CivArchive</strong> below to try recovering real metadata for these files from
+            <a href="https://civarchive.com" target="_blank">CivArchive</a>. Files with no CivArchive match are left
+            untouched and keep showing as local-only.
+        </div>
+        {unresolved_note}
+    </div>'''
+
+    issues = {'orphaned': orphaned, 'corrupted': corrupted}
+    yield gr.update(value=html), gr.update(visible=True, interactive=True), _json.dumps(issues, ensure_ascii=False)
+
+
+def resolve_civarchive_issues(issues_json, progress=gr.Progress() if queue else None):
+    """
+    Attempt to recover real metadata for orphaned/corrupted local models found
+    by find_metadata_issues(), using CivArchive (a mirror of delisted CivitAI
+    listings) looked up by the file's SHA256.
+
+    On a CivArchive hit: writes the canonical model dict to .api_info.json
+    (marked "source": "civarchive"), and adds "resolved_via"/"archived_url"
+    to the .json sidecar without touching its existing fields — the original
+    modelId, modelVersionId, sha256 etc. are preserved.
+
+    On a miss: the file is left completely untouched and keeps falling back
+    to the plain local-only card, exactly as it does today.
+
+    Generator: yields inline HTML progress updates to the UI.
+    """
+    import json as _json
+
+    try:
+        issues = _json.loads(issues_json) if issues_json else {}
+    except Exception:
+        issues = {}
+
+    targets = (issues.get('orphaned') or []) + (issues.get('corrupted') or [])
+    total = len(targets)
+
+    if not total:
+        html = '''<div style="padding:20px;text-align:center;">
+            <strong>Nothing to resolve.</strong> Run "Verify local metadata" first.
+        </div>'''
+        yield gr.update(value=html), gr.update(visible=False), '{}'
+        return
+
+    yield (
+        gr.update(value='<div style="padding:12px 15px;border:1px solid var(--border-color-primary);border-radius:8px;margin:6px 0;">'
+                        '🗄️ <strong>Looking up CivArchive…</strong>'
+                        '</div>'),
+        gr.update(visible=True),
+        '{}'
+    )
+
+    adapter = _browser_sources.get_browser_source('civarchive')
+
+    resolved = 0
+    still_local = 0
+    errors = []
+    model_name = ''
+
+    for i, issue in enumerate(targets):
+        if gl.cancel_status:
+            break
+
+        file_path = issue['file_path']
+        sha256 = issue.get('sha256')
+        model_name = issue.get('model_name', os.path.basename(file_path))
+        expected_model_id = issue.get('model_id')
+
+        if progress is not None:
+            progress((i + 1) / total, desc=f"Resolving: {model_name} ({i + 1}/{total})")
+
+        try:
+            if not sha256 and os.path.exists(file_path):
+                sha256 = gen_sha256(file_path)
+
+            canonical = adapter.get_version_by_hash(sha256) if adapter and sha256 else None
+
+            if isinstance(canonical, dict):
+                canonical = dict(canonical)
+                canonical['source'] = 'civarchive'
+                canonical['archived_url'] = canonical.get('browserSourceUrl')
+
+                api_info_file = os.path.splitext(file_path)[0] + '.api_info.json'
+                _api.safe_json_save(api_info_file, canonical)
+
+                json_file = os.path.splitext(file_path)[0] + '.json'
+                if os.path.exists(json_file):
+                    sidecar = _api.safe_json_load(json_file) or {}
+                    sidecar['resolved_via'] = 'civarchive'
+                    sidecar['archived_url'] = canonical.get('archived_url')
+                    _api.safe_json_save(json_file, sidecar)
+
+                resolved += 1
+                print(f"[CivitAI Browser Neo] ✓ Resolved via CivArchive: {model_name}")
+            else:
+                still_local += 1
+                debug_print(f"No CivArchive match for: {model_name} (model {expected_model_id})")
+        except Exception as e:
+            errors.append(f"{model_name}: {e}")
+            still_local += 1
+            debug_print(f"Error resolving {model_name} via CivArchive: {e}")
+
+        if (i + 1) % 10 == 0 or i == total - 1:
+            yield (
+                gr.update(value=_make_progress_bar_html(i + 1, total, f'🗄️ Resolving: {model_name}')),
+                gr.update(visible=True),
+                '{}'
+            )
+
+    result_html = f'''
+    <div style="padding:20px;text-align:center;">
+        <div style="font-size:48px;margin-bottom:12px;">{'✅' if not errors else '⚠️'}</div>
+        <h3 style="margin:0 0 8px 0;color:var(--body-text-color);">{resolved} resolved via CivArchive, {still_local} still local-only.</h3>
+        <p style="color:var(--body-text-color-subdued);margin:0;font-size:13px;">Local-only files keep working exactly as before — nothing was removed.</p>
+    </div>'''
+
+    print(f"[CivitAI Browser Neo] resolve_civarchive_issues: resolved={resolved}, still_local={still_local}, errors={len(errors)}")
+    yield gr.update(value=result_html), gr.update(visible=False), '{}'
 
 
 def rollback_organization(progress=gr.Progress() if queue else None):
@@ -3911,7 +5042,7 @@ def generate_dashboard_statistics(selected_types, hide_empty_categories=True, de
     total_size = 0
     
     # Extensions to scan
-    MODEL_EXTENSIONS = ('.safetensors', '.ckpt', '.pt', '.pth', '.vae', '.zip', '.th')
+    MODEL_EXTENSIONS = ('.safetensors', '.ckpt', '.pt', '.pth', '.vae', '.zip', '.th', '.gguf')
     
     # Process each content type
     for content_type in selected_types:
@@ -4530,9 +5661,20 @@ def scan_finish():
         gr.update(interactive=True, visible=True),
         gr.update(interactive=True, visible=True),
         gr.update(interactive=True, visible=True),
-        gr.update(interactive=False, visible=False),
-        gr.update(interactive=not no_update, visible=not no_update)
+        gr.update(interactive=False, visible=False)
     )
+
+
+def reset_update_items():
+    """Drop any scan-derived update set.
+
+    gl.update_items is a Browser/Maintenance-scan artifact shared process-wide. The Local
+    Models tab resolves updates/retention from gl.local_json_data and on-disk state, so a
+    leftover scan result must not bleed into it. Called when the user (re-)loads or filters
+    the Local browser — NOT from render_local_browser itself, so a scan's freshly-collected
+    items survive the scan's own post-render.
+    """
+    gl.update_items = []
 
 
 def _render_update_mode_banner(count):
@@ -4562,7 +5704,7 @@ def enter_update_mode():
 
 
 def exit_update_mode(content_type, sort_type, period_type, use_search_term, search_term,
-                     tile_count, base_filter, nsfw, exact_search):
+                     tile_count, base_filter, nsfw, exact_search, source=None):
     """Deactivates Update Mode, clears banner, and returns to a normal browser state."""
     gl.update_mode = False
     gl.update_items = []
@@ -4662,7 +5804,7 @@ def load_to_browser(content_type, sort_type, period_type, use_search_term, searc
         nsfw,
         exact_search,
         tile_count,
-        True
+        from_update_tab=True
     )
     from_ver, from_installed =  False, False
     return (
@@ -4676,6 +5818,320 @@ def load_to_browser(content_type, sort_type, period_type, use_search_term, searc
         gr.update(value='<div style="min-height: 0px;"></div>')
     )
 
+def _sort_local_items(items, sort_order):
+    """Sort the Local grid items in place. Items must already carry '_local_mtime'
+    (on-disk file mtime, stamped by render_local_browser). 'Name' sorts use the model
+    name; 'downloaded' sorts use the file mtime. Unknown values fall back to Name (A-Z)."""
+    name_key = lambda it: (it.get('name') or '').lower()
+    mtime_key = lambda it: it.get('_local_mtime', 0.0)
+    if sort_order == 'Name (Z-A)':
+        items.sort(key=name_key, reverse=True)
+    elif sort_order == 'Recently downloaded':
+        items.sort(key=mtime_key, reverse=True)
+    elif sort_order == 'Oldest downloaded':
+        items.sort(key=mtime_key)
+    else:  # 'Name (A-Z)' — default
+        items.sort(key=name_key)
+    return items
+
+
+def _build_local_pagination_bar(page, pages, total):
+    """Prev / 'Page X / Y (N models)' / Next bar for the Local grid. Buttons call
+    localGoToPage(n), which writes #local_page_trigger to re-render that page."""
+    prev_dis = 'disabled' if page <= 0 else ''
+    next_dis = 'disabled' if page >= pages - 1 else ''
+    return (
+        '<div class="local-pagination">'
+        f'<button class="lg-page-btn" {prev_dis} onclick="localGoToPage({page - 1})">◀ Prev</button>'
+        f'<span class="lg-page-label">Page {page + 1} / {pages} '
+        f'<span style="opacity:0.6;">({total} models)</span></span>'
+        f'<button class="lg-page-btn" {next_dis} onclick="localGoToPage({page + 1})">Next ▶</button>'
+        '</div>'
+    )
+
+
+def _render_local_slice(page):
+    """Render ONE page of the already-sorted, cached Local grid by slicing
+    gl.local_json_data in memory (no rescan/refetch) — so the sort order is kept and
+    only N cards reach the DOM. Page size = gl.local_page_size (default 50)."""
+    data = getattr(gl, 'local_json_data', None)
+    items = data.get('items', []) if isinstance(data, dict) else []
+    if not items:
+        return gr.update(value='<div style="font-size: 24px; text-align: center; margin: 50px;">'
+                               'No local models found for the selected filters.</div>')
+    try:
+        size = max(1, int(getattr(gl, 'local_page_size', 50) or 50))
+    except (TypeError, ValueError):
+        size = 50
+    total = len(items)
+    pages = max(1, (total + size - 1) // size)
+    try:
+        page = int(page)
+    except (TypeError, ValueError):
+        page = 0
+    page = max(0, min(page, pages - 1))
+    gl.local_page = page
+    start = page * size
+    page_items = items[start:start + size]
+    bar = _build_local_pagination_bar(page, pages, total)
+    grid = _api.model_list_html({'items': page_items, 'metadata': data.get('metadata', {})}, target='local')
+    return gr.update(value=bar + grid + bar)
+
+
+def render_local_page(page_value):
+    """Hidden-trigger handler (from localGoToPage): re-render the requested page.
+    The trigger carries 'page.<rand>' so the change event always fires; take the
+    integer part before the dot."""
+    try:
+        page = int(str(page_value).split('.')[0])
+    except (TypeError, ValueError):
+        page = 0
+    return _render_local_slice(page)
+
+
+def change_local_page_size(size_value):
+    """'Per page' dropdown change: set the page size and jump back to page 1."""
+    try:
+        gl.local_page_size = int(size_value)
+    except (TypeError, ValueError):
+        gl.local_page_size = 50
+    return _render_local_slice(0)
+
+
+def resort_local_browser(sort_order):
+    """Re-order the already-loaded Local grid WITHOUT re-scanning folders or hitting
+    the API. Operates on the cached gl.local_json_data (stamped with '_local_mtime'
+    during render_local_browser), so changing 'Sort by:' is instant. Returns page 1."""
+    data = getattr(gl, 'local_json_data', None)
+    items = data.get('items', []) if isinstance(data, dict) else []
+    if not items:
+        return gr.update()  # nothing loaded yet — leave the grid as-is
+    _sort_local_items(items, sort_order)
+    gl.local_json_data = {'items': items, 'metadata': data.get('metadata', {})}
+    return _render_local_slice(0)
+
+
+def render_local_browser(content_type, base_filter, use_search_term, search_term, tile_count, nsfw, sort_order='Name (A-Z)'):
+    """Scan local model folders (filtered) and render the local-models card grid.
+
+    Self-contained on purpose: it builds its OWN model data and does NOT go through
+    initial_model_page / the Browser's gl.url_list / gl.previous_inputs state machine,
+    so the Local grid is independent of the Browser tab (no cross-filtering, no stale
+    'list that no longer exists' after a download). The result is published to
+    gl.local_json_data (separate from the Browser's gl.json_data) and the Local detail
+    panel resolves clicks against it via json_input.
+
+    Filters: content_type (folders), search_term (by name), base_filter (by baseModel).
+    All matching models are fetched (not just the first page). Files that resolve to a
+    CivitAI model id render from the API; the rest show as local-only fallback cards
+    with target='local' so clicks route to the Local tab's hidden selector.
+    """
+    debug_print(f"Local render — content_type={content_type} base={base_filter} "
+                f"search={search_term!r} ({use_search_term})")
+
+    folders_to_check = _resolve_browser_local_folders(content_type)
+    files = list_files(folders_to_check) if folders_to_check else []
+
+    local_term = (search_term or '').strip().lower()
+    if use_search_term == 'Model name' and local_term:
+        files = [f for f in files if local_term in os.path.splitext(os.path.basename(f))[0].lower()]
+
+    debug_print(f"Local — {len(files)} file(s) in {len(folders_to_check)} folder(s), resolving model IDs...")
+
+    all_ids = []
+    id_to_paths = {}          # model_id -> [file_path, ...]  (to recover cards if the API fails)
+    fallback_items = []
+    for file_path in files:
+        model_id = get_models(file_path, gen_hash=False)
+        if model_id in (None, 'offline', 'Model not found'):
+            fallback_items.append(_build_local_fallback_browser_item(file_path))
+        else:
+            mid = int(model_id) if str(model_id).lstrip('-').isdigit() else model_id
+            all_ids.append(mid)
+            id_to_paths.setdefault(mid, []).append(file_path)
+
+    all_ids = sorted(set(all_ids), key=lambda x: str(x))
+    gl.local_browser_fallback_items = fallback_items
+
+    debug_print(f"Local — resolved {len(all_ids)} CivitAI id(s), {len(fallback_items)} local-only, fetching from API...")
+
+    empty_msg = '<div style="font-size: 24px; text-align: center; margin: 50px;">No local models found for the selected filters.<br>Use the Maintenance tools below to scan/enrich models first.</div>'
+    if not all_ids and not fallback_items:
+        gl.local_json_data = {'items': [], 'metadata': {}}
+        return gr.update(value=empty_msg)
+
+    # Fetch one model per request via the single-id listing query (/models?ids=N).
+    # NOTE on civitai.red (the "green"/SFW domain): BOTH the batched multi-ids query
+    # (?ids=a&ids=b...) AND the /models/{id} path-param form return HTTP 500. The single
+    # ?ids={id} listing form is the proven-reliable one (it's what the detail panel uses).
+    # Single attempt, no retry: a model that errors (e.g. moderated/taken-down -> 500) is
+    # skipped quietly instead of stalling the whole grid on backoff.
+    items = []
+    if all_ids:
+        from concurrent.futures import ThreadPoolExecutor
+
+        headers = _api.get_headers()
+        proxies, ssl = _api.get_proxies()
+        # civitai.com first (fastest, fewest 5xx in practice), then the user-configured
+        # domain as fallback (covers mirrors/region domains like civitai.red).
+        test_domains = ['civitai.com']
+        _configured = _api.get_civitai_domain()
+        if _configured and _configured not in test_domains:
+            test_domains.append(_configured)
+
+        def _chunks(lst, n):
+            for i in range(0, len(lst), n):
+                yield lst[i:i + n]
+
+        def _get_items(url, read_to):
+            """GET -> (items_list, status_str). items_list is None only on error."""
+            try:
+                r = requests.get(url, headers=headers, timeout=(8, read_to), proxies=proxies, verify=ssl)
+                if r.status_code == 200:
+                    data = r.json()
+                    return (data.get('items') or []) if isinstance(data, dict) else [], '200'
+                return None, f'HTTP {r.status_code}'
+            except Exception as e:
+                return None, type(e).__name__
+
+        def _fetch_one(mid):
+            for dom in test_domains:
+                url = f"https://{dom}/api/v1/models?ids={mid}&nsfw=true"
+                debug_print(url)
+                res, status = _get_items(url, read_to=12)
+                if res:
+                    debug_print(f"  id={mid} [{dom}]: 200 OK")
+                    return res[0]
+                debug_print(f"  id={mid} [{dom}]: {status}")
+            return None
+
+        def _fetch_chunk(chunk):
+            # Fast path: one batched request for the chunk (per domain). A small chunk
+            # means one poisoning id (e.g. RealDream, which 500s the whole /models batch)
+            # only forces per-id for its own chunk, not the entire library.
+            for dom in test_domains:
+                url = (f"https://{dom}/api/v1/models?limit=100&nsfw=true"
+                       + ''.join(f'&ids={i}' for i in chunk))
+                debug_print(url)
+                res, status = _get_items(url, read_to=30)
+                if res is not None:
+                    debug_print(f"  batched [{dom}] {len(chunk)} ids: 200 OK, {len(res)} item(s)")
+                    return res
+                debug_print(f"  batched [{dom}] {len(chunk)} ids: {status}")
+            # Batch poisoned -> per-id this chunk only.
+            out = []
+            for mid in chunk:
+                m = _fetch_one(mid)
+                if m is not None:
+                    out.append(m)
+            return out
+
+        def _recover_via_version(mid):
+            """Huge models (e.g. RealDream) 500 the /models endpoint but resolve fine via
+            /model-versions/by-hash. Build a card from the installed file's version so the
+            model stays visible with the right baseModel/name (update-check is skipped —
+            we only know the installed version, not the full list)."""
+            for fp in id_to_paths.get(mid, []):
+                jp = os.path.splitext(fp)[0] + '.json'
+                d = _api.safe_json_load(jp) if os.path.exists(jp) else None
+                sha = (str(d.get('sha256')).upper().strip() if d and d.get('sha256') else '')
+                if not sha:
+                    continue
+                for dom in test_domains:
+                    url = f"https://{dom}/api/v1/model-versions/by-hash/{sha}"
+                    debug_print(url)
+                    try:
+                        r = requests.get(url, headers=headers, timeout=(8, 15), proxies=proxies, verify=ssl)
+                        if r.status_code == 200:
+                            v = r.json()
+                            if isinstance(v, dict) and v.get('id'):
+                                m = v.get('model') or {}
+                                debug_print(f"  id={mid}: recovered via /model-versions/by-hash [{dom}]")
+                                return {
+                                    'id': mid,
+                                    'name': m.get('name') or os.path.splitext(os.path.basename(fp))[0],
+                                    'type': m.get('type') or _detect_content_type_from_path(fp),
+                                    'description': v.get('description') or '',
+                                    'creator': {'username': 'CivitAI'},
+                                    'tags': [],
+                                    # Only the installed version is known (the /models endpoint 500s
+                                    # for this model) — updating is unsafe: it would "update" to the
+                                    # installed version itself. Consumers must not offer updates.
+                                    'partial': True,
+                                    'modelVersions': [v],
+                                }
+                        else:
+                            debug_print(f"  id={mid} by-hash [{dom}]: HTTP {r.status_code}")
+                    except Exception as e:
+                        debug_print(f"  id={mid} by-hash [{dom}]: {type(e).__name__}")
+            # Last resort: local-only card so the model never just disappears.
+            paths = id_to_paths.get(mid, [])
+            return _build_local_fallback_browser_item(paths[0]) if paths else None
+
+        chunk_list = list(_chunks(all_ids, 12))
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            for res in pool.map(_fetch_chunk, chunk_list):
+                items.extend(res)
+
+        # Recover ids that resolved to NO item (huge models that 500 /models, or 404s).
+        fetched_ids = {it.get('id') for it in items}
+        missing = [mid for mid in all_ids if mid not in fetched_ids]
+        if missing:
+            debug_print(f"Local — {len(missing)} model(s) failed /models, recovering via version endpoint...")
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                for it in pool.map(_recover_via_version, missing):
+                    if it is not None:
+                        items.append(it)
+
+    debug_print(f"Local — API done, {len(items)} model(s) fetched OK")
+
+    # Merge local-only fallback cards (not found on CivitAI)
+    existing_ids = {it.get('id') for it in items}
+    for fb in fallback_items:
+        if fb.get('id') not in existing_ids:
+            items.append(fb)
+
+    # Local base-model filter (independent of the Browser): keep models that have at
+    # least one version whose baseModel matches one of the selected filters.
+    bf = base_filter if isinstance(base_filter, list) else ([base_filter] if base_filter else [])
+    bf = [b for b in bf if b]
+    if bf:
+        bf_lower = {b.lower() for b in bf}
+        items = [it for it in items
+                 if any((v.get('baseModel') or '').lower() in bf_lower for v in it.get('modelVersions', []))]
+
+    # Stamp each item with its on-disk file mtime so the grid can be re-sorted later
+    # (resort_local_browser) without re-scanning. API-resolved cards get their mtime
+    # from id_to_paths; local-only fallback cards carry their own local_file_path.
+    for it in items:
+        paths = id_to_paths.get(it.get('id')) or ([it['local_file_path']] if it.get('local_file_path') else [])
+        # Persist the installed file path(s) so the detail panel can detect the
+        # installed version from just these 1-3 files instead of walking (and
+        # json.load-ing) the entire content-type tree on every card click.
+        it['_local_paths'] = paths
+        best = 0.0
+        for fp in paths:
+            try:
+                best = max(best, os.path.getmtime(fp))
+            except OSError:
+                pass
+        it['_local_mtime'] = best
+
+    _sort_local_items(items, sort_order)
+
+    # Publish to gl.local_json_data (NOT gl.json_data) so the Local detail panel can
+    # resolve clicked cards without clobbering the Browser tab's dataset/pagination.
+    gl.local_json_data = {'items': items, 'metadata': {}}
+
+    debug_print(f"Local — rendering {len(items)} card(s)"
+                + (f" after base-model filter {bf}" if bf else ""))
+
+    if not items:
+        return gr.update(value=empty_msg)
+
+    return _render_local_slice(0)
+
+
 def cancel_scan():
     gl.cancel_status = True
 
@@ -4686,3 +6142,587 @@ def cancel_scan():
         else:
             time.sleep(0.5)
             continue
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LoraDex — LoRA category manager
+# ─────────────────────────────────────────────────────────────────────────────
+
+LORA_DEX_CATEGORIES = ['Auto', 'Character', 'Style', 'Clothing', 'Concept', 'Pose', 'Background', 'Utility', 'Slider', 'None']
+
+
+def _lora_dex_preview_path(file_path):
+    """Return the first available preview image for a LoRA file."""
+    base = os.path.splitext(file_path)[0]
+    for ext in ['.preview.png', '.preview.jpeg', '.preview.jpg', '.png', '.jpg', '.jpeg']:
+        candidate = base + ext
+        if os.path.exists(candidate):
+            return candidate
+    return ''
+
+
+def _lora_dex_model_name(file_path):
+    """Read the CivitAI model name from .api_info.json sidecar."""
+    api_file = os.path.splitext(file_path)[0] + '.api_info.json'
+    if os.path.exists(api_file):
+        try:
+            data = _api.safe_json_load(api_file) or {}
+            name = data.get('model', {}).get('name')
+            if name:
+                return str(name)
+        except Exception:
+            pass
+    return ''
+
+
+def _lora_dex_description(file_path):
+    """Read the model description from .api_info.json or .json sidecar."""
+    api_file = os.path.splitext(file_path)[0] + '.api_info.json'
+    if os.path.exists(api_file):
+        try:
+            data = _api.safe_json_load(api_file) or {}
+            desc = data.get('description') or data.get('model', {}).get('description')
+            if desc:
+                return str(desc)
+        except Exception:
+            pass
+    json_file = os.path.splitext(file_path)[0] + '.json'
+    if os.path.exists(json_file):
+        try:
+            data = _api.safe_json_load(json_file) or {}
+            desc = data.get('description')
+            if desc:
+                return str(desc)
+        except Exception:
+            pass
+    return ''
+
+
+def _lora_dex_version_name(file_path):
+    """Read the installed version name from .api_info.json or .json sidecar."""
+    api_file = os.path.splitext(file_path)[0] + '.api_info.json'
+    if os.path.exists(api_file):
+        try:
+            data = _api.safe_json_load(api_file) or {}
+            name = data.get('name')
+            if name:
+                return str(name)
+        except Exception:
+            pass
+    json_file = os.path.splitext(file_path)[0] + '.json'
+    if os.path.exists(json_file):
+        try:
+            data = _api.safe_json_load(json_file) or {}
+            return data.get('version', '') or ''
+        except Exception:
+            pass
+    return ''
+
+
+def _lora_dex_base_model(file_path, quiet=False):
+    """Read baseModel from .api_info.json or .json sidecar.
+
+    quiet=True suppresses the per-file Debug Organization Logs output (see
+    _extract_base_model_from_api_data) — pass it when scanning an entire library at once.
+    """
+    api_file = os.path.splitext(file_path)[0] + '.api_info.json'
+    if os.path.exists(api_file):
+        try:
+            data = _api.safe_json_load(api_file) or {}
+            base = _extract_base_model_from_api_data(data, file_path, quiet=quiet)
+            if base:
+                return base
+        except Exception:
+            pass
+    json_file = os.path.splitext(file_path)[0] + '.json'
+    if os.path.exists(json_file):
+        try:
+            data = _api.safe_json_load(json_file) or {}
+            return data.get('baseModel', '') or data.get('sd version', '') or ''
+        except Exception:
+            pass
+    return ''
+
+
+def _lora_dex_tags(file_path):
+    """Read tags from .api_info.json sidecar, falling back to modelTags in .json sidecar."""
+    api_file = os.path.splitext(file_path)[0] + '.api_info.json'
+    if os.path.exists(api_file):
+        try:
+            data = _api.safe_json_load(api_file) or {}
+            tags = data.get('tags') or []
+            if tags:
+                return tags
+        except Exception:
+            pass
+    return _read_model_tags_from_sidecar(file_path)
+
+
+def _lora_dex_trigger_words(file_path):
+    """Read trigger words from .api_info.json or .json sidecar (direct path, no folder walk).
+
+    Mirrors the group-parsing rules in civitai_api.get_local_trigger_words, but reads the
+    sidecar next to file_path directly instead of searching model_folder — keeps native-card
+    badge lookups tree-walk-free for large libraries (see _lora_dex_base_model).
+    """
+    for suffix in ('.api_info.json', '.json'):
+        sidecar = os.path.splitext(file_path)[0] + suffix
+        if not os.path.exists(sidecar):
+            continue
+        try:
+            data = _api.safe_json_load(sidecar) or {}
+        except Exception:
+            continue
+
+        raw_groups = data.get('activation text groups')
+        if raw_groups is None:
+            raw_groups = data.get('activation_text_groups')
+
+        if isinstance(raw_groups, list):
+            groups = [str(g).strip() for g in raw_groups if str(g).strip()]
+            if groups:
+                return groups
+        elif isinstance(raw_groups, str) and raw_groups.strip():
+            groups = [g.strip() for g in re.split(r'[\n\r]+', raw_groups) if g.strip()]
+            if groups:
+                return groups
+
+        text = data.get('activation text')
+        if text:
+            words = [t.strip() for t in re.split(r'[,;\n\r]+', text) if t.strip()]
+            if words:
+                return words
+
+    return []
+
+
+def build_native_card_badge_map():
+    """Build {model_filename_stem: {baseModel, baseModelShort, triggerWords, loraCategory}}
+    for Checkpoint and LORA files, for the badges/buttons injected onto WebUI's native Extra
+    Networks cards.
+
+    Local-sidecar-only (no API calls, no folder walk) so it's safe to call on every Extra
+    Networks tab load/refresh, and after a LoraDex category edit. Skips update-availability
+    status entirely — that data only exists in memory after the Local Models Browser has
+    scanned against the Civitai API (gl.local_json_data), so faking it here would either be
+    wrong or force an extra API scan.
+    """
+    badge_map = {}
+    typed_folders = [
+        ('Checkpoint', _api.contenttype_folder('Checkpoint')),
+        ('LORA', _api.contenttype_folder('LORA')),
+    ]
+    for content_type, folder in typed_folders:
+        if not folder:
+            continue
+        for file_path in list_files([folder]):
+            stem = os.path.splitext(os.path.basename(file_path))[0]
+            base_model = _lora_dex_base_model(file_path, quiet=True)
+            trigger_words = _lora_dex_trigger_words(file_path)
+
+            # Mirrors the existing Browser/Local card badge (civitai_api.py get_model_card):
+            # only a confirmed manual category shows a badge — 'Auto'/unset stays blank
+            # rather than surfacing an unconfirmed heuristic guess on every card.
+            lora_category = None
+            if content_type == 'LORA':
+                saved_category = get_lora_category_from_sidecar(file_path)
+                if saved_category and str(saved_category).strip().lower() != 'auto':
+                    lora_category = saved_category
+
+            display_name = _lora_dex_model_name(file_path)
+            version_name = _lora_dex_version_name(file_path)
+
+            if not base_model and not trigger_words and not lora_category and not display_name and not version_name:
+                continue
+
+            entry = {
+                'baseModel': base_model,
+                'baseModelShort': _api.get_base_model_short(base_model),
+                'triggerWords': trigger_words,
+                'loraCategory': lora_category or '',
+                'displayName': display_name,
+                'version': version_name,
+            }
+            badge_map[stem] = entry
+
+            # Auto-organized LoRAs (Character/Style/... subfolders) are shown by WebUI as
+            # "Subfolder/filename" in the native card's .name element, which wouldn't match
+            # the plain stem key above — index the relative path too so the JS lookup finds
+            # it either way without needing to know which form WebUI picked.
+            rel_stem = os.path.splitext(os.path.relpath(file_path, folder))[0].replace(os.sep, '/')
+            if rel_stem != stem:
+                badge_map[rel_stem] = entry
+    return badge_map
+
+
+def get_native_card_badge_json(_trigger_value=None):
+    """gr.Textbox.change() handler: returns the native-card badge map as a JSON string.
+
+    Builds it in one bulk pass (see build_native_card_badge_map's quiet=True call), then
+    logs a single summary line instead of the hundreds of per-file lines that would
+    otherwise come out of the underlying baseModel/version/trigger-word sidecar reads on a
+    large library.
+    """
+    try:
+        started = time.time()
+        badge_map = build_native_card_badge_map()
+        debug_print(f'[native-card-badges] indexed {len(badge_map)} entries in {time.time() - started:.2f}s')
+        return json.dumps(badge_map)
+    except Exception as e:
+        debug_print(f'[native-card-badges] build failed: {e}')
+        return '{}'
+
+
+def _save_lora_category(file_path, category):
+    """Persist the manual LoRA category in the .json sidecar.
+
+    Rules:
+      - 'Auto'  → remove the loraCategory key (fall back to heuristic).
+      - 'None'  → store null.
+      - other   → store the string.
+    Returns True on success.
+    """
+    json_file = os.path.splitext(file_path)[0] + '.json'
+    data = _api.safe_json_load(json_file) or {}
+
+    cat = (category or '').strip()
+    if cat.lower() == 'auto':
+        data.pop('loraCategory', None)
+    elif cat.lower() == 'none':
+        data['loraCategory'] = None
+    elif cat:
+        data['loraCategory'] = cat
+    else:
+        data.pop('loraCategory', None)
+
+    return _api.safe_json_save(json_file, data)
+
+
+def scan_lora_dex_data(base_filter=None, category_filter='All', pending_only=False, search_term=''):
+    """Scan the Lora folder and build the LoraDex dataset.
+
+    Returns the filtered list of LoRA dicts and stores the full unfiltered list
+    in gl.lora_dex_data so pagination can work without rescanning.
+    """
+    folder = _api.contenttype_folder('LORA')
+    if not folder or not os.path.exists(folder):
+        gl.lora_dex_data = []
+        return []
+
+    files = list_files([folder])
+    data = []
+    for file_path in files:
+        saved_category = get_lora_category_from_sidecar(file_path)
+        if saved_category is None:
+            saved_category = 'Auto'
+        civitai_name = _lora_dex_model_name(file_path)
+        file_name = os.path.splitext(os.path.basename(file_path))[0]
+        tags = _lora_dex_tags(file_path)
+        description = _lora_dex_description(file_path)
+        suggested = None
+        if str(saved_category).strip().lower() == 'auto':
+            suggested = categorize_lora_by_tags(
+                tags,
+                manual_category='Auto',
+                description=description,
+                name_hints=[civitai_name, file_name],
+            )
+        data.append({
+            'file_path': file_path,
+            'name': civitai_name or file_name,
+            'file_name': file_name,
+            'base_model': _lora_dex_base_model(file_path) or 'Unknown',
+            'version': _lora_dex_version_name(file_path),
+            'tags': tags,
+            'description': description,
+            'preview_path': _lora_dex_preview_path(file_path),
+            'saved_category': saved_category,
+            'current_category': suggested or saved_category,
+            'suggested_category': suggested,
+        })
+
+    gl.lora_dex_data = data
+    gl.lora_dex_filters = {
+        'base_filter': base_filter,
+        'category_filter': category_filter,
+        'pending_only': pending_only,
+        'search_term': search_term,
+    }
+    return _filter_lora_dex_data(data, base_filter, category_filter, pending_only, search_term)
+
+
+def _filter_lora_dex_data(data, base_filter, category_filter, pending_only, search_term):
+    """Apply filters to the LoraDex dataset."""
+    result = list(data)
+
+    term = (search_term or '').strip().lower()
+    if term:
+        result = [d for d in result if term in d['name'].lower()]
+
+    if base_filter:
+        if isinstance(base_filter, str):
+            base_filter = [base_filter]
+        base_filter = [b for b in base_filter if b]
+        if base_filter:
+            bf_lower = {b.lower() for b in base_filter}
+            result = [d for d in result if d.get('base_model', '').lower() in bf_lower]
+
+    if category_filter and str(category_filter).lower() != 'all':
+        cat = str(category_filter).strip()
+        result = [d for d in result if d.get('saved_category', 'Auto') == cat]
+
+    if pending_only:
+        result = [d for d in result if d.get('file_path') in gl.lora_dex_pending]
+
+    return result
+
+
+def _build_lora_dex_pagination_bar(page, pages, total, page_size):
+    """HTML pagination bar for LoraDex."""
+    if pages <= 1:
+        return ''
+    prev_disabled = 'disabled' if page <= 0 else ''
+    next_disabled = 'disabled' if page >= pages - 1 else ''
+    return f'''
+    <div class="loradex-pagination">
+        <button class="lg secondary svelte-cmf5ev" onclick="loradexGoToPage({page - 1})" {prev_disabled}>← Prev</button>
+        <span class="loradex-page-info">Page {page + 1} of {pages} ({total} items)</span>
+        <button class="lg secondary svelte-cmf5ev" onclick="loradexGoToPage({page + 1})" {next_disabled}>Next →</button>
+    </div>
+    '''
+
+
+def _build_lora_dex_table(items, page, page_size):
+    """Build the LoraDex list HTML for one page."""
+    if not items:
+        return '<div style="padding: 40px; text-align: center;">No LoRAs match the current filters.</div>'
+
+    rows_html = []
+    for item in items:
+        fp = item['file_path']
+        fp_escaped = html.escape(fp, quote=True)
+        saved = item['saved_category']
+        saved_escaped = html.escape(saved, quote=True)
+        current = item.get('current_category', saved)
+        suggested = item.get('suggested_category')
+        is_suggested = bool(suggested and current == suggested and str(saved).strip().lower() == 'auto')
+        is_pending = current != saved
+        if is_pending:
+            gl.lora_dex_pending[fp] = current
+        else:
+            gl.lora_dex_pending.pop(fp, None)
+        pending_class = ' loradex-pending' if is_pending else ''
+        suggested_class = ' loradex-suggested' if is_suggested else ''
+        suggested_badge = '<span class="loradex-suggested-badge" title="Suggested by tag/description heuristic">🤖</span>' if is_suggested else ''
+        preview = item.get('preview_path', '')
+        # Gradio serves local files via ./file=<path>; normalize separators to forward slashes.
+        preview_url = './file=' + preview.replace('\\', '/') if preview else ''
+        preview_html = (
+            f'<img class="loradex-thumb" src="{preview_url}" '
+            f'onmouseenter="loradexHoverZoom(event, this.src)" onmouseleave="loradexHideZoom()">'
+        ) if preview_url else '<div class="loradex-thumb loradex-thumb-empty">🖼️</div>'
+        base = item.get('base_model', 'Unknown')
+        version = item.get('version', '')
+        name_escaped = html.escape(item['name'], quote=True)
+        file_name = item.get('file_name', '')
+        file_name_escaped = html.escape(file_name, quote=True)
+        options_html = ''.join(
+            f'<option value="{cat}"{" selected" if cat == current else ""}>{cat}</option>'
+            for cat in LORA_DEX_CATEGORIES
+        )
+        rows_html.append(f'''
+        <div class="loradex-row{pending_class}{suggested_class}" data-filepath="{fp_escaped}">
+            <div class="loradex-thumb-wrap">{preview_html}</div>
+            <div class="loradex-filename" title="{file_name_escaped}">{file_name}</div>
+            <div class="loradex-name" title="{name_escaped}">{suggested_badge}{item['name']}</div>
+            <div class="loradex-base">{base}</div>
+            <div class="loradex-version">{version}</div>
+            <div class="loradex-category">
+                <select class="loradex-cat" data-filepath="{fp_escaped}" data-saved="{saved_escaped}"
+                        onchange="loradexMarkPending(this)">
+                    {options_html}
+                </select>
+            </div>
+            <div class="loradex-actions">
+                <button class="lg secondary svelte-cmf5ev loradex-apply" title="Apply"
+                        onclick="loradexApplyLine(this)">✅</button>
+                <button class="lg secondary svelte-cmf5ev loradex-reset" title="Reset"
+                        onclick="loradexResetLine(this)">↺</button>
+            </div>
+        </div>
+        ''')
+
+    return f'''
+    <div class="loradex-table">
+        <div class="loradex-header">
+            <div class="loradex-thumb-wrap"></div>
+            <div class="loradex-filename">Filename</div>
+            <div class="loradex-name">LoRA name</div>
+            <div class="loradex-base">Base</div>
+            <div class="loradex-version">Version</div>
+            <div class="loradex-category">Category</div>
+            <div class="loradex-actions"></div>
+        </div>
+        {''.join(rows_html)}
+    </div>
+    '''
+
+
+def _render_lora_dex_slice(page, page_size=None, pending_only=False):
+    """Render one page of the cached LoraDex list."""
+    raw_data = getattr(gl, 'lora_dex_data', [])
+    filters = getattr(gl, 'lora_dex_filters', {})
+    data = _filter_lora_dex_data(
+        raw_data,
+        filters.get('base_filter'),
+        filters.get('category_filter', 'All'),
+        filters.get('pending_only', False) if not pending_only else pending_only,
+        filters.get('search_term', ''),
+    )
+    if not data:
+        return gr.update(value='<div style="padding: 40px; text-align: center;">No LoRAs match the current filters.</div>')
+
+    if page_size is None:
+        page_size = getattr(gl, 'lora_dex_page_size', 25)
+    try:
+        page_size = max(1, int(page_size))
+    except (TypeError, ValueError):
+        page_size = 25
+
+    total = len(data)
+    pages = max(1, (total + page_size - 1) // page_size)
+    try:
+        page = int(page)
+    except (TypeError, ValueError):
+        page = 0
+    page = max(0, min(page, pages - 1))
+    gl.lora_dex_page = page
+
+    start = page * page_size
+    page_items = data[start:start + page_size]
+
+    bar_top = _build_lora_dex_pagination_bar(page, pages, total, page_size)
+    table = _build_lora_dex_table(page_items, page, page_size)
+    bar_bottom = _build_lora_dex_pagination_bar(page, pages, total, page_size)
+
+    html = f'<div class="loradex-container">{bar_top}{table}{bar_bottom}</div>'
+    return gr.update(value=_wrap_html_with_css(html))
+
+
+def render_lora_dex_page(base_filter=None, category_filter='All', pending_only=False, search_term='', page_size=25):
+    """Public entry: scan and render page 1 of LoraDex."""
+    scan_lora_dex_data(base_filter, category_filter, pending_only, search_term)
+    try:
+        gl.lora_dex_page_size = max(1, int(page_size))
+    except (TypeError, ValueError):
+        gl.lora_dex_page_size = 25
+    gl.lora_dex_pending = {}
+    return _render_lora_dex_slice(0)
+
+
+def render_lora_dex_page_trigger(page_value):
+    """Hidden-trigger handler for LoraDex pagination."""
+    try:
+        page = int(str(page_value).split('.')[0])
+    except (TypeError, ValueError):
+        page = 0
+    return _render_lora_dex_slice(page)
+
+
+def change_lora_dex_page_size(size_value):
+    """'Per page' dropdown change for LoraDex: reset to page 1."""
+    try:
+        gl.lora_dex_page_size = max(1, int(size_value))
+    except (TypeError, ValueError):
+        gl.lora_dex_page_size = 25
+    return _render_lora_dex_slice(0)
+
+
+def apply_lora_dex_change(file_path, category):
+    """Apply a single LoRA category change and persist it."""
+    if not file_path or not os.path.exists(file_path):
+        return False
+    if _save_lora_category(file_path, category):
+        # Update cached dataset so the row is no longer pending
+        for item in getattr(gl, 'lora_dex_data', []):
+            if item.get('file_path') == file_path:
+                item['saved_category'] = category
+                item['current_category'] = category
+                break
+        gl.lora_dex_pending.pop(file_path, None)
+        return True
+    return False
+
+
+def apply_all_lora_dex_changes(pending_items):
+    """Apply all pending category changes.
+
+    pending_items is a list of {file_path, category} dicts.
+    Returns (status_html, rendered_list_update).
+    """
+    if not pending_items:
+        return '<div style="padding:8px;">No pending changes.</div>', gr.update()
+
+    ok = 0
+    failed = 0
+    for entry in pending_items:
+        fp = entry.get('file_path')
+        cat = entry.get('category')
+        if apply_lora_dex_change(fp, cat):
+            ok += 1
+        else:
+            failed += 1
+
+    status = f'<div style="padding:8px;">✅ Applied {ok} change(s) on this page'
+    if failed:
+        status += f' • ⚠️ {failed} failed'
+    status += '</div>'
+    return status, _render_lora_dex_slice(getattr(gl, 'lora_dex_page', 0))
+
+
+def handle_lora_dex_command(command_json):
+    """Dispatch a LoraDex command sent from the JS frontend.
+
+    command_json is a JSON object: {command, data}
+      command: 'apply' | 'apply-all' | 'reset' | 'reset-all'
+      data: for apply -> {file_path, category}; for apply-all/reset-all -> list of entries
+    Returns (status_html, rendered_list_update).
+    """
+    import json as _json
+    try:
+        payload = _json.loads(command_json) if command_json else {}
+    except Exception as e:
+        return f'<div style="padding:8px;color:#e57373;">Invalid command: {e}</div>', gr.update()
+
+    command = payload.get('command')
+    data = payload.get('data')
+
+    if command == 'apply':
+        fp = data.get('file_path')
+        cat = data.get('category')
+        if apply_lora_dex_change(fp, cat):
+            return '<div style="padding:8px;">✅ Category saved.</div>', _render_lora_dex_slice(getattr(gl, 'lora_dex_page', 0))
+        return '<div style="padding:8px;color:#e57373;">⚠️ Failed to save category.</div>', gr.update()
+
+    if command == 'apply-all':
+        return apply_all_lora_dex_changes(data or [])
+
+    if command == 'reset':
+        fp = data.get('file_path')
+        saved = 'Auto'
+        for item in getattr(gl, 'lora_dex_data', []):
+            if item.get('file_path') == fp:
+                saved = item.get('saved_category', 'Auto')
+                item['current_category'] = saved
+                break
+        gl.lora_dex_pending.pop(fp, None)
+        return '', _render_lora_dex_slice(getattr(gl, 'lora_dex_page', 0))
+
+    if command == 'reset-all':
+        for fp in (data or []):
+            gl.lora_dex_pending.pop(fp, None)
+        for item in getattr(gl, 'lora_dex_data', []):
+            item['current_category'] = item.get('saved_category', 'Auto')
+        return '<div style="padding:8px;">↺ Reset pending changes on this page.</div>', _render_lora_dex_slice(getattr(gl, 'lora_dex_page', 0))
+
+    return '', gr.update()

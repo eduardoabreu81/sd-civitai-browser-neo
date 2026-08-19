@@ -17,6 +17,8 @@ aria2/running
 aria2/_
 favoriteCreators.txt
 bannedCreators.txt
+.codegraph/
+.playwright-mcp/
 
 # ============================================
 # Python

@@ -104,11 +104,6 @@
     background: transparent;
     box-shadow: 0 0 4px 1px rgba(91, 155, 213, 0.5);
 }
-.card-legend .legend-dot.early-access {
-    border-color: #e0e0e0;
-    background: transparent;
-    box-shadow: 0 0 4px 1px rgba(224, 224, 224, 0.5);
-}
 .card-legend .legend-separator {
     width: 1px;
     height: 14px;
@@ -167,21 +162,40 @@
     pointer-events: none;
 }
 
+/* Badges stack vertically on the left; the checkbox / delete button sit on the
+   right via .card-header's space-between. min-width:0 lets this column shrink on
+   narrow tiles instead of pushing the action controls out of the card — the badge
+   row grows downward over the artwork, never sideways into the checkbox. */
 .badges-container {
     display: flex;
     flex-direction: column;
     gap: 2px;
     pointer-events: none;
+    min-width: 0;
+    overflow: hidden;
 }
 
+/* Both children (.model-checkbox and .custom-checkbox) are absolutely positioned,
+   so without explicit dimensions this container collapses to 0x0. In the header it
+   still looked right by accident (flex space-between pinned the collapsed box to the
+   right edge), but inside .outdated-card-actions a 0x0 flex item reserves no space,
+   so the checkbox drew on top of its neighbours instead of stacking under the delete
+   button — the reason Local cards looked different from Browser ones. Sizing it to
+   the checkbox also gives clicks a real, predictable hit area. */
 .checkbox-container {
     position: relative;
     pointer-events: auto;
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
 }
 
 .delete-button-container {
     position: relative;
     pointer-events: auto;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
 }
 
 /* Outdated card: delete button + checkbox stacked */
@@ -259,22 +273,85 @@
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     width: fit-content;
 }
-/* Early Access Badge */
-.civmodelcard.early-access .early-access-icon { /* Icon */
-    fill: #e0e0e0;
-    margin-left: -4px;
-    margin-right: 2px;
-    width: 14px;
-    height: 14px;
+/* Access badges — two DIFFERENT gates, so two different pills.
+   Aqua "Early Access" = timed window, the file turns free on its own.
+   Gold "Paid"         = permanent Buzz purchase, it never turns free.
+   They shared one badge before, which hid a distinction the user acts on.
+
+   Early Access: teal/cyan (matching CivitAI's own card badge) rather than
+   emerald, so it stays distinguishable from the green New/Updated status
+   badges that sit in the same corner. */
+.badges-container .early-access-badge {
+    display: flex;
+    height: 22px;
+    padding: 4px 10px;
+    /* !important for the same reason as .paid-badge below: white here only
+       survives a theme override by coincidence, and a LIGHT WebUI theme would
+       repaint it dark-on-aqua. */
+    color: #ffffff !important;
+    background: rgba(13, 190, 172, 0.92);
+    border: 1px solid rgba(94, 234, 212, 0.65);
+    border-radius: 10px;
+    box-shadow: 0 2px 8px 0 rgba(13, 148, 136, 0.35);
+    backdrop-filter: blur(6px);
+    font-size: 0.75em;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    pointer-events: none !important;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    width: fit-content;
+    white-space: nowrap;
+}
+.badges-container .early-access-badge .early-access-icon { /* Lightning glyph */
+    fill: currentColor !important;
+    margin-left: -3px;
+    margin-right: 3px;
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
 }
 
-.civmodelcard.early-access { /* Model Card */
-    box-shadow: 0 6px 15px -2px color-mix(in srgb, #e0e0e0 20%, rgba(0, 0, 0, 0.1));
-    border-color: color-mix(in srgb, #e0e0e0 40%, rgba(255, 255, 255, 0.3));
+/* Paid Badge — Buzz gold with near-black text.
+
+   The colour is declared `!important` and behind `.badges-container` on purpose.
+   Every other badge here paints its text WHITE, which happens to match the WebUI
+   theme's own light body text — so if a theme rule outranks the single-class
+   selector, those badges still look right by accident. This is the only badge with
+   dark text, so it was the only one where losing the declaration was visible: the
+   label fell back to the theme's light colour and washed out against the gold. */
+.badges-container .paid-badge {
+    display: flex;
+    height: 22px;
+    padding: 4px 10px;
+    color: #241c00 !important;
+    background: rgba(250, 204, 21, 0.96);
+    border: 1px solid rgba(202, 138, 4, 0.85);
+    border-radius: 10px;
+    box-shadow: 0 2px 8px 0 rgba(161, 98, 7, 0.45);
+    backdrop-filter: blur(6px);
+    font-size: 0.75em;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    pointer-events: none !important;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    width: fit-content;
+    white-space: nowrap;
 }
-.civmodelcard.early-access .early-access-badge { /* Model Type Badge */
-    color: #e0e0e0;
-    border-color: color-mix(in srgb, #e0e0e0 40%, rgba(255, 255, 255, 0.3));
+.badges-container .paid-badge .paid-badge-icon { /* Buzz coin glyph */
+    fill: currentColor !important;
+    margin-left: -3px;
+    margin-right: 3px;
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
 }
 
 /* NSFW Badge */
@@ -309,6 +386,8 @@
 
 .civmodelcard:hover .badges-container .model-type-badge,
 .civmodelcard:hover .badges-container .nsfw-badge,
+.civmodelcard:hover .badges-container .early-access-badge,
+.civmodelcard:hover .badges-container .paid-badge,
 .civmodelcard:hover .badges-container .status-badge {
     opacity: 0;
     transform: translateX(-10px);
@@ -345,6 +424,102 @@
     color: #ecfdf5;
 }
 
+/* Source Badge (CivitAI, CivArchive, ...) */
+.source-badge {
+    display: flex;
+    height: 22px;
+    padding: 4px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 10px;
+    color: #ffffff;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(6px);
+    font-size: 10px;
+    font-weight: 700;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    width: fit-content;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+.source-badge.source-civarchive {
+    background: rgba(124, 58, 237, 0.85);
+    border-color: rgba(139, 92, 246, 0.6);
+}
+
+/* Source provenance inside detail panel */
+.browser-source-block .source-badge {
+    margin-right: 0;
+}
+.browser-source-block .source-id {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.85em;
+    font-family: monospace;
+}
+.browser-source-block .source-note {
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 0.88em;
+    font-style: italic;
+}
+.browser-source-block .mirror-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.browser-source-block .mirror-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.browser-source-block .mirror-row.mirror-active {
+    border-left: 3px solid rgba(34, 197, 94, 0.85);
+}
+.browser-source-block .mirror-row.mirror-deleted {
+    border-left: 3px solid rgba(239, 68, 68, 0.85);
+    opacity: 0.7;
+}
+.browser-source-block .mirror-url {
+    color: rgba(96, 165, 250, 0.95);
+    font-size: 0.82em;
+    word-break: break-all;
+    text-decoration: none;
+    flex: 1;
+}
+.browser-source-block .mirror-url:hover {
+    text-decoration: underline;
+}
+.browser-source-block .mirror-status {
+    font-size: 0.72em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    white-space: nowrap;
+}
+.browser-source-block .mirror-row.mirror-active .mirror-status {
+    color: rgba(34, 197, 94, 1);
+}
+.browser-source-block .mirror-row.mirror-deleted .mirror-status {
+    color: rgba(239, 68, 68, 1);
+}
+
+.civmodelcard:hover .badges-container .source-badge {
+    opacity: 0;
+    transform: translateX(-10px);
+}
+
 /* Base model separator / abbreviation inside type badge (e.g. "Checkpoint | IL") */
 .model-type-badge .base-model-sep {
     margin: 0 3px;
@@ -354,6 +529,41 @@
 .model-type-badge .base-model-short {
     font-weight: 700;
 }
+
+/* LoRA category ribbon — displayed below the top badges */
+.lora-category-ribbon {
+    position: absolute;
+    top: 48px;
+    left: 10px;
+    z-index: 9;
+    pointer-events: none;
+}
+
+.lora-category-badge {
+    display: inline-flex;
+    align-items: center;
+    height: 20px;
+    padding: 3px 9px;
+    border-radius: 10px;
+    font-size: 0.7em;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: #ffffff;
+    background: rgba(139, 92, 246, 0.85);
+    border: 1px solid rgba(167, 139, 250, 0.6);
+    box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.15);
+    backdrop-filter: blur(6px);
+    text-transform: capitalize;
+}
+
+.lora-category-badge.character { background: rgba(59, 130, 246, 0.85); border-color: rgba(96, 165, 250, 0.6); }
+.lora-category-badge.style     { background: rgba(168, 85, 247, 0.85); border-color: rgba(192, 132, 252, 0.6); }
+.lora-category-badge.clothing  { background: rgba(236, 72, 153, 0.85); border-color: rgba(244, 114, 182, 0.6); }
+.lora-category-badge.concept   { background: rgba(245, 158, 11, 0.85); border-color: rgba(251, 191, 36, 0.6); }
+.lora-category-badge.pose      { background: rgba(14, 165, 233, 0.85); border-color: rgba(56, 189, 248, 0.6); }
+.lora-category-badge.background{ background: rgba(16, 185, 129, 0.85); border-color: rgba(52, 211, 153, 0.6); }
+.lora-category-badge.utility   { background: rgba(100, 116, 139, 0.85); border-color: rgba(148, 163, 184, 0.6); }
+.lora-category-badge.slider    { background: rgba(6, 182, 212, 0.85); border-color: rgba(34, 211, 238, 0.6); }
 
 /* Modern Custom-Checkbox */
 /* This style is required for the correct display and functionality of the custom checkbox */
@@ -889,6 +1099,170 @@
     fill: red !important;
 }
 
+/* Native Extra Networks card badges/actions (CivitAI Browser+)
+   Both chips live inside the native .button-row (bottom bar) rather than floating over the
+   image/name area — this theme's cards already show the filename in a top overlay, and an
+   absolutely-positioned badge there collides with it. */
+.civitai-native-base-badge {
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    border-radius: 4px;
+    font-size: 0.62em;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: #ffffff;
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+.civitai-native-lora-badge.lora-category-badge {
+    position: static;
+    height: auto;
+    padding: 0 6px;
+    font-size: 0.62em;
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+.civitai-native-trigger-btn.card-button {
+    filter: drop-shadow(2px 2px 3px black);
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.civitai-native-trigger-btn.card-button:hover {
+    transform: scale(1.1);
+}
+
+/* === CivitAI-style card theme (opt-in, Settings → Browser) ===
+   Scoped entirely under body.civitai-neo-card-theme so it's inert unless enabled, and
+   layers on top of native/other-theme CSS instead of replacing it: native .actions .name
+   and .description are hidden (not removed) so click-to-select keeps working — JS relocates
+   every .button-row child (native buttons included) into .civitai-neo-bottom-actions. */
+body.civitai-neo-card-theme .card {
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+body.civitai-neo-card-theme .card .actions .name,
+body.civitai-neo-card-theme .card .description {
+    display: none !important;
+}
+
+.civitai-neo-top-row {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    z-index: 6;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    pointer-events: none;
+}
+
+.civitai-neo-badge {
+    display: inline-flex;
+    align-items: center;
+    height: 22px;
+    padding: 0 9px;
+    border-radius: 11px;
+    font-size: 0.68em;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: #ffffff;
+    background: rgba(15, 23, 42, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(4px);
+    white-space: nowrap;
+}
+
+.civitai-neo-badge-type {
+    text-transform: uppercase;
+}
+
+/* Bottom stack: title block (name + version, one shared pill) and the action-buttons pill,
+   each carrying its own background so the card's own image provides contrast instead of one
+   big gradient panel. */
+.civitai-neo-bottom {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.civitai-neo-title-block,
+.civitai-neo-bottom-actions {
+    background: rgba(15, 23, 42, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(4px);
+}
+
+.civitai-neo-title-block {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 14px;
+    border-radius: 14px;
+}
+
+.civitai-neo-name {
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 15px;
+    line-height: 1.25;
+    white-space: normal;
+    word-break: break-word;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+}
+
+.civitai-neo-version {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 11px;
+    line-height: 1.2;
+}
+
+.civitai-neo-bottom-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 3px 10px;
+    min-height: 0;
+    border-radius: 14px;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+body.civitai-neo-card-theme .card:hover .civitai-neo-bottom-actions {
+    opacity: 1;
+    visibility: visible;
+}
+
+.civitai-neo-bottom-actions .card-button {
+    position: static !important;
+    width: 30px !important;
+    height: 30px !important;
+    margin: 0 !important;
+    font-size: 17px !important;
+}
+
+.civitai-neo-bottom-actions .card-button svg {
+    width: 18px !important;
+    height: 18px !important;
+}
+
 /* Custom settings Accordion */
 .settings-accordion {
     border: 1px solid var(--block-border-color);
@@ -934,13 +1308,13 @@
 
 /* === HTML Model Page Preview === */
 
-#civitai_preview_html {
+:is(#civitai_preview_html,#local_preview_html) {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
     color: var(--body-text-color);
 }
 
 /* == Main Container Layout == */
-#civitai_preview_html .main-container {
+:is(#civitai_preview_html,#local_preview_html) .main-container {
     display: flex;
     flex-direction: column;
     margin: 0;
@@ -950,7 +1324,7 @@
 }
 
 /* Model Page and Uploader Block */
-#civitai_preview_html .header-block {
+:is(#civitai_preview_html,#local_preview_html) .header-block {
     display: flex;
     flex-direction: column;
     padding: 20px;
@@ -960,15 +1334,15 @@
     gap: 16px;
 }
 
-#civitai_preview_html .model-page-line,
-#civitai_preview_html .model-uploader-line {
+:is(#civitai_preview_html,#local_preview_html) .model-page-line,
+:is(#civitai_preview_html,#local_preview_html) .model-uploader-line {
     display: flex;
     align-items: center;
     line-height: 1;
     gap: 12px;
 }
-#civitai_preview_html .page-label,
-#civitai_preview_html .uploader-label {
+:is(#civitai_preview_html,#local_preview_html) .page-label,
+:is(#civitai_preview_html,#local_preview_html) .uploader-label {
     font-size: 20px;
     font-weight: 600;
     color: #8b5cf6;
@@ -976,26 +1350,26 @@
     flex-shrink: 0;
 }
 
-#civitai_preview_html .model-page-line a,
-#civitai_preview_html .model-uploader-line a {
+:is(#civitai_preview_html,#local_preview_html) .model-page-line a,
+:is(#civitai_preview_html,#local_preview_html) .model-uploader-line a {
     font-size: 18px;
     font-weight: 600;
     color: var(--body-text-color);
     text-decoration: none;
 }
-#civitai_preview_html .model-page-line a:hover,
-#civitai_preview_html .model-uploader-line a:hover {
+:is(#civitai_preview_html,#local_preview_html) .model-page-line a:hover,
+:is(#civitai_preview_html,#local_preview_html) .model-uploader-line a:hover {
     color: var(--link-text-color-hover);
 }
 
 /* Uploader Divider */
-#civitai_preview_html .uploader-divider {
+:is(#civitai_preview_html,#local_preview_html) .uploader-divider {
     height: 1px;
     background: rgba(255, 255, 255, 0.1);
 }
 
 /* Uploader Avatar */
-#civitai_preview_html .model-uploader-line .avatar {
+:is(#civitai_preview_html,#local_preview_html) .model-uploader-line .avatar {
     width: 42px;
     height: 42px;
     min-width: 42px;
@@ -1004,7 +1378,7 @@
 }
 
 /* == Model Info Section == */
-#civitai_preview_html .info-section {
+:is(#civitai_preview_html,#local_preview_html) .info-section {
     display: flex;
     flex-direction: column;
     width: 100%;
@@ -1012,22 +1386,23 @@
 }
 
 /* Info and Permissions Container */
-#civitai_preview_html .info-permissions-container {
+:is(#civitai_preview_html,#local_preview_html) .info-permissions-container {
     display: flex;
     gap: 16px;
 }
 @media (max-width: 1500px) {
-    #civitai_preview_html .info-permissions-container {
+    :is(#civitai_preview_html,#local_preview_html) .info-permissions-container {
         flex-direction: column;
         gap: 16px;
     }
 }
 
 /* - Version Info Block - */
-#civitai_preview_html .version-info-block {
+:is(#civitai_preview_html,#local_preview_html) .version-info-block {
     display: flex;
     flex-direction: column;
-    flex: auto;
+    flex: 1 1 0;
+    min-width: 320px;
     padding: 20px;
     background: var(--background-fill-secondary);
     border: 1px solid var(--border-color-primary);
@@ -1036,22 +1411,56 @@
     gap: 16px;
 }
 
-#civitai_preview_html .version-info-block dl {
+:is(#civitai_preview_html,#local_preview_html) .version-info-block dl {
     display: grid;
     grid-template-columns: auto 1fr;
     margin: 0;
     align-items: center;
     gap: 15px 20px;
 }
-#civitai_preview_html .version-info-block dt {
+:is(#civitai_preview_html,#local_preview_html) .version-info-block dt {
     font-size: 14px;
     font-weight: 600;
     color: #8b5cf6;
     margin: 0;
-    text-transform: uppercase;
     letter-spacing: 0.5px;
 }
-#civitai_preview_html .version-info-block dd {
+:is(#civitai_preview_html,#local_preview_html) .version-info-block dd {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--body-text-color);
+    margin: 0;
+    word-break: break-word;
+}
+
+/* - Browser Source Block - */
+:is(#civitai_preview_html,#local_preview_html) .browser-source-block {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-width: 260px;
+    padding: 20px;
+    background: rgba(124, 58, 237, 0.08);
+    border: 1px solid rgba(124, 58, 237, 0.25);
+    border-radius: 16px;
+    line-height: 1;
+    gap: 16px;
+}
+:is(#civitai_preview_html,#local_preview_html) .browser-source-block dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    margin: 0;
+    align-items: start;
+    gap: 15px 20px;
+}
+:is(#civitai_preview_html,#local_preview_html) .browser-source-block dt {
+    font-size: 14px;
+    font-weight: 600;
+    color: #8b5cf6;
+    margin: 0;
+    letter-spacing: 0.5px;
+}
+:is(#civitai_preview_html,#local_preview_html) .browser-source-block dd {
     font-size: 16px;
     font-weight: 600;
     color: var(--body-text-color);
@@ -1060,13 +1469,13 @@
 }
 
 /* Tags Container */
-#civitai_preview_html .civitai-tags-container {
+:is(#civitai_preview_html,#local_preview_html) .civitai-tags-container {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
     align-items: center;
 }
-#civitai_preview_html .civitai-tag {
+:is(#civitai_preview_html,#local_preview_html) .civitai-tag {
     color: white;
     font-size: 0.8em;
     font-weight: 500;
@@ -1078,21 +1487,23 @@
 }
 
 /* - Permissions Block - */
-#civitai_preview_html .permissions-block {
+:is(#civitai_preview_html,#local_preview_html) .permissions-block {
     display: flex;
     flex-direction: column;
+    flex: 1 1 0;
+    min-width: 260px;
     padding: 20px;
     background: rgba(16, 185, 129, 0.1);
     border: 1px solid rgba(16, 185, 129, 0.3);
     border-radius: 16px;
     gap: 16px;
 }
-#civitai_preview_html .permissions-block svg {
+:is(#civitai_preview_html,#local_preview_html) .permissions-block svg {
     display: inline-block;
     margin-right: 4px;
     vertical-align: middle;
 }
-#civitai_preview_html .permissions-block p {
+:is(#civitai_preview_html,#local_preview_html) .permissions-block p {
     margin: 0;
     padding: 0;
     font-size: 16px;
@@ -1102,7 +1513,7 @@
 }
 
 /* - Description Block - */
-#civitai_preview_html .description-block {
+:is(#civitai_preview_html,#local_preview_html) .description-block {
     display: flex;
     flex-direction: column;
     padding: 20px;
@@ -1112,10 +1523,10 @@
     gap: 16px;
 }
 
-#civitai_preview_html .description-wrapper {
+:is(#civitai_preview_html,#local_preview_html) .description-wrapper {
     position: relative;
 }
-#civitai_preview_html .description-content {
+:is(#civitai_preview_html,#local_preview_html) .description-content {
     padding: 10px;
     max-height: 400px;
     border-radius: 16px;
@@ -1124,7 +1535,7 @@
     transition: max-height 0.4s ease-in-out;
 }
 
-#civitai_preview_html .description-overlay {
+:is(#civitai_preview_html,#local_preview_html) .description-overlay {
     position: absolute;
     bottom: 40px;
     left: 0;
@@ -1135,11 +1546,11 @@
     opacity: 1;
     transition: all 0.4s ease-in-out;
 }
-#civitai_preview_html .description-overlay.hidden {
+:is(#civitai_preview_html,#local_preview_html) .description-overlay.hidden {
     opacity: 0;
 }
 
-#civitai_preview_html .description-toggle-btn {
+:is(#civitai_preview_html,#local_preview_html) .description-toggle-btn {
     display: block;
     margin: 10px auto 0;
     padding: 8px 16px;
@@ -1152,35 +1563,35 @@
     cursor: pointer;
     transition: all 0.2s ease;
 }
-#civitai_preview_html .description-toggle-btn:hover {
+:is(#civitai_preview_html,#local_preview_html) .description-toggle-btn:hover {
     background: var(--button-primary-background-fill-hover);
     border-color: var(--button-primary-border-color-hover);
     color: var(--button-primary-text-color-hover);
 }
-#civitai_preview_html .description-toggle-btn.hidden {
+:is(#civitai_preview_html,#local_preview_html) .description-toggle-btn.hidden {
     display: none;
 }
 
-#civitai_preview_html .trained-words-block {
+:is(#civitai_preview_html,#local_preview_html) .trained-words-block {
     background: var(--block-background-fill);
     border: 1px solid var(--block-border-color);
     border-radius: var(--block-radius);
     padding: 12px 16px;
     margin-bottom: 12px;
 }
-#civitai_preview_html .trained-words-block .block-header {
+:is(#civitai_preview_html,#local_preview_html) .trained-words-block .block-header {
     text-align: center;
     margin: 0 0 8px 0;
     padding: 0;
     line-height: 1;
 }
-#civitai_preview_html .trained-words-content {
+:is(#civitai_preview_html,#local_preview_html) .trained-words-content {
     font-size: 0.875rem;
     color: var(--body-text-color);
     word-break: break-word;
     margin-bottom: 10px;
 }
-#civitai_preview_html .add-to-prompt-btn {
+:is(#civitai_preview_html,#local_preview_html) .add-to-prompt-btn {
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -1194,7 +1605,7 @@
     color: var(--button-primary-text-color);
     transition: background 0.2s ease, border-color 0.2s ease;
 }
-#civitai_preview_html .add-to-prompt-btn:hover {
+:is(#civitai_preview_html,#local_preview_html) .add-to-prompt-btn:hover {
     background: var(--button-primary-background-fill-hover);
     border-color: var(--button-primary-border-color-hover);
     color: var(--button-primary-text-color-hover);
@@ -1241,7 +1652,7 @@
 }
 
 /* Trigger word rows — per-group rows with copy/add buttons */
-#civitai_preview_html .trigger-word-row,
+:is(#civitai_preview_html,#local_preview_html) .trigger-word-row,
 .civitai-overlay .trigger-word-row {
     display: flex;
     align-items: center;
@@ -1250,32 +1661,32 @@
     padding: 5px 0;
     border-bottom: 1px solid var(--block-border-color);
 }
-#civitai_preview_html .trigger-word-row:last-of-type,
+:is(#civitai_preview_html,#local_preview_html) .trigger-word-row:last-of-type,
 .civitai-overlay .trigger-word-row:last-of-type {
     border-bottom: none;
     margin-bottom: 8px;
 }
-#civitai_preview_html .trigger-word-text,
+:is(#civitai_preview_html,#local_preview_html) .trigger-word-text,
 .civitai-overlay .trigger-word-text {
     font-size: 0.8rem;
     color: var(--body-text-color);
     word-break: break-word;
     flex: 1;
 }
-#civitai_preview_html .lora-tag-row .trigger-word-text,
+:is(#civitai_preview_html,#local_preview_html) .lora-tag-row .trigger-word-text,
 .civitai-overlay .lora-tag-row .trigger-word-text {
     font-family: monospace;
     font-weight: 600;
     color: #8b5cf6;
 }
-#civitai_preview_html .trigger-word-actions,
+:is(#civitai_preview_html,#local_preview_html) .trigger-word-actions,
 .civitai-overlay .trigger-word-actions {
     display: flex;
     gap: 4px;
     flex-shrink: 0;
 }
-#civitai_preview_html .tw-copy-btn,
-#civitai_preview_html .tw-add-btn,
+:is(#civitai_preview_html,#local_preview_html) .tw-copy-btn,
+:is(#civitai_preview_html,#local_preview_html) .tw-add-btn,
 .civitai-overlay .tw-copy-btn,
 .civitai-overlay .tw-add-btn {
     display: inline-flex;
@@ -1293,16 +1704,17 @@
     padding: 0;
     line-height: 1;
 }
-#civitai_preview_html .tw-copy-btn:hover,
-#civitai_preview_html .tw-add-btn:hover,
+:is(#civitai_preview_html,#local_preview_html) .tw-copy-btn:hover,
+:is(#civitai_preview_html,#local_preview_html) .tw-add-btn:hover,
 .civitai-overlay .tw-copy-btn:hover,
 .civitai-overlay .tw-add-btn:hover {
     background: var(--block-border-color);
 }
 
-#civitai_preview_html .version-info-block .block-header,
-#civitai_preview_html .permissions-block .block-header,
-#civitai_preview_html .description-block .block-header {
+:is(#civitai_preview_html,#local_preview_html) .version-info-block .block-header,
+:is(#civitai_preview_html,#local_preview_html) .browser-source-block .block-header,
+:is(#civitai_preview_html,#local_preview_html) .permissions-block .block-header,
+:is(#civitai_preview_html,#local_preview_html) .description-block .block-header {
     text-align: center;
     margin: 0;
     padding: 0;
@@ -1310,13 +1722,13 @@
 }
 
 /* Modern Links - UnderLine */
-#civitai_preview_html a {
+:is(#civitai_preview_html,#local_preview_html) a {
     position: relative;
     font-weight: 600;
     text-decoration: none;
     transition: all 0.3s ease;
 }
-#civitai_preview_html a::after {
+:is(#civitai_preview_html,#local_preview_html) a::after {
     content: '';
     position: absolute;
     bottom: -6px;
@@ -1326,31 +1738,31 @@
     background: var(--link-text-color-hover);
     transition: width 0.3s ease;
 }
-#civitai_preview_html a:hover::after {
+:is(#civitai_preview_html,#local_preview_html) a:hover::after {
     width: 100%;
 }
 
 /* == Images section == */
 /* Images section */
-#civitai_preview_html .images-section {
+:is(#civitai_preview_html,#local_preview_html) .images-section {
     display: flex;
     flex-direction: column;
 }
 
-#civitai_preview_html .sampleimgs {
+:is(#civitai_preview_html,#local_preview_html) .sampleimgs {
     display: grid;
     grid-template-columns: repeat(2, 1fr); /* Default: 2 columns */
     gap: 16px;
 }
 /* Switch to 1 column if there is not enough space */
 @media (max-width: 1500px) {
-    #civitai_preview_html .sampleimgs {
+    :is(#civitai_preview_html,#local_preview_html) .sampleimgs {
         grid-template-columns: 1fr;
     }
 }
 
 /* Individual image block - horizontal layout */
-#civitai_preview_html .sampleimgs .image-block {
+:is(#civitai_preview_html,#local_preview_html) .sampleimgs .image-block {
     display: grid;
     grid-template-columns: auto 1fr;
     margin: 0;
@@ -1362,7 +1774,7 @@
 }
 
 /* Image container */
-#civitai_preview_html .civitai-image-container {
+:is(#civitai_preview_html,#local_preview_html) .civitai-image-container {
     position: relative;
     display: flex;
     flex-direction: column;
@@ -1371,8 +1783,8 @@
 }
 
 /* Image and video styling - preserve aspect ratio */
-#civitai_preview_html .sampleimgs .image-block img,
-#civitai_preview_html .sampleimgs .image-block video {
+:is(#civitai_preview_html,#local_preview_html) .sampleimgs .image-block img,
+:is(#civitai_preview_html,#local_preview_html) .sampleimgs .image-block video {
     width: auto;
     max-width: 250px;
     height: auto;
@@ -1382,14 +1794,14 @@
     display: block;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
-#civitai_preview_html .sampleimgs .image-block img:hover,
-#civitai_preview_html .sampleimgs .image-block video:hover {
+:is(#civitai_preview_html,#local_preview_html) .sampleimgs .image-block img:hover,
+:is(#civitai_preview_html,#local_preview_html) .sampleimgs .image-block video:hover {
     transform: scale(1.01);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 /* Send to txt2img button */
-#civitai_preview_html .civitai-txt2img-btn {
+:is(#civitai_preview_html,#local_preview_html) .civitai-txt2img-btn {
     display: inline-block;
     padding: 8px 16px;
     min-width: 120px;
@@ -1403,20 +1815,20 @@
     text-align: center;
     transition: all 0.1s ease;
 }
-#civitai_preview_html .civitai-txt2img-btn:hover {
+:is(#civitai_preview_html,#local_preview_html) .civitai-txt2img-btn:hover {
     background: var(--button-secondary-background-fill-hover);
     transform: translateY(-1px);
 }
 
 /* Image metadata section - vertical layout */
-#civitai_preview_html #image_info {
+:is(#civitai_preview_html,#local_preview_html) #image_info {
     margin: 0;
     display: flex;
     flex-direction: column;
     gap: 12px;
 }
 /* Definition list for metadata */
-#civitai_preview_html #image_info dl {
+:is(#civitai_preview_html,#local_preview_html) #image_info dl {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
@@ -1424,8 +1836,8 @@
 }
 
 /* Metadata blocks */
-#civitai_preview_html .civitai-meta,
-#civitai_preview_html .civitai-meta-btn {
+:is(#civitai_preview_html,#local_preview_html) .civitai-meta,
+:is(#civitai_preview_html,#local_preview_html) .civitai-meta-btn {
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
@@ -1438,24 +1850,24 @@
     align-self: stretch;
     transition: all 0.1s ease;
 }
-#civitai_preview_html .civitai-meta-btn:hover {
+:is(#civitai_preview_html,#local_preview_html) .civitai-meta-btn:hover {
     background: var(--background-fill-primary);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     cursor: pointer;
 }
-#civitai_preview_html .civitai-meta {
+:is(#civitai_preview_html,#local_preview_html) .civitai-meta {
     background: color-mix(in srgb, var(--background-fill-primary), transparent);
 }
 
-#civitai_preview_html .civitai-meta dt,
-#civitai_preview_html .civitai-meta-btn dt {
+:is(#civitai_preview_html,#local_preview_html) .civitai-meta dt,
+:is(#civitai_preview_html,#local_preview_html) .civitai-meta-btn dt {
     margin: 0 0 4px 0;
     color: #8b5cf6;
     font-size: 16px;
     font-weight: 600;
 }
-#civitai_preview_html .civitai-meta dd,
-#civitai_preview_html .civitai-meta-btn dd {
+:is(#civitai_preview_html,#local_preview_html) .civitai-meta dd,
+:is(#civitai_preview_html,#local_preview_html) .civitai-meta-btn dd {
     margin: 0;
     color: var(--body-text-color);
     font-size: 14px;
@@ -1465,7 +1877,7 @@
 
 /* Empty state for missing metadata */
 /* Full-width error block */
-#civitai_preview_html .sampleimgs .image-block-empty {
+:is(#civitai_preview_html,#local_preview_html) .sampleimgs .image-block-empty {
     display: flex;
     grid-column: 1 / -1;
     flex-direction: column;
@@ -1475,7 +1887,7 @@
     justify-content: center;
 }
 
-#civitai_preview_html .image-metadata-empty {
+:is(#civitai_preview_html,#local_preview_html) .image-metadata-empty {
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
@@ -1492,35 +1904,69 @@
     transition: all 0.3s ease;
 }
 
-#civitai_preview_html .empty-state-icon {
+:is(#civitai_preview_html,#local_preview_html) .empty-state-icon {
     margin-bottom: 16px;
     color: var(--body-text-color-subdued);
     opacity: 0.6;
 }
-#civitai_preview_html .empty-state-icon svg {
+:is(#civitai_preview_html,#local_preview_html) .empty-state-icon svg {
     width: 48px;
     height: 48px;
     stroke: currentColor;
 }
-#civitai_preview_html .empty-state-text h4 {
+:is(#civitai_preview_html,#local_preview_html) .empty-state-text h4 {
     margin: 0 0 8px 0;
     color: var(--body-text-color);
     font-size: 18px;
     font-weight: 600;
 }
-#civitai_preview_html .empty-state-text p {
+:is(#civitai_preview_html,#local_preview_html) .empty-state-text p {
     margin: 0;
     color: var(--body-text-color-subdued);
     font-size: 14px;
     line-height: 1.4;
 }
+:is(#civitai_preview_html,#local_preview_html) .civitai-meta-retry {
+    margin-top: 16px;
+    cursor: pointer;
+}
+
+/* Local Models pagination bar */
+#local_list_html .local-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin: 10px 0;
+    flex-wrap: wrap;
+}
+#local_list_html .lg-page-btn {
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color-primary);
+    background: var(--button-secondary-background-fill);
+    color: var(--button-secondary-text-color);
+    cursor: pointer;
+    font-size: 13px;
+}
+#local_list_html .lg-page-btn:hover:not([disabled]) {
+    background: var(--button-secondary-background-fill-hover);
+}
+#local_list_html .lg-page-btn[disabled] {
+    opacity: 0.4;
+    cursor: default;
+}
+#local_list_html .lg-page-label {
+    font-size: 13px;
+    font-weight: 500;
+}
 
 /* More details accordion */
-#civitai_preview_html .tabs {
+:is(#civitai_preview_html,#local_preview_html) .tabs {
     margin-top: 12px;
     width: 100%;
 }
-#civitai_preview_html .tab {
+:is(#civitai_preview_html,#local_preview_html) .tab {
     border: 1px solid var(--border-color-primary);
     border-radius: 6px;
     overflow: hidden;
@@ -1528,7 +1974,7 @@
 }
 
 /* Label */
-#civitai_preview_html .tab-label {
+:is(#civitai_preview_html,#local_preview_html) .tab-label {
     display: flex;
     align-items: center;
     margin: 0;
@@ -1541,11 +1987,11 @@
     gap: 8px;
     transition: color 0.2s ease;
 }
-#civitai_preview_html .tab-label:hover {
+:is(#civitai_preview_html,#local_preview_html) .tab-label:hover {
     color: var(--body-text-color);
 }
 /* Arrow-Icon */
-#civitai_preview_html .tab-label::before {
+:is(#civitai_preview_html,#local_preview_html) .tab-label::before {
     content: '';
     width: 16px;
     height: 16px;
@@ -1554,12 +2000,12 @@
     background-repeat: no-repeat;
     transition: transform 0.3s ease;
 }
-#civitai_preview_html .accordionCheckbox:checked + .tab-label::before {
+:is(#civitai_preview_html,#local_preview_html) .accordionCheckbox:checked + .tab-label::before {
     transform: rotate(90deg);
 }
 
 /* Details Content */
-#civitai_preview_html .tab-content {
+:is(#civitai_preview_html,#local_preview_html) .tab-content {
     display: flex;
     flex-wrap: wrap;
     max-height: 0;
@@ -1569,14 +2015,14 @@
     gap: 8px;
     transition: max-height 0.35s ease, opacity 0.35s ease, padding 0.25s ease;
 }
-#civitai_preview_html .accordionCheckbox:checked ~ .tab-content {
+:is(#civitai_preview_html,#local_preview_html) .accordionCheckbox:checked ~ .tab-content {
     padding: 16px;
     max-height: 4000px; /* BullShit */
     border-top: 1px solid var(--border-color-primary);
     opacity: 1;
 }
 
-#civitai_preview_html .accordionCheckbox {
+:is(#civitai_preview_html,#local_preview_html) .accordionCheckbox {
     display: none;
 }
 
@@ -1662,7 +2108,7 @@
 }
 
 /* Ensure viewer works in all contexts */
-#civitai_preview_html .viewer-overlay,
+:is(#civitai_preview_html,#local_preview_html) .viewer-overlay,
 .civitai-overlay .viewer-overlay {
     z-index: 99999 !important;
 }
@@ -1998,4 +2444,11 @@
 .ver-badge.installed {
     background: rgba(200, 180, 100, 0.2);
     color: #c8b464;
+}
+
+/* Keep download progress independent per tab: when a download was started from the
+   Local Models tab, don't let the Browser tab's native progress bar light up for it.
+   (The bar still drives the Queue tab via inline width, which display:none preserves.) */
+body.civ-dl-origin-local #DownloadProgress {
+    display: none !important;
 }

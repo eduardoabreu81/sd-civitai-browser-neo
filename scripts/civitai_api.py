@@ -5,6 +5,7 @@ import platform
 import json
 import os
 import re
+import traceback
 import gradio as gr
 from datetime import datetime, timezone
 from collections import defaultdict
@@ -24,8 +25,57 @@ import scripts.civitai_file_manage as _file
 import scripts.civitai_global as gl
 from scripts.civitai_global import print, debug_print
 
+# Multi-source browser adapters (CivitAI is registered as the default source).
+import scripts.browser_sources as _browser_sources
+
 
 gl.init()
+
+
+def _get_browser_source(source_name=None):
+    """Return the requested browser source adapter, defaulting to CivitAI."""
+    if source_name:
+        source = _browser_sources.get_browser_source(source_name)
+        if source:
+            return source
+    return _browser_sources.default_source()
+
+
+def _source_display_to_name(display_name):
+    """Resolve a UI display label back to the source machine name."""
+    if not display_name:
+        return "civitai"
+    name = _browser_sources.source_name_from_display(display_name)
+    return name or "civitai"
+
+
+def _call_browser_source(source_adapter, operation, **kwargs):
+    """Run an adapter operation with source-aware debug diagnostics."""
+    source_name = getattr(source_adapter, "name", "unknown")
+    debug_print(
+        f"[Browser:{source_name}] {operation} started "
+        f"(page={kwargs.get('page', 1)}, search_type={kwargs.get('search_type')!r})"
+    )
+    try:
+        result = getattr(source_adapter, operation)(**kwargs)
+    except Exception as exc:
+        debug_print(
+            f"[Browser:{source_name}] {operation} failed with "
+            f"{type(exc).__name__}: {exc}"
+        )
+        debug_print(traceback.format_exc())
+        return "error"
+
+    if isinstance(result, dict) and isinstance(result.get("items"), list):
+        metadata = result.get("metadata") or {}
+        debug_print(
+            f"[Browser:{source_name}] {operation} returned dict "
+            f"(items={len(result['items'])}, current_page={metadata.get('currentPage')}, "
+            f"total_pages={metadata.get('totalPages')})"
+        )
+    else:
+        debug_print(f"[Browser:{source_name}] {operation} returned {type(result).__name__}")
+    return result
 
 
 ## === ANXETY EDITs ===
@@ -42,34 +92,170 @@ def get_display_type(type_name):
     """Return short/clear display name for model type"""
     return MODEL_TYPE_DISPLAY_NAMES.get(type_name, type_name)
 
-def is_early_access(version_data):
-    """Check if the model is an early access"""
-    avail = version_data.get('availability')
-    return isinstance(avail, str) and avail == 'EarlyAccess'
+# Access kinds returned by get_access_kind(). CivitAI gates downloads two very
+# different ways and both used to be reported as "Early Access" here:
+#   ACCESS_EARLY — a timed window. Buzz buys it now; the file turns free at endsAt.
+#   ACCESS_PAID  — a permanent purchase. It never turns free; Buzz is the only way in.
+ACCESS_FREE = 'free'
+ACCESS_EARLY = 'early_access'
+ACCESS_PAID = 'paid'
 
-# Short abbreviations for base model names used in card badges
+def get_access_kind(version_data):
+    """Classify a version as ACCESS_FREE, ACCESS_EARLY or ACCESS_PAID.
+
+    CivitAI signals the gate three different ways depending on API vintage:
+      - `paidAccess: {permanent, endsAt}` (current),
+      - `availability == 'EarlyAccess'` (legacy),
+      - `earlyAccessEndsAt` in the future (legacy).
+    `availability` alone is useless today: the current API answers `'Public'` (or
+    `null`) for both gated kinds and hides the real state in `paidAccess`.
+
+    A POPULATED `paidAccess` object is itself the gate signal — its fields only say
+    *which* gate. Three shapes exist in the wild (counted over 1660 live versions):
+      - `{permanent: true,  endsAt: null}` → permanent purchase           → PAID
+      - `{permanent: false, endsAt: <future>}` → timed window             → EARLY
+      - `{permanent: false, endsAt: null}` → gated, no published end date → PAID
+    The last one is rare but real (model 2830035 / version 3193296 reads as paid on
+    the site). Treat it as PAID, not EARLY: with no date there is nothing to wait
+    for, so telling the user to wait would be wrong. A `endsAt` in the PAST means the
+    window already closed, which is genuinely free again.
+    """
+    if not isinstance(version_data, dict):
+        return ACCESS_FREE
+
+    paid = version_data.get('paidAccess')
+    if isinstance(paid, dict) and paid:
+        if paid.get('permanent'):
+            return ACCESS_PAID
+        ends = paid.get('endsAt')
+        if _is_future_timestamp(ends):
+            return ACCESS_EARLY
+        if ends is None:
+            return ACCESS_PAID
+
+    if version_data.get('availability') == 'EarlyAccess':
+        return ACCESS_EARLY
+
+    if _is_future_timestamp(version_data.get('earlyAccessEndsAt')):
+        return ACCESS_EARLY
+
+    return ACCESS_FREE
+
+def is_access_gated(version_data):
+    """True when a version cannot be downloaded for free — early access OR paid.
+
+    Use this for anything that must treat both kinds alike (the download pre-flight
+    guard, the hide filters). Use get_access_kind() when the two must be told apart.
+    """
+    return get_access_kind(version_data) != ACCESS_FREE
+
+# Decorations appended to version names in the dropdown. Anything that turns a
+# dropdown selection back into an API version name must strip them, so keep the
+# list here rather than repeating literals at each call site.
+VERSION_NAME_SUFFIXES = (' [Installed]', ' (Early Access)', ' (Paid)')
+
+def strip_version_suffixes(version_display):
+    """Recover the raw CivitAI version name from a decorated dropdown label."""
+    name = str(version_display or '')
+    changed = True
+    while changed:
+        changed = False
+        for suffix in VERSION_NAME_SUFFIXES:
+            if name.endswith(suffix):
+                name = name[:-len(suffix)]
+                changed = True
+    return name.strip()
+
+def get_availability_label(version_data):
+    """Human-readable availability for the detail panel.
+
+    CivitAI reports gated versions as `availability: 'Public'` with the real gate in
+    `paidAccess`, so echoing `availability` verbatim showed "Public" for a model
+    that cannot actually be downloaded. Surface the gate — and, for early access,
+    the date it lifts — instead.
+    """
+    if not isinstance(version_data, dict):
+        return 'Unknown'
+
+    kind = get_access_kind(version_data)
+    if kind == ACCESS_FREE:
+        return version_data.get('availability') or 'Unknown'
+
+    if kind == ACCESS_PAID:
+        return 'Paid (Buzz purchase)'
+
+    paid = version_data.get('paidAccess')
+    ends = ''
+    if isinstance(paid, dict):
+        ends = _format_timestamp_date(paid.get('endsAt'))
+    if not ends:
+        ends = _format_timestamp_date(version_data.get('earlyAccessEndsAt'))
+    return f'Early Access (free after {ends})' if ends else 'Early Access'
+
+def _format_timestamp_date(value):
+    """Return the YYYY-MM-DD part of an ISO-8601 timestamp, or '' if unusable."""
+    if not isinstance(value, str) or not value:
+        return ''
+    try:
+        datetime.fromisoformat(value.replace('Z', '+00:00'))
+    except ValueError:
+        return ''
+    return value.split('T')[0]
+
+def _is_future_timestamp(value):
+    """True when an ISO-8601 timestamp is still in the future (UTC)."""
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+    except ValueError:
+        return False
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed > datetime.now(timezone.utc)
+
+# Short abbreviations for base model names used in card badges.
+# Keep in sync with get_base_models() (civitai_gui.py) and
+# get_model_categories() (civitai_file_manage.py).
 BASE_MODEL_SHORT = {
+    'sd 1.5':               'SD1',
+    'sd 1.5 hyper':         'SD1',
+    'sd 1.5 lcm':           'SD1',
+    'sd 1.4':               'SD1',
+    'sdxl 1.0':             'XL',
+    'sdxl 0.9':             'XL',
+    'sdxl':                 'XL',
+    'sdxl turbo':           'XL',
+    'sdxl lightning':       'XL',
+    'sdxl hyper':           'XL',
+    'sdxl distilled':       'XL',
+    'pony':                 'Pony',
+    'pony v7':              'Pony',
     'illustrious':          'IL',
     'illustrious xl':       'IL',
     'noobai':               'Nai',
     'noobai xl':            'Nai',
-    'pony':                 'Pony',
-    'sdxl 1.0':             'XL',
-    'sdxl':                 'XL',
-    'sdxl turbo':           'XL',
-    'sd 1.5':               'SD1',
-    'sd 1.4':               'SD1',
-    'sd 2.0':               'SD2',
-    'sd 2.1':               'SD2',
-    'flux.1 d':             'F1',
     'flux.1 s':             'F1',
+    'flux.1 d':             'F1',
+    'flux.1 krea':          'F1',
+    'flux.1 kontext':       'F1',
     'flux.1':               'F1',
-    'flux.2 klein 4b':      'F2',
-    'flux.2 klein 9b-base': 'F2',
-    'flux.2 klein 9b':      'F2',
-    'flux.2 d':             'F2',
-    'flux.2':               'F2',
     'flux':                 'F1',
+    'krea 2':               'Krea2',
+    'flux.2 d':             'F2',
+    'flux.2 klein 4b':      'F2',
+    'flux.2 klein 4b-base': 'F2',
+    'flux.2 klein 9b':      'F2',
+    'flux.2 klein 9b-base': 'F2',
+    'flux.2':               'F2',
+    'qwen':                 'Qwen',
+    'z-image':              'ZIB',
+    'zimageturbo':          'ZIT',
+    'zimagebase':           'ZIT',
+    'ernie':                'Ernie',
+    'lumina':               'Lum',
+    'anima':                'Anima',
+    'chroma':               'Chr',
     'wan video 1.3b t2v':       'T2V',
     'wan video 14b t2v':        'T2V',
     'wan video 14b i2v 480p':   'I2V',
@@ -81,14 +267,8 @@ BASE_MODEL_SHORT = {
     'wan video 2.5 i2v':        'I2V',
     'wan video 1.3':            'Wan',
     'wan':                      'Wan',
-    'qwen':                 'Qwen',
-    'z-image':              'ZiT',
-    'lumina':               'Lum',
-    'hunyuanvideo':         'HYV',
-    'hunyuan video':        'HYV',
-    'ltxv':                 'LTXV',
-    'cosmos':               'Cosm',
-    'other':                'Other',
+    'ltxv':                     'LTX',
+    'other':                    'Other',
 }
 
 def get_base_model_short(base_model: str) -> str:
@@ -459,8 +639,10 @@ def update_mode_page_html(content_type_filter, base_filter, tile_count, current_
         )
 
         cards_html.append(f'''<figure class="civmodelcard update-mode-card" data-model-id="{model_id}" data-family="{fam_up}">
-  <input type="checkbox" class="model-checkbox" id="{chk_id}" onchange="multi_model_select('{model_str}', '{model_type}', this.checked); syncUpdateBtn()">
-  <label for="{chk_id}" class="custom-checkbox"><span class="checkbox-checkmark"></span></label>
+  <div class="checkbox-container">
+    <input type="checkbox" class="model-checkbox" id="{chk_id}" onchange="multi_model_select('{model_str}', '{model_type}', this.checked, this); syncUpdateBtn()">
+    <label for="{chk_id}" class="custom-checkbox"><span class="checkbox-checkmark"></span></label>
+  </div>
   <div class="civmodelcard-img-wrapper update-card-thumb">{thumb_html}</div>
   <figcaption class="update-card-caption">
     <div class="update-card-name" title="{model_name}">{model_name}</div>
@@ -476,39 +658,77 @@ def update_mode_page_html(content_type_filter, base_filter, tile_count, current_
             current_page > 1, current_page < total_pages)
 
 
-def model_list_html(json_data):
-    def filter_versions(item, hide_early_access, current_time):
-        """Filter model versions based on file presence and early access status"""
+def model_list_html(json_data, target=''):
+    def filter_versions(item, hide_early_access, hide_paid, current_time):
+        """Filter model versions by file presence and by the two paid-gate kinds.
+
+        Early access and permanent paid are hidden independently: a user may accept
+        a version that turns free in a few days while still wanting the
+        never-free ones out of the grid.
+        """
         versions = []
         for version in item.get('modelVersions', []):
             if not version.get('files'):
                 continue
-            if hide_early_access and is_early_access(version):
+            kind = get_access_kind(version)
+            if hide_early_access and kind == ACCESS_EARLY:
+                continue
+            if hide_paid and kind == ACCESS_PAID:
                 continue
             versions.append(version)
         return versions
 
     def collect_existing_files(model_folders):
-        """Collect existing file names and SHA256 hashes from model folders"""
+        """Collect installed file names, SHA256 hashes AND cached modelVersionIds from
+        the model folders. The version id is a second identity signal (aligned with
+        version_match / _resolve_versions_to_download): when a sidecar lacks a sha256
+        (or the file was renamed), matching by the cached modelVersionId still detects
+        the installed version so the card border isn't lost.
+
+        Also returns path lookups so the card renderer can read the on-disk .json
+        sidecar (e.g. for manual LoRA category overrides)."""
         files_set = set()
         sha256_set = set()
+        version_ids_set = set()
+        file_to_path = {}
+        sha256_to_path = {}
+        version_id_to_path = {}
+        model_extensions = {'.safetensors', '.ckpt', '.pt', '.pth', '.bin', '.gguf'}
         for folder in model_folders:
             if folder is None:
                 continue
             for root, _, files in os.walk(folder, followlinks=True):
                 for file in files:
-                    files_set.add(file.lower())
+                    file_lower = file.lower()
+                    files_set.add(file_lower)
+                    full_path = os.path.join(root, file)
+                    if os.path.splitext(file_lower)[1] in model_extensions:
+                        file_to_path[file_lower] = full_path
                     if file.endswith('.json'):
-                        json_path = os.path.join(root, file)
-                        json_data = safe_json_load(json_path)
+                        json_data = safe_json_load(full_path)
                         if json_data and isinstance(json_data, dict):
                             sha256 = normalize_sha256(json_data.get('sha256'))
                             if sha256:
                                 sha256_set.add(sha256)
-        return files_set, sha256_set
+                                # The .json sidecar belongs to a model file with the same stem.
+                                # Store the model path if it exists; otherwise the json path.
+                                model_path = file_to_path.get(file_lower[:-5] + '.safetensors') \
+                                    or file_to_path.get(file_lower[:-5] + '.ckpt') \
+                                    or file_to_path.get(file_lower[:-5] + '.gguf')
+                                sha256_to_path[sha256] = model_path or full_path
+                            vid = json_data.get('modelVersionId')
+                            if vid is not None:
+                                try:
+                                    vid_int = int(vid)
+                                    version_ids_set.add(vid_int)
+                                    version_id_to_path[vid_int] = sha256_to_path.get(sha256, full_path) if sha256 else full_path
+                                except (ValueError, TypeError):
+                                    pass
+        return files_set, sha256_set, version_ids_set, file_to_path, sha256_to_path, version_id_to_path
 
     ## === ANXETY EDITs ===
-    def get_model_card(item, existing_files, existing_files_sha256, playback, favorite_creators):
+    def get_model_card(item, existing_files, existing_files_sha256, existing_version_ids, playback, favorite_creators,
+                       file_to_path=None, sha256_to_path=None, version_id_to_path=None):
         """Build HTML for a single model card (civmodelcard - Browser Card)"""
         model_id = item.get('id')
         model_name = item.get('name', '')
@@ -523,6 +743,9 @@ def model_list_html(json_data):
         # Find the first installed version or fallback to the first version
         display_version = None
         for version in item.get('modelVersions', []):
+            if version.get('id') in existing_version_ids:
+                display_version = version
+                break
             for file in version.get('files', []):
                 file_name = file['name']
                 file_sha256 = normalize_sha256(file.get('hashes', {}).get('SHA256', ''))
@@ -539,6 +762,25 @@ def model_list_html(json_data):
             display_version = item['modelVersions'][0]
 
         base_model = display_version.get('baseModel', 'Not Found') if display_version else 'Not Found'
+
+        # Find the on-disk path for the installed version so we can read any
+        # manual LoRA category override from its .json sidecar.
+        installed_path = None
+        if display_version:
+            version_id = display_version.get('id')
+            if version_id in (existing_version_ids or set()):
+                installed_path = (version_id_to_path or {}).get(int(version_id))
+            if not installed_path:
+                for file in display_version.get('files', []):
+                    file_sha256 = normalize_sha256(file.get('hashes', {}).get('SHA256', ''))
+                    if file_sha256 and file_sha256 in (existing_files_sha256 or set()):
+                        installed_path = (sha256_to_path or {}).get(file_sha256)
+                        break
+                    file_name = file.get('name', '').lower()
+                    if file_name in (existing_files or set()):
+                        installed_path = (file_to_path or {}).get(file_name)
+                        break
+
         if display_version and 'publishedAt' in display_version:
             published_at = display_version.get('publishedAt')
             if published_at:
@@ -548,8 +790,14 @@ def model_list_html(json_data):
         else:
             date = 'Not Found'
 
-        early_access = is_early_access(display_version) if display_version else False
-        early_access_class = 'early-access' if early_access else ''
+        access_kind = get_access_kind(display_version) if display_version else ACCESS_FREE
+        # State marker on the <figure>. It carries no styling of its own anymore
+        # (the badge does the signalling); kept as a stable hook for user CSS and
+        # for querying gated cards from JS. `.access-gated` matches both kinds.
+        access_class = {
+            ACCESS_EARLY: 'access-gated early-access',
+            ACCESS_PAID: 'access-gated paid-access',
+        }.get(access_kind, '')
 
         # Status badges: New / Updated + base model abbreviation (optional setting)
         show_status_badges = getattr(opts, 'show_civitai_status_badges', True)
@@ -590,127 +838,113 @@ def model_list_html(json_data):
             # Try PNG first, then fallback to JPEG if PNG does not exist
             imgtag = '<img src="./file=html/card-no-preview.png" onerror="this.onerror=null;this.src=\'./file=html/card-no-preview.jpg\';"></img>'
 
-        # Install status - check if model is installed and determine if it's outdated
-        # Dual-strategy: API order (primary) + regex fallback (failsafe).
-        # API order is the source of truth (index 0 = newest, per baseModel).
-        # Regex is used as a secondary check to catch edge cases the API might miss.
+        # Install status - check if model is installed and whether it's outdated.
+        # Strategy (unified with version_match): group by the reliable `baseModel`
+        # field and use the array index (0 = newest) instead of fragile version-name
+        # parsing. Semantic name comparison is used only as a tie-breaker when BOTH
+        # the installed and the newest names carry clean numeric versions (e.g. v1.0
+        # vs v2.0); free-text names ("Pearl", "Last", "Nu") fall back to array index.
         installstatus = ''
         installed_file_sha256 = None  # Track SHA256 of installed file for delete functionality
+        installed_versions_count = 0
         model_versions = item.get('modelVersions', [])
         if model_versions:
             precise_check = getattr(opts, 'precise_version_check', True)
+
+            # Newest (lowest) array index per baseModel; index 0 is newest overall.
+            base_newest_idx = {}
+            for idx, version in enumerate(model_versions):
+                bm = (version.get('baseModel') or '').strip()
+                if bm not in base_newest_idx:
+                    base_newest_idx[bm] = idx
+
+            installed_entries = []     # (idx, baseModel, version_name)
+            installed_basemodels = []  # ordered unique baseModels installed
             installed_versions_found = set()
 
-            # === PRIMARY: API order + baseModel ===
-            # Build: baseModel -> newest index among all versions (API guarantees index 0 = newest)
-            base_to_newest_idx = {}
-            for idx, ver in enumerate(model_versions):
-                bm = (ver.get('baseModel') or '').strip()
-                if bm and bm not in base_to_newest_idx:
-                    base_to_newest_idx[bm] = idx
-
-            has_installed = False
-            has_outdated_api = False
-            installed_bases = set()
-
+            # --- Collect installation info ---
             for idx, version in enumerate(model_versions):
+                version_name = version.get('name', '')
+                version_installed = False
+                by_id = version.get('id') in existing_version_ids
                 for file in version.get('files', []):
                     file_name = file['name'].lower()
                     file_sha256 = normalize_sha256(file.get('hashes', {}).get('SHA256', ''))
-                    name_match = file_name in existing_files
-                    sha_match = file_sha256 and file_sha256 in existing_files_sha256
-
-                    if sha_match or name_match:
-                        has_installed = True
+                    if by_id or (file_sha256 and file_sha256 in existing_files_sha256) or (file_name in existing_files):
+                        # Store SHA256 of first installed file found (for delete button)
                         if not installed_file_sha256:
                             installed_file_sha256 = file_sha256
-                        installed_versions_found.add(version.get('name', ''))
-
-                        bm = (version.get('baseModel') or '').strip()
-                        newest_idx = base_to_newest_idx.get(bm, idx)
-                        if idx > newest_idx:
-                            has_outdated_api = True
-
-                        installed_bases.add(bm)
-                        break  # this version is installed, move to next version
+                        version_installed = True
+                        break
+                if by_id and not version_installed:
+                    version_installed = True  # cached version id matched even with no/odd file list
+                if version_installed:
+                    bm = (version.get('baseModel') or '').strip()
+                    installed_entries.append((idx, bm, version_name))
+                    installed_versions_found.add(version_name)
+                    if bm not in installed_basemodels:
+                        installed_basemodels.append(bm)
 
             installed_versions_count = len(installed_versions_found)
 
-            # === FALLBACK: regex-based semantic comparison (catches edge cases) ===
-            has_outdated_regex = False
-            has_latest_regex = False
-            installed_map = {}
-            available_map = {}
-            installed_all = []
-            available_all = []
+            if installed_entries:
+                has_outdated = False
+                has_latest = False
 
-            for version in model_versions:
-                version_name = version.get('name', '')
-                family, version_parts = _file.extract_version_from_ver_name(version_name)
-
-                if precise_check and family:
-                    available_map.setdefault(family, []).append(version_parts)
-                else:
-                    available_all.append(version_parts)
-
-                # Only add to installed maps for versions we detected as installed above
-                if version_name in installed_versions_found:
-                    if precise_check and family:
-                        installed_map.setdefault(family, []).append(version_parts)
+                for idx, bm, version_name in installed_entries:
+                    if precise_check:
+                        newest_idx = base_newest_idx.get(bm, 0)
                     else:
-                        installed_all.append(version_parts)
+                        newest_idx = 0
+                    newest_name = model_versions[newest_idx].get('name', '')
 
-            if installed_map or installed_all:
-                def _is_outdated(inst, avail):
-                    """Compare max installed and available versions"""
-                    max_inst = max(inst, key=lambda x: x or [0])
-                    max_avail = max(avail, key=lambda x: x or [0])
-                    cmp = _file.compare_version_parts(max_inst, max_avail)
-                    return cmp < 0
+                    # Prefer semantic comparison only when both names are clean numbers.
+                    _f1, inst_parts = _file.extract_version_from_ver_name(version_name)
+                    _f2, newest_parts = _file.extract_version_from_ver_name(newest_name)
+                    if inst_parts and newest_parts:
+                        outdated = _file.compare_version_parts(inst_parts, newest_parts) < 0
+                    else:
+                        outdated = idx > newest_idx
 
-                if precise_check and available_map:
-                    for fam, avail in available_map.items():
-                        inst = installed_map.get(fam)
-                        if not inst:
-                            continue
-                        if _is_outdated(inst, avail):
-                            has_outdated_regex = True
-                        else:
-                            has_latest_regex = True
-                elif installed_all and available_all:
-                    has_outdated_regex = _is_outdated(installed_all, available_all)
-                    has_latest_regex = not has_outdated_regex
+                    if outdated:
+                        has_outdated = True
+                    else:
+                        has_latest = True
 
-            # === Combine: API order OR regex says outdated → mark as outdated ===
-            has_outdated = has_outdated_api or has_outdated_regex
-
-            if has_installed:
-                if has_outdated:
-                    installstatus = 'civmodelcardoutdated'
-                elif precise_check and installed_bases:
-                    # Check cross-family: are there available baseModels not installed?
-                    has_cross_family = False
-                    all_bases = set((v.get('baseModel') or '').strip() for v in model_versions if v.get('baseModel'))
-                    for bm in all_bases:
-                        if bm not in installed_bases:
-                            has_cross_family = True
-                            break
+                # has_latest wins: if any installed version is the newest for its
+                # baseModel, the model is "up to date" for you (green/blue).
+                if has_latest:
+                    # Cross-family (blue): the model offers another baseModel you
+                    # don't have AND that lineage has something NEWER than your
+                    # installed version. Versions come ordered by date (index 0 =
+                    # newest overall), so an alternative baseModel only counts when
+                    # its newest version sits at a lower index than yours. This
+                    # ignores old/abandoned variants in other baseModels.
+                    my_newest_idx = min(idx for idx, _bm, _n in installed_entries)
+                    has_cross_family = (
+                        precise_check
+                        and any(
+                            bm not in installed_basemodels and newest_i < my_newest_idx
+                            for bm, newest_i in base_newest_idx.items()
+                        )
+                    )
                     installstatus = 'civmodelcardcrossfamily' if has_cross_family else 'civmodelcardinstalled'
+                elif has_outdated:
+                    installstatus = 'civmodelcardoutdated'
                 else:
                     installstatus = 'civmodelcardinstalled'
 
-            # Multi-family badge: when multiple distinct baseModels are installed on the same model
-            # (e.g. Pony V1 AND Illustrious V1), show all abbreviations: "PONY · IL"
-            if show_status_badges and len(installed_bases) > 1:
+            # Multi-family badge: when versions of multiple distinct baseModels are
+            # installed on the same model (e.g. Pony AND Illustrious), show all
+            # abbreviations: "PONY · IL"
+            if show_status_badges and len(installed_basemodels) > 1:
                 shorts = []
                 seen_shorts = set()
-                for ver in model_versions:
-                    bm = ver.get('baseModel', '')
-                    if bm and bm in installed_bases:
-                        short = get_base_model_short(bm)
-                        if short and short not in seen_shorts:
-                            shorts.append(short)
-                            seen_shorts.add(short)
+                for bm in installed_basemodels:
+                    short = get_base_model_short(bm)
+                    if short and short not in seen_shorts:
+                        shorts.append(short)
+                        seen_shorts.add(short)
                 if len(shorts) > 1:
                     base_model_short = ' · '.join(shorts)
 
@@ -727,19 +961,32 @@ def model_list_html(json_data):
             f' <span class="base-model-short">{base_model_short}</span>'
         ) if base_model_short else ''
 
-        # Model Type Badge ( + Early Access + base model abbreviation)
-        if early_access:
-            # Gold badge with a lightning icon
-            model_type_badge = (
-                f'<div class="model-type-badge {item["type"].lower()} early-access-badge">'
+        # Model Type Badge ( + base model abbreviation)
+        model_type_badge = f'<div class="model-type-badge {item["type"].lower()}">{get_display_type(item["type"])}{bm_suffix}</div>'
+
+        # Access Badge — a standalone labelled pill next to the type badge. The two
+        # gated kinds get different pills because they mean different things to the
+        # user: aqua "Early Access" turns free on its own, gold "Paid" never does.
+        if access_kind == ACCESS_EARLY:
+            access_badge = (
+                '<div class="early-access-badge" title="Early Access — costs Buzz now, free once the window ends">'
                 '<svg class="early-access-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor">'
                 '<path d="M13 2L3 14h9l-1 8 10-12h-8z"/>'
                 '</svg>'
-                f'{get_display_type(item["type"])}{bm_suffix}'
+                'Early Access'
+                '</div>'
+            )
+        elif access_kind == ACCESS_PAID:
+            access_badge = (
+                '<div class="paid-badge" title="Paid — permanent purchase with Buzz, it never becomes free">'
+                '<svg class="paid-badge-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor">'
+                '<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15.5v1.2h-2v-1.2c-1.6-.2-2.8-1.1-3-2.6h1.9c.1.7.8 1.2 2.1 1.2 1.2 0 1.9-.5 1.9-1.2 0-.7-.5-1-2.2-1.4-2.1-.5-3.4-1.2-3.4-2.9 0-1.4 1.1-2.4 2.7-2.7V6.3h2v1.6c1.6.3 2.5 1.3 2.6 2.6h-1.9c-.1-.7-.6-1.2-1.7-1.2s-1.7.5-1.7 1.1c0 .6.5.9 2.2 1.3 2.1.5 3.4 1.2 3.4 3 0 1.5-1.1 2.5-2.9 2.8z"/>'
+                '</svg>'
+                'Paid'
                 '</div>'
             )
         else:
-            model_type_badge = f'<div class="model-type-badge {item["type"].lower()}">{get_display_type(item["type"])}{bm_suffix}</div>'
+            access_badge = ''
 
         # Status Badge (New / Updated)
         if status_badge_type:
@@ -762,14 +1009,58 @@ def model_list_html(json_data):
         else:
             nsfw_badge = ''
 
+        # Source Badge — CivitAI, CivArchive, etc.  Hidden for legacy CivitAI data.
+        browser_source = item.get('browserSource') or 'civitai'
+        if browser_source and browser_source != 'civitai':
+            source_badge = f'<div class="source-badge source-{browser_source.lower()}">{escape(browser_source)}</div>'
+        else:
+            source_badge = ''
+
+        # LoRA category badge: manual override from .json sidecar wins, otherwise
+        # fall back to the model-level tags returned by the CivitAI API.
+        lora_category_badge = ''
+        if item.get('type') in ('LORA', 'LoCon', 'DoRA'):
+            category = None
+            if installed_path:
+                category = _file.get_lora_category_from_sidecar(installed_path)
+            if not category or str(category).strip().lower() == 'auto':
+                category = _file.categorize_lora_by_tags(item.get('tags', []))
+            if category:
+                lora_category_badge = (
+                    f'<div class="lora-category-badge {category.lower()}">{category}</div>'
+                )
+
+        # Card click handler. For the local-models browser (target='local') the card
+        # routes selection to the local hidden textbox via select_model's targetPrefix.
+        if target:
+            select_onclick = f"select_model('{model_string}', event, false, null, false, '{target}')"
+        else:
+            select_onclick = f"select_model('{model_string}', event)"
+
         # ModelCard HTML (Header)
         card_html = (
-            f'<figure class="civmodelcard {nsfw_class} {early_access_class} {installstatus}{fav_class}" '
+            f'<figure class="civmodelcard {nsfw_class} {access_class} {installstatus}{fav_class}" '
             f'base-model="{base_model}" date="{date}" data-model-id="{model_id}" data-creator="{escape(model_uploader_card)}" '
-            f'onclick="select_model(\'{model_string}\', event)">'
+            f'onclick="{select_onclick}">'
             f'<div class="card-header">'
-            f'<div class="badges-container">{model_type_badge}{status_badge}{nsfw_badge}</div>'
+            f'<div class="badges-container">{model_type_badge}{access_badge}{status_badge}{nsfw_badge}{source_badge}</div>'
         )
+
+        # Marker for Local Models checkboxes so JS can detect them without relying
+        # solely on DOM ancestry (Gradio 4 may wrap HTML content in ways that break
+        # el.closest('#local_list_html')).
+        local_checkbox_attr = ' data-local="true"' if target == 'local' else ''
+
+        # The Browser grid (#list_html) and the Local grid (#local_list_html) are BOTH
+        # mounted at once — a Gradio tab only hides its content, it never unmounts it.
+        # Keying the checkbox id on model_string alone therefore produced two elements
+        # with the SAME id whenever a model appeared in both grids, and per HTML
+        # semantics <label for> always activates the FIRST match in document order. The
+        # Local card's label then toggled the Browser card's hidden input: the visible
+        # checkbox never checked, while multi_model_select fired with isLocal=false.
+        # Scoping the id per grid keeps every checkbox addressable by its own label.
+        checkbox_scope = target or 'browser'
+        checkbox_id = f'checkbox-{checkbox_scope}-{model_string}'
 
         # Show delete button for up-to-date installed models;
         # For outdated: both delete (hidden below tile size 11) + checkbox stacked
@@ -798,9 +1089,9 @@ def model_list_html(json_data):
                 f'</svg>'
                 f'</button>'
                 f'<div class="checkbox-container">'
-                f'<input type="checkbox" class="model-checkbox" id="checkbox-{model_string}" '
-                f'onchange="multi_model_select(\'{model_string}\', \'{item["type"]}\', this.checked)">'
-                f'<label for="checkbox-{model_string}" class="custom-checkbox">'
+                f'<input type="checkbox" class="model-checkbox"{local_checkbox_attr} id="{checkbox_id}" '
+                f'onchange="multi_model_select(\'{model_string}\', \'{item["type"]}\', this.checked, this)">'
+                f'<label for="{checkbox_id}" class="custom-checkbox">'
                 f'<span class="checkbox-checkmark"></span>'
                 f'</label>'
                 f'</div>'
@@ -810,17 +1101,22 @@ def model_list_html(json_data):
             # Non-installed: checkbox for batch download
             card_html += (
                 f'<div class="checkbox-container">'
-                f'<input type="checkbox" class="model-checkbox" id="checkbox-{model_string}" '
-                f'onchange="multi_model_select(\'{model_string}\', \'{item["type"]}\', this.checked)">'
-                f'<label for="checkbox-{model_string}" class="custom-checkbox">'
+                f'<input type="checkbox" class="model-checkbox"{local_checkbox_attr} id="{checkbox_id}" '
+                f'onchange="multi_model_select(\'{model_string}\', \'{item["type"]}\', this.checked, this)">'
+                f'<label for="{checkbox_id}" class="custom-checkbox">'
                 f'<span class="checkbox-checkmark"></span>'
                 f'</label>'
                 f'</div>'
             )
 
         # ModelCard HTML (Footer)
+        lora_category_ribbon = (
+            f'<div class="lora-category-ribbon">{lora_category_badge}</div>'
+            if lora_category_badge else ''
+        )
         card_html += (
             f'</div>'
+            f'{lora_category_ribbon}'
             f'{imgtag}'
             f'<figcaption title="{full_name}">{display_name}</figcaption></figure>'
         )
@@ -830,12 +1126,13 @@ def model_list_html(json_data):
     video_playback = getattr(opts, 'video_playback', True)
     playback = 'autoplay loop' if video_playback else ''
     hide_early_access = getattr(opts, 'hide_early_access', True)
+    hide_paid_models = getattr(opts, 'hide_paid_models', False)
     current_time = datetime.now(timezone.utc)
 
     # Filter model versions and items
     filtered_items = []
     for item in json_data.get('items', []):
-        versions = filter_versions(item, hide_early_access, current_time)
+        versions = filter_versions(item, hide_early_access, hide_paid_models, current_time)
         if versions:
             item['modelVersions'] = versions
             filtered_items.append(item)
@@ -847,23 +1144,31 @@ def model_list_html(json_data):
         folder = contenttype_folder(item['type'], item['description'])
         if folder is not None:
             model_folders.add(str(folder))
-    existing_files, existing_files_sha256 = collect_existing_files(model_folders)
+    existing_files, existing_files_sha256, existing_version_ids, file_to_path, sha256_to_path, version_id_to_path = collect_existing_files(model_folders)
 
     # Build HTML
     HTML = '<div class="column civmodellist">'
-    sorted_models = {} if gl.sortNewest else None
+    # The Browser's "sort by date" toggle (gl.sortNewest) groups cards into dated
+    # sections. The Local Models grid renders in its own order (set by render_local_browser's
+    # Sort by:), so it deliberately ignores gl.sortNewest — keeping the two tabs isolated.
+    group_by_date = gl.sortNewest and target != 'local'
+    sorted_models = {} if group_by_date else None
     favorite_creators = set(_file.FavoriteCreators.get_as_list())
 
     for item in json_data['items']:
-        model_card, date = get_model_card(item, existing_files, existing_files_sha256, playback, favorite_creators)
-        if gl.sortNewest:
+        model_card, date = get_model_card(
+            item, existing_files, existing_files_sha256, existing_version_ids,
+            playback, favorite_creators,
+            file_to_path=file_to_path, sha256_to_path=sha256_to_path, version_id_to_path=version_id_to_path
+        )
+        if group_by_date:
             if date not in sorted_models:
                 sorted_models[date] = []
             sorted_models[date].append(model_card)
         else:
             HTML += model_card
 
-    if gl.sortNewest:
+    if group_by_date:
         HTML += '<div class="date-sections-container">'
         for date, cards in sorted(sorted_models.items(), reverse=True):
             if not cards:
@@ -991,9 +1296,7 @@ def create_api_url(content_type=None, sort_type=None, period_type=None, use_sear
         search_term = search_term.replace('\\', '\\\\').lower()
 
         # Apply exact search logic - wrap search term in quotes if exact_search is True
-        # NOTE: CivitAI API only supports exact search (quoted term) for Model name.
-        # Tag and User name searches do not support quoting and will return no results.
-        if exact_search and use_search_term == 'Model name':
+        if exact_search and use_search_term in ['Model name', 'User name', 'Tag']:
             # Only wrap in quotes if not already wrapped and contains spaces
             if not (search_term.startswith('"') and search_term.endswith('"')) and ' ' in search_term:
                 search_term = f'"{search_term}"'
@@ -1048,11 +1351,20 @@ def create_api_url(content_type=None, sort_type=None, period_type=None, use_sear
 
 
 ## === ANXETY EDITs ===
-def initial_model_page(content_type=None, sort_type=None, period_type=None, use_search_term=None, search_term=None, current_page=None, base_filter=None, only_liked=None, nsfw=None, exact_search=None, tile_count=None, from_update_tab=False):
-    current_inputs = (content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, nsfw, exact_search)
+def initial_model_page(content_type=None, sort_type=None, period_type=None, use_search_term=None, search_term=None, current_page=None, base_filter=None, only_liked=None, nsfw=None, exact_search=None, tile_count=None, source='CivitAI', deleted_from_civitai=False, *, from_update_tab=False, target=''):
+    source_name = _source_display_to_name(source)
+    source_adapter = _get_browser_source(source_name)
+
+    debug_print(
+        f"[Browser:{source_name}] initial_model_page "
+        f"(page={current_page!r}, from_update_tab={from_update_tab}, target={target!r})"
+    )
+
+    current_inputs = (content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, nsfw, exact_search, source_name, deleted_from_civitai)
     if current_inputs != gl.previous_inputs and gl.previous_inputs != None or not current_page:
         current_page = 1
     gl.previous_inputs = current_inputs
+    gl.current_browser_source = source_name
 
     # ── Update Mode: render from gl.update_items, no API call ──
     if gl.update_mode:
@@ -1090,19 +1402,84 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
             # Handle SHA256 search specially
             if use_search_term == 'SHA256' and search_term:
                 debug_print(f"Performing SHA256 search for hash: {search_term}")
-                gl.json_data = _search_by_sha256(search_term)
+                gl.json_data = _call_browser_source(
+                    source_adapter,
+                    'get_version_by_hash',
+                    sha256=search_term,
+                )
+                if gl.json_data is None:
+                    gl.json_data = 'sha256_not_found'
                 gl.url_list = {1: f"sha256_search_{search_term.strip().upper()}" if isinstance(gl.json_data, dict) else 'error'}
+            elif use_search_term == 'URL' and search_term:
+                debug_print(f"[Browser] Parsing pasted model URL: {search_term}")
+                gl.json_data = _browser_sources.parse_model_url(search_term.strip())
+                gl.url_list = {1: f"url_search_{search_term.strip()}"}
             else:
-                api_url = create_api_url(content_type, sort_type, period_type, use_search_term, base_filter, only_liked, tile_count, search_term, nsfw, exact_search)
-                gl.url_list = {1: api_url}
-                gl.json_data = request_civit_api(api_url)
+                gl.json_data = _call_browser_source(
+                    source_adapter,
+                    'search',
+                    query=search_term or '',
+                    search_type=use_search_term,
+                    content_type=content_type,
+                    base_filter=base_filter,
+                    sort=sort_type,
+                    period=period_type,
+                    nsfw=nsfw,
+                    exact=exact_search,
+                    page=current_page,
+                    page_size=tile_count,
+                    only_liked=only_liked,
+                    deleted_from_civitai=deleted_from_civitai,
+                )
+                # CivitAI adapter exposes the underlying API url so legacy pagination works.
+                civitai_page_url = gl.json_data.get('metadata', {}).get('_civitaiPageUrl') if isinstance(gl.json_data, dict) else None
+                gl.url_list = {1: civitai_page_url or f"browser_source://{source_name}/page/1"}
         else:
             api_url = gl.url_list.get(current_page)
+            if api_url and api_url.startswith('browser_source://'):
+                gl.json_data = _call_browser_source(
+                    source_adapter,
+                    'search',
+                    query=search_term or '',
+                    search_type=use_search_term,
+                    content_type=content_type,
+                    base_filter=base_filter,
+                    sort=sort_type,
+                    period=period_type,
+                    nsfw=nsfw,
+                    exact=exact_search,
+                    page=current_page,
+                    page_size=tile_count,
+                    only_liked=only_liked,
+                    deleted_from_civitai=deleted_from_civitai,
+                    page_url=api_url,
+                )
+            else:
+                # Fallback for legacy CivitAI urls still in gl.url_list.
+                gl.json_data = request_civit_api(api_url)
     else:
         api_url = gl.url_list.get(current_page)
         gl.from_update_tab = True
         if api_url and api_url.startswith('local_only://'):
             gl.json_data = {'items': [], 'metadata': {}}
+        elif api_url and api_url.startswith('browser_source://'):
+            gl.json_data = _call_browser_source(
+                source_adapter,
+                'search',
+                query=search_term or '',
+                search_type=use_search_term,
+                content_type=content_type,
+                base_filter=base_filter,
+                sort=sort_type,
+                period=period_type,
+                nsfw=nsfw,
+                exact=exact_search,
+                page=current_page,
+                page_size=tile_count,
+                only_liked=only_liked,
+                deleted_from_civitai=deleted_from_civitai,
+                page_url=api_url,
+            )
         elif api_url and not api_url.startswith('sha256_search_'):
             gl.json_data = request_civit_api(api_url)
 
@@ -1122,26 +1499,30 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
     hasPrev, hasNext = False, False
 
     if not isinstance(gl.json_data, dict) or 'items' not in gl.json_data or 'metadata' not in gl.json_data:
-        # Defensive: _search_by_sha256 may return {'ambiguous': ...} or an error string
+        # Defensive: SHA256 search may return {'ambiguous': ...} or an error string
         err_key = gl.json_data if not isinstance(gl.json_data, dict) else 'sha256_not_found'
         HTML = api_error_msg(err_key)
     else:
-        gl.json_data = insert_metadata(1)
+        gl.json_data = insert_metadata(current_page)
 
         metadata = gl.json_data['metadata']
-        hasNext = 'nextPage' in metadata
-        hasPrev = 'prevPage' in metadata
+        hasNext = metadata.get('nextPage') is not None
+        hasPrev = metadata.get('prevPage') is not None
 
         # Check for empty results when searching by User Name
         if use_search_term == 'User name' and (not gl.json_data.get('items') or len(gl.json_data['items']) == 0):
             HTML = api_error_msg('user_not_found')
         else:
             for item in gl.json_data['items']:
-                if len(item['modelVersions']) > 0:
+                if len(item.get('modelVersions', [])) > 0:
                     model_list.append(f"{item['name']} ({item['id']})")
 
-            max_page = max(gl.url_list.keys())
-            HTML = model_list_html(gl.json_data)
+            # For browser-source results, derive max page from metadata; legacy path uses gl.url_list.
+            if gl.url_list and any(isinstance(v, str) and v.startswith('browser_source://') for v in gl.url_list.values()):
+                max_page = max(metadata.get('totalPages', 1), current_page)
+            else:
+                max_page = max(gl.url_list.keys())
+            HTML = model_list_html(gl.json_data, target=target)
 
     return (
         gr.update(choices=model_list, value='', interactive=True),     # Model List
@@ -1163,39 +1544,76 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
         gr.update(value=None)                                           # Model Filename
     )
 
-def prev_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count):
-    return next_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, isNext=False)
+def prev_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, source='CivitAI', deleted_from_civitai=False):
+    return next_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, source=source, deleted_from_civitai=deleted_from_civitai, isNext=False)
 
-def next_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, isNext=True):
+def next_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, source='CivitAI', deleted_from_civitai=False, *, isNext=True):
+    source_name = _source_display_to_name(source)
+    source_adapter = _get_browser_source(source_name)
 
-    current_inputs = (content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, nsfw, exact_search)
+    current_inputs = (content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, nsfw, exact_search, source_name, deleted_from_civitai)
     if current_inputs != gl.previous_inputs and gl.previous_inputs != None:
-        return initial_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count)
-
-    api_url = create_api_url(isNext=isNext)
-    gl.json_data = request_civit_api(api_url)
+        return initial_model_page(content_type, sort_type, period_type, use_search_term, search_term, current_page, base_filter, only_liked, nsfw, exact_search, tile_count, source=source, deleted_from_civitai=deleted_from_civitai)
 
     next_page = current_page
     model_list = []
     max_page = 1
     hasPrev, hasNext = False, False
 
+    target_page = current_page + 1 if isNext else current_page - 1
+    api_url = gl.url_list.get(next_page if isNext else current_page)
+
+    # Prefer the source adapter for all browser-source pagination.  The adapter
+    # will validate any cached page_url and either reuse it or rebuild from the
+    # search parameters when it doesn't match the requested target_page.
+    if source_name != 'civitai' or (api_url and api_url.startswith('browser_source://')):
+        gl.json_data = _call_browser_source(
+            source_adapter,
+            'search',
+            query=search_term or '',
+            search_type=use_search_term,
+            content_type=content_type,
+            base_filter=base_filter,
+            sort=sort_type,
+            period=period_type,
+            nsfw=nsfw,
+            exact=exact_search,
+            page=target_page,
+            page_size=tile_count,
+            only_liked=only_liked,
+            deleted_from_civitai=deleted_from_civitai,
+            page_url=api_url,
+        )
+    else:
+        # Legacy CivitAI pagination path (real CivitAI URLs still in url_list).
+        api_url = create_api_url(isNext=isNext)
+        gl.json_data = request_civit_api(api_url)
+
     if not isinstance(gl.json_data, dict):
         HTML = api_error_msg(gl.json_data)
     else:
-        next_page = current_page + 1 if isNext else current_page - 1
+        next_page = target_page
 
         gl.json_data = insert_metadata(next_page, api_url)
 
         metadata = gl.json_data['metadata']
-        hasNext = 'nextPage' in metadata
-        hasPrev = 'prevPage' in metadata
+        hasNext = metadata.get('nextPage') is not None
+        hasPrev = metadata.get('prevPage') is not None
+
+        # Cache the real CivitAI page URL for this page so future direct page
+        # jumps can reuse it when it matches the requested page number.
+        civitai_page_url = metadata.get('_civitaiPageUrl')
+        if civitai_page_url:
+            gl.url_list[next_page] = civitai_page_url
 
         for item in gl.json_data['items']:
-            if len(item['modelVersions']) > 0:
+            if len(item.get('modelVersions', [])) > 0:
                 model_list.append(f"{item['name']} ({item['id']})")
 
-        max_page = max(gl.url_list.keys())
+        if gl.url_list and any(isinstance(v, str) and v.startswith('browser_source://') for v in gl.url_list.values()):
+            max_page = max(metadata.get('totalPages', 1), next_page)
+        else:
+            max_page = max(gl.url_list.keys())
         HTML = model_list_html(gl.json_data)
 
     return (
@@ -1221,6 +1639,11 @@ def next_model_page(content_type, sort_type, period_type, use_search_term, searc
 def insert_metadata(page_nr, api_url=None):
     metadata = gl.json_data['metadata']
 
+    # Browser-source adapters already supply complete metadata with next/prev
+    # pages. Legacy CivitAI urls need to be recorded in gl.url_list.
+    if api_url and isinstance(api_url, str) and api_url.startswith('browser_source://'):
+        return gl.json_data
+
     if not metadata.get('prevPage', None) and page_nr > 1:
         metadata['prevPage'] = gl.url_list.get((page_nr - 1))
 
@@ -1234,7 +1657,35 @@ def insert_metadata(page_nr, api_url=None):
     return gl.json_data
 
 ## === ANXETY EDITs ===
-def update_model_versions(model_id, json_input=None, base_filter=None):
+def _match_installed_versions_from_paths(file_paths, version_files, installed_versions):
+    """Mark installed versions by inspecting only the known installed file paths.
+
+    Cheap alternative to walking (and json.load-ing) the whole content-type tree:
+    for each known file, match its name against the version filenames and its
+    sidecar's sha256 against the version hashes. Used by the Local detail panel,
+    which already knows which 1-3 files back the clicked model.
+    """
+    for file_path in file_paths or []:
+        base = os.path.basename(file_path).lower()
+        for version_name, version_filename, _ in version_files:
+            if base == version_filename.lower():
+                installed_versions.add(version_name)
+                break
+        sidecar = os.path.splitext(file_path)[0] + '.json'
+        try:
+            if os.path.exists(sidecar):
+                with open(sidecar, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                sha256 = normalize_sha256(data.get('sha256')) if isinstance(data, dict) else None
+                if sha256:
+                    for version_name, _, file_sha256 in version_files:
+                        if sha256 == file_sha256:
+                            installed_versions.add(version_name)
+                            break
+        except Exception as e:
+            debug_print(f"[Local installed-match] {sidecar}: {e}")
+
+def update_model_versions(model_id, json_input=None, base_filter=None, installed_file_paths=None):
     if json_input:
         api_json = json_input
     else:
@@ -1244,7 +1695,7 @@ def update_model_versions(model_id, json_input=None, base_filter=None):
         return None
 
     for item in api_json['items']:
-        if int(item['id']) == int(model_id):
+        if model_id_matches(item.get('id'), model_id):
             content_type = item['type']
             desc = item.get('description', 'None')
 
@@ -1263,28 +1714,34 @@ def update_model_versions(model_id, json_input=None, base_filter=None):
                     version_filename = version_file['name']
                     version_files.add((version['name'], version_filename, file_sha256))
 
-            for root, _, files in os.walk(model_folder, followlinks=True):
-                for file in files:
-                    if file.endswith('.json'):
-                        try:
-                            json_path = os.path.join(root, file)
-                            with open(json_path, 'r', encoding='utf-8') as f:
-                                json_data = json.load(f)
-                                if isinstance(json_data, dict):
-                                    sha256 = normalize_sha256(json_data.get('sha256'))
-                                    if sha256:
-                                        for version_name, _, file_sha256 in version_files:
-                                            if sha256 == file_sha256:
-                                                installed_versions.add(version_name)
-                                                break
-                        except Exception as e:
-                            print(f"failed to read: '{file}': {e}")
+            if installed_file_paths is not None:
+                # Local detail panel: we already know this model's installed file(s),
+                # so match just those instead of walking the whole content-type tree
+                # (thousands of json.load calls per click on large libraries).
+                _match_installed_versions_from_paths(installed_file_paths, version_files, installed_versions)
+            else:
+                for root, _, files in os.walk(model_folder, followlinks=True):
+                    for file in files:
+                        if file.endswith('.json'):
+                            try:
+                                json_path = os.path.join(root, file)
+                                with open(json_path, 'r', encoding='utf-8') as f:
+                                    json_data = json.load(f)
+                                    if isinstance(json_data, dict):
+                                        sha256 = normalize_sha256(json_data.get('sha256'))
+                                        if sha256:
+                                            for version_name, _, file_sha256 in version_files:
+                                                if sha256 == file_sha256:
+                                                    installed_versions.add(version_name)
+                                                    break
+                            except Exception as e:
+                                print(f"failed to read: '{file}': {e}")
 
-                    # filename_check
-                    for version_name, version_filename, _ in version_files:
-                        if file.lower() == version_filename.lower():
-                            installed_versions.add(version_name)
-                            break
+                        # filename_check
+                        for version_name, version_filename, _ in version_files:
+                            if file.lower() == version_filename.lower():
+                                installed_versions.add(version_name)
+                                break
 
             version_names = list(versions_dict.keys())
             # Build display names with [Installed] and (Early Access) if applicable
@@ -1294,11 +1751,13 @@ def update_model_versions(model_id, json_input=None, base_filter=None):
                 version_obj = next((ver for ver in versions if ver['name'] == v), None)
                 name = v
                 installed = v in installed_versions
-                early_access = is_early_access(version_obj) if version_obj else False
+                access_kind = get_access_kind(version_obj) if version_obj else ACCESS_FREE
                 if installed:
                     name += ' [Installed]'
-                if early_access:
+                if access_kind == ACCESS_EARLY:
                     name += ' (Early Access)'
+                elif access_kind == ACCESS_PAID:
+                    name += ' (Paid)'
                 display_version_names.append(name)
             default_installed = next((name for name in display_version_names if '[Installed]' in name), None)
 
@@ -1310,7 +1769,7 @@ def update_model_versions(model_id, json_input=None, base_filter=None):
                 default_value = None
                 for i, v in enumerate(version_names):
                     version_obj = next((ver for ver in versions if ver['name'] == v), None)
-                    if version_obj and version_obj.get('baseModel', '').lower() in filter_normalized:
+                    if version_obj and (version_obj.get('baseModel') or '').lower() in filter_normalized:
                         default_value = display_version_names[i]
                         break
                 if default_value is None:
@@ -1342,6 +1801,61 @@ def cleaned_name(file_name):
 
     return f"{clean_name}{extension}"
 
+def _swarmui_to_a1111(geninfo):
+    """Convert SwarmUI-embedded JSON params to an A1111 infotext string.
+
+    SwarmUI (StableSwarmUI) stores generation params as JSON under
+    'sui_image_params'. The WebUI '#paste' parser only understands the A1111
+    text format, so left as-is the whole JSON gets dumped into the prompt (the
+    "giant text" symptom). Returns an A1111-format string, or None when the
+    input isn't SwarmUI JSON (so callers fall back to the original geninfo).
+    """
+    try:
+        data = json.loads(geninfo)
+    except (ValueError, TypeError):
+        return None
+    params = data.get('sui_image_params') if isinstance(data, dict) else None
+    if not isinstance(params, dict):
+        return None
+
+    positive = str(params.get('prompt') or '').strip()
+    negative = str(params.get('negativeprompt') or '').strip()
+
+    # SwarmUI keeps LoRAs as parallel name/weight lists → A1111 inline tags.
+    loras = params.get('loras') or []
+    weights = params.get('loraweights') or []
+    if isinstance(loras, list):
+        tags = []
+        for i, name in enumerate(loras):
+            w = weights[i] if isinstance(weights, list) and i < len(weights) else '1'
+            tags.append(f"<lora:{name}:{w}>")
+        if tags:
+            positive = (positive + ' ' + ' '.join(tags)).strip()
+
+    parts = []
+    for label, key in (('Steps', 'steps'), ('Sampler', 'sampler'),
+                       ('CFG scale', 'cfgscale'), ('Seed', 'seed')):
+        val = params.get(key)
+        if val is not None and str(val) != '':
+            parts.append(f"{label}: {val}")
+    width, height = params.get('width'), params.get('height')
+    if width and height:
+        try:
+            parts.append(f"Size: {int(float(width))}x{int(float(height))}")
+        except (ValueError, TypeError):
+            pass
+    model = params.get('model')
+    if model:
+        parts.append(f"Model: {model}")
+
+    lines = [positive]
+    if negative:
+        lines.append(f"Negative prompt: {negative}")
+    if parts:
+        lines.append(', '.join(parts))
+    return '\n'.join(lines)
+
+
 def fetch_and_process_image(image_url):
     proxies, ssl = get_proxies()
     try:
@@ -1351,11 +1865,11 @@ def fetch_and_process_image(image_url):
             if response.status_code == 200:
                 image = Image.open(BytesIO(response.content))
                 geninfo, _ = read_info_from_image(image)
-                return geninfo
+                return (_swarmui_to_a1111(geninfo) or geninfo) if geninfo else geninfo
         else:
             image = Image.open(image_url)
             geninfo, _ = read_info_from_image(image)
-            return geninfo
+            return (_swarmui_to_a1111(geninfo) or geninfo) if geninfo else geninfo
     except:
         return None
 
@@ -1366,9 +1880,42 @@ def extract_model_info(input_string):
     name = input_string[:last_open_parenthesis].strip()
     id_number = input_string[last_open_parenthesis + 1:last_close_parenthesis]
 
-    return name, int(id_number)
+    return name, parse_model_id(id_number)
 
-def update_model_info(model_string=None, model_version=None, only_html=False, input_id=None, json_input=None, from_preview=False):
+def parse_model_id(model_id):
+    """Return numeric CivitAI ids as int and external source ids as strings."""
+    if model_id is None:
+        return None
+    model_id = str(model_id).strip()
+    if re.fullmatch(r'-?\d+', model_id):
+        return int(model_id)
+    return model_id
+
+def model_id_matches(left, right):
+    """Compare model ids without assuming every browser source uses integers."""
+    if left is None or right is None:
+        return False
+    left_value = parse_model_id(left)
+    right_value = parse_model_id(right)
+    return left_value == right_value
+
+def _file_size_bytes(file_info):
+    """Return file size in bytes, accepting missing or string ``sizeKB`` values."""
+    return _file_size_kb(file_info) * 1024
+
+def _file_size_kb(file_info):
+    """Return file size in KiB, accepting missing or string ``sizeKB`` values."""
+    if not isinstance(file_info, dict):
+        return 0
+    size_kb = file_info.get('sizeKB')
+    if size_kb in (None, ''):
+        return 0
+    try:
+        return float(size_kb)
+    except (TypeError, ValueError):
+        return 0
+
+def update_model_info(model_string=None, model_version=None, only_html=False, input_id=None, json_input=None, from_preview=False, prefer_cached_images=False):
     video_playback = getattr(opts, 'video_playback', True)
     meta_btn = getattr(opts, 'individual_meta_btn', True)
     playback = ''
@@ -1390,8 +1937,8 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
     else:
         model_id = input_id
 
-    if model_version and '[Installed]' in model_version:
-        model_version = model_version.replace(' [Installed]', '')
+    if model_version:
+        model_version = strip_version_suffixes(model_version)
     if model_id:
         output_html = ''
         output_training = ''
@@ -1430,7 +1977,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                 gr.update(choices=None, value=None, interactive=False)
             )
         for item in api_data['items']:
-            if int(item['id']) == int(model_id):
+            if model_id_matches(item.get('id'), model_id):
                 is_local_only = bool(item.get('local_only'))
                 content_type = item['type']
                 if content_type == 'LORA':
@@ -1469,7 +2016,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                     if selected_version == None and item['modelVersions']:
                         selected_version = item['modelVersions'][0]  # fallback to first version
 
-                model_availability = selected_version.get('availability', 'Unknown')
+                model_availability = get_availability_label(selected_version)
                 published_at = selected_version.get('publishedAt')
                 model_date_published = published_at.split('T')[0] if published_at else 'Unknown'
                 version_name = selected_version['name']
@@ -1489,31 +2036,37 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                     output_training = output_training.strip(', ')
                 if selected_version['baseModel']:
                     output_basemodel = selected_version['baseModel']
+                selected_file_info = None
                 for file in selected_version['files']:
                     dl_dict[file['name']] = file['downloadUrl']
 
                     if not model_filename:
                         model_filename = file['name']
+                        selected_file_info = file
                         dl_url = file['downloadUrl']
                         gl.json_info = item
                         sha256_value = normalize_sha256(file['hashes'].get('SHA256')) or 'Unknown'
 
-                    size = file['metadata'].get('size', 'Unknown')
-                    format = file['metadata'].get('format', 'Unknown')
-                    fp = file['metadata'].get('fp', 'Unknown')
-                    sizeKB = file.get('sizeKB', 0) * 1024
-                    filesize = _download.convert_size(sizeKB)
+                    file_metadata = file.get('metadata') or {}
+                    size = file_metadata.get('size', 'Unknown')
+                    format = file_metadata.get('format') or file.get('format') or 'Unknown'
+                    fp = file_metadata.get('fp', 'Unknown')
+                    size_kb = _file_size_kb(file)
+                    size_bytes = size_kb * 1024
+                    filesize = _download.convert_size(size_bytes)
 
                     unique_file_name = f"{size} {format} {fp} ({filesize})"
                     is_primary = file.get('primary', False)
                     file_list.append(unique_file_name)
                     file_dict.append({
                         'format': format,
-                        'sizeKB': sizeKB
+                        'sizeKB': size_kb,
+                        'sizeB': size_bytes,
                     })
                     if is_primary:
                         default_file = unique_file_name
                         model_filename = file['name']
+                        selected_file_info = file
                         dl_url = file['downloadUrl']
                         gl.json_info = item
                         sha256_value = normalize_sha256(file['hashes'].get('SHA256')) or 'Unknown'
@@ -1537,10 +2090,39 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                 model_main_url = f"https://{get_civitai_domain()}/models/{item['id']}" if not is_local_only else ''
 
                 if is_local_only:
-                    api_version = {'images': []}
+                    # A file resolved via CivArchive (see resolve_civarchive_issues)
+                    # carries real preview images on its version — use those instead
+                    # of the empty state. True local-only files have none, so this
+                    # is a no-op for them.
+                    api_version = {'images': selected_version.get('images', []) or []}
+                elif prefer_cached_images:
+                    # Local tab: render purely from the images the grid already cached
+                    # in gl.local_json_data — zero network, instant click. The per-image
+                    # generation meta (prompt/sampler/...) is intentionally skipped here;
+                    # it's only consumed by the txt2img/img2img "CivitAI" button card,
+                    # not the Local detail panel.
+                    api_version = {'images': selected_version.get('images', []) or []}
                 else:
                     url = f"https://{get_civitai_domain()}/api/v1/model-versions/{selected_version['id']}"
                     api_version = request_civit_api(url)
+                    # A freshly-published version can 404/error on this dedicated endpoint
+                    # before CivitAI's search index catches up. Retry via by-hash first —
+                    # proven (see the .api_info.json fetch elsewhere) to stay in sync even
+                    # when the by-id endpoint lags, and unlike selected_version's images
+                    # (from the /models listing response) it still carries full per-image
+                    # generation meta (prompt/sampler/steps/...), not just the thumbnail.
+                    if not (isinstance(api_version, dict) and 'images' in api_version):
+                        if sha256_value and sha256_value != 'Unknown':
+                            by_hash_url = f"https://{get_civitai_domain()}/api/v1/model-versions/by-hash/{sha256_value}"
+                            retry_version = request_civit_api(by_hash_url)
+                            if isinstance(retry_version, dict) and 'images' in retry_version:
+                                api_version = retry_version
+                    # Last resort: selected_version's own images have no per-image meta,
+                    # but showing them beats the "Unable to load preview images" empty state.
+                    if not (isinstance(api_version, dict) and 'images' in api_version):
+                        fallback_images = selected_version.get('images', []) or []
+                        if fallback_images:
+                            api_version = {'images': fallback_images}
 
                 ## === ANXETY EDITs ===
                 # --- HTML Generation ---
@@ -1591,7 +2173,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                         if meta_button:
                             img_html += (
                                 '<div class="civitai_txt2img">'
-                                f'<label onclick="sendImgUrl(\'{escape(image_url)}\')" class="civitai-txt2img-btn">Send to txt2img</label>'
+                                f'<label onclick="sendToTxt2img(this, \'{escape(image_url)}\')" class="civitai-txt2img-btn">Send to txt2img</label>'
                                 '</div>'
                             )
                         img_html += '</div>'  # close .civitai-image-container
@@ -1653,6 +2235,18 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                                     '<path d="M12 10h.01"></path>'
                                     '</svg>'
                                 )
+                            # Best-effort workaround: the API returned no meta for this
+                            # image, but the image FILE may still carry embedded PNG-info.
+                            # Offer to try reading it (images only — video has no PNG-info).
+                            # CivitAI often strips embedded data, so this is "Try", not a promise.
+                            retry_btn = ''
+                            if not is_video:
+                                retry_btn = (
+                                    f'<label onclick="sendImgUrl(\'{escape(image_url)}\')" '
+                                    'class="civitai-txt2img-btn civitai-meta-retry" '
+                                    'title="The card has no metadata; attempt to read parameters embedded in the image file">'
+                                    '&#128269; Try reading params from image file</label>'
+                                )
                             img_html += (
                                 '<div class="image-metadata-empty">'
                                 '<div class="empty-state-icon">'
@@ -1661,6 +2255,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                                 '<div class="empty-state-text">'
                                 f'<h4>No metadata available</h4>'
                                 f'<p>No generation settings are available for this {no_meta_type}.</p>'
+                                f'{retry_btn}'
                                 '</div>'
                                 '</div>'
                             )
@@ -1710,12 +2305,22 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
 
                 # Build header block
                 if is_local_only:
-                    model_page = (
-                        '<div class="model-page-line">'
-                            '<span class="page-label">Model Source:</span>'
-                            f'<span>{escape(str(model_name))} (Local file only)</span>'
-                        '</div>'
-                    )
+                    civarchive_url = item.get('civarchive_url')
+                    if civarchive_url:
+                        model_page = (
+                            '<div class="model-page-line">'
+                                '<span class="page-label">Model Source:</span>'
+                                f'<a href="{civarchive_url}" target="_blank">{escape(str(model_name))}</a>'
+                                ' <span style="opacity:0.7;">(recovered via CivArchive)</span>'
+                            '</div>'
+                        )
+                    else:
+                        model_page = (
+                            '<div class="model-page-line">'
+                                '<span class="page-label">Model Source:</span>'
+                                f'<span>{escape(str(model_name))} (Local file only)</span>'
+                            '</div>'
+                        )
                 else:
                     model_page = (
                         '<div class="model-page-line">'
@@ -1746,6 +2351,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                     f'<dt>SHA256</dt>'
                     f'<dd><span style="font-family:monospace;font-size:11px;word-break:break-all;user-select:all;">{escape(sha256_value)}</span></dd>'
                 ) if sha256_value and sha256_value != 'Unknown' else ''
+
                 version_info = (
                     '<div class="version-info-block">'
                         '<h3 class="block-header">Version Information</h3>'
@@ -1772,6 +2378,64 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                         '</dl>'
                     '</div>'
                 )
+
+                # Build browser-source block — only shown for non-CivitAI sources
+                browser_source = item.get('browserSource') or 'civitai'
+                source_info = ''
+                if browser_source.lower() != 'civitai':
+                    browser_source_id = item.get('browserSourceId') or item.get('id', '')
+                    source_dl_rows = []
+                    if selected_file_info:
+                        raw_file = selected_file_info.get('browserSourceFileRaw') or {}
+                        mirrors = raw_file.get('mirrors') or []
+                        if mirrors:
+                            for mirror in mirrors:
+                                if not isinstance(mirror, dict):
+                                    continue
+                                m_url = mirror.get('url', '')
+                                deleted_at = mirror.get('deletedAt')
+                                status = 'deleted' if deleted_at else 'active'
+                                status_label = 'Deleted' if deleted_at else 'Active'
+                                display_url = escape(m_url[:80] + '...' if len(m_url) > 80 else m_url)
+                                source_dl_rows.append(
+                                    f'<li class="mirror-row mirror-{status}">'
+                                    f'<a href="{escape(m_url)}" target="_blank" rel="noopener" class="mirror-url">{display_url}</a>'
+                                    f'<span class="mirror-status">{status_label}</span>'
+                                    f'</li>'
+                                )
+
+                    note_row = ''
+                    if browser_source.lower() == 'civarchive':
+                        note_row = (
+                            '<dt>Note</dt>'
+                            '<dd class="source-note">Mirrored backup from CivArchive. '
+                            'The original model may no longer be available on CivitAI.</dd>'
+                        )
+
+                    mirrors_section = ''
+                    if source_dl_rows:
+                        mirrors_section = (
+                            '<dt>Download Mirrors</dt>'
+                            '<dd>'
+                            '<ul class="mirror-list">'
+                            f'{"".join(source_dl_rows)}'
+                            '</ul>'
+                            '</dd>'
+                        )
+
+                    source_info = (
+                        '<div class="browser-source-block">'
+                            '<h3 class="block-header">Browser Source</h3>'
+                            '<dl>'
+                                '<dt>Source</dt>'
+                                f'<dd><span class="source-badge source-{escape(browser_source.lower())}">{escape(browser_source)}</span></dd>'
+                                '<dt>External ID</dt>'
+                                f'<dd><span class="source-id">{escape(str(browser_source_id))}</span></dd>'
+                                f'{note_row}'
+                                f'{mirrors_section}'
+                            '</dl>'
+                        '</div>'
+                    )
 
                 # Build permissions block
                 version_permissions = (
@@ -1877,6 +2541,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                             '</div>'
                             '<div class="info-permissions-container">'
                                 f'{version_info}'
+                                f'{source_info}'
                                 f'{version_permissions}'
                             '</div>'
                             f'{companion_banner}'
@@ -1925,7 +2590,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
 
         # === ANXETY EDIT ===
         installed_model_filename = None
-        extensions = ['.pt', '.ckpt', '.pth', '.safetensors', '.th', '.zip', '.vae']
+        extensions = ['.pt', '.ckpt', '.pth', '.safetensors', '.th', '.zip', '.vae', '.gguf']
 
         for root, dirs, files in os.walk(model_folder, followlinks=True):
             for filename in files:
@@ -2011,13 +2676,13 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
 
         if gl.isDownloading:
             item = gl.download_queue[0]
-            if int(model_id) == int(item['model_id']):
+            if model_id_matches(model_id, item.get('model_id')):
                 BtnDel = False
         BtnDownTxt = 'Download model'
         if len(gl.download_queue) > 0:
             BtnDownTxt = 'Add to queue'
             for item in gl.download_queue:
-                if item['version_name'] == model_version and int(item['model_id']) == int(model_id):
+                if item['version_name'] == model_version and model_id_matches(item.get('model_id'), model_id):
                     BtnDownInt = False
                     break
 
@@ -2069,7 +2734,7 @@ def sub_folder_value(content_type, desc=None):
         return 'None'
     return folder
 
-def update_file_info(model_string, model_version, file_metadata):
+def update_file_info(model_string, model_version, selected_file_label, json_input=None):
     file_list = []
     is_LORA = False
     embed_check = False
@@ -2077,11 +2742,12 @@ def update_file_info(model_string, model_version, file_metadata):
     model_id = None
     model_name, model_id = extract_model_info(model_string)
 
-    if model_version and '[Installed]' in model_version:
-        model_version = model_version.replace(' [Installed]', '')
-    if model_id and model_version:
-        for item in gl.json_data['items']:
-            if int(item['id']) == int(model_id):
+    if model_version:
+        model_version = strip_version_suffixes(model_version)
+    api_data = json_input if json_input is not None else gl.json_data
+    if model_id and model_version and isinstance(api_data, dict) and 'items' in api_data:
+        for item in api_data['items']:
+            if model_id_matches(item.get('id'), model_id):
                 content_type = item['type']
                 if content_type == 'LORA':
                     is_LORA = True
@@ -2089,8 +2755,9 @@ def update_file_info(model_string, model_version, file_metadata):
                 for model in item['modelVersions']:
                     if model['name'] == model_version:
                         for file in model['files']:
-                            size = file['metadata'].get('size', 'Unknown')
-                            format = file['metadata'].get('format', 'Unknown')
+                            file_metadata = file.get('metadata') or {}
+                            size = file_metadata.get('size', 'Unknown')
+                            format = file_metadata.get('format') or file.get('format') or 'Unknown'
                             unique_file_name = f"{size} {format}"
                             file_list.append(unique_file_name)
                             pass
@@ -2108,11 +2775,11 @@ def update_file_info(model_string, model_version, file_metadata):
                             file_size = metadata.get('size', 'Unknown')
                             file_format = metadata.get('format', 'Unknown')
                             file_fp = metadata.get('fp', 'Unknown')
-                            sizeKB = file.get('sizeKB', 0)
+                            sizeKB = _file_size_kb(file)
                             sizeB = sizeKB * 1024
                             filesize = _download.convert_size(sizeB)
 
-                            if f"{file_size} {file_format} {file_fp} ({filesize})" == file_metadata:
+                            if f"{file_size} {file_format} {file_fp} ({filesize})" == selected_file_label:
                                 installed = False
                                 folder_location = 'None'
                                 model_folder = os.path.join(contenttype_folder(content_type, desc))
@@ -2340,4 +3007,4 @@ def api_error_msg(input_string):
     elif input_string == 'dns_error':
         return div + 'Temporary DNS resolution failure while contacting CivitAI.<br>Please check your network/DNS and try again in a few seconds.</div>'
     else:
-        return div + 'The CivitAI-API failed to respond due to an error.<br>Check the logs for more details.</div>'
+        return div + 'The selected browser source failed to respond due to an error.<br>Check the logs for more details.</div>'
