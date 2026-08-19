@@ -456,9 +456,17 @@ def contenttype_folder(content_type, desc=None, custom_folder=None):
     ext_dir     = Path(extensions_dir)                                          # Extensions directory path
 
     def resolve_path(attr, fallback):
-        # Returns a Path from cmd_opts if set, otherwise fallback
-        if getattr(cmd_opts, attr, None) and not custom_folder:
-            return Path(getattr(cmd_opts, attr))
+        # Returns a Path from cmd_opts if set, otherwise fallback.
+        # Forge Neo's directory args (--ckpt-dirs, --lora-dirs, --text-encoder-dirs)
+        # use argparse action="append", so they arrive as lists rather than strings.
+        # Take the first entry — Path() raises TypeError when handed a list.
+        # Their default is [], which is falsy, so unset args still hit the fallback.
+        value = getattr(cmd_opts, attr, None)
+        if value and not custom_folder:
+            if isinstance(value, (list, tuple)):
+                value = value[0] if value else None
+            if value:
+                return Path(value)
         return fallback
 
     # Mapping for content types
@@ -467,9 +475,9 @@ def contenttype_folder(content_type, desc=None, custom_folder=None):
         'Checkpoint': lambda: resolve_path('ckpt_dir', resolve_path('ckpt_dirs', main_models / 'Stable-diffusion')),
         'TextualInversion': lambda: resolve_path('embeddings_dir', _resolve_embeddings_folder(main_models, main_data)),
         'AestheticGradient': lambda: (Path(custom_folder) if custom_folder else ext_dir / 'stable-diffusion-webui-aesthetic-gradients') / 'aesthetic_embeddings',
-        'LORA': lambda: resolve_path('lora_dir', main_models / 'Lora'),
-        'LoCon': lambda: resolve_path('lora_dir', main_models / 'Lora'), # 💩
-        'DoRA': lambda: resolve_path('lora_dir', main_models / 'Lora'),  # 💩
+        'LORA': lambda: resolve_path('lora_dirs', resolve_path('lora_dir', main_models / 'Lora')),
+        'LoCon': lambda: resolve_path('lora_dirs', resolve_path('lora_dir', main_models / 'Lora')), # 💩
+        'DoRA': lambda: resolve_path('lora_dirs', resolve_path('lora_dir', main_models / 'Lora')),  # 💩
         'VAE': lambda: resolve_path('vae_dir', main_models / 'VAE'),
         'Controlnet': lambda: resolve_path('controlnet_dir', main_models / 'ControlNet'),
         'Poses': lambda: main_models / 'Poses',
