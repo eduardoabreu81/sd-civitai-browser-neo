@@ -577,6 +577,21 @@ def delete_model(delete_finish=None, model_filename=None, model_string=None, lis
         gr.update(value=ver_value, choices=ver_choices)  # Version List
     )
 
+def _load_sidecar_dict(json_path):
+    """Load a .json file, returning it only when it holds a JSON object.
+
+    The walks below visit EVERY .json under the model roots, and not all of them
+    are our sidecars: Dynamic Prompts wildcard lists, other extensions' data files
+    and hand-written notes live there too, and those can be arrays, strings or
+    numbers. `safe_json_load` returns whatever the file holds, so calling .get() on
+    the result raised `AttributeError: 'list' object has no attribute 'get'` and
+    aborted the whole operation — which is what broke "Download all selected"
+    (issue #4). Anything that is not a dict simply is not a sidecar; skip it.
+    """
+    data = _api.safe_json_load(json_path)
+    return data if isinstance(data, dict) else None
+
+
 def _walk_model_folders(folders):
     """Yield (root, files) for every directory under each model folder.
 
@@ -627,7 +642,7 @@ def _find_model_by_sha256(sha256):
         Handles both the flat 'sha256' field written by this extension and the
         nested files[].hashes.SHA256 form found in full model / .api_info.json blobs.
         """
-        if not data:
+        if not isinstance(data, dict):
             return False
         if (data.get('sha256') or '').upper() == sha256_upper:
             return True
@@ -680,7 +695,7 @@ def build_installed_index():
             for file in files:
                 if not file.endswith('.json'):
                     continue
-                data = _api.safe_json_load(os.path.join(root, file))
+                data = _load_sidecar_dict(os.path.join(root, file))
                 if not data:
                     continue
                 sha = data.get('sha256') or ''
@@ -738,7 +753,7 @@ def find_installed_file_by_model_id(model_id, exclude_filename=None, index=None)
             for file in files:
                 if not file.endswith('.json'):
                     continue
-                data = _api.safe_json_load(os.path.join(root, file))
+                data = _load_sidecar_dict(os.path.join(root, file))
                 if not data:
                     continue
                 sidecar_id = data.get('modelId')

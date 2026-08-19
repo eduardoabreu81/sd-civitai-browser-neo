@@ -1815,9 +1815,14 @@ def on_ui_tabs():
                 return tuple(gr.update() for _ in page_outputs)
             return _api.initial_model_page(*args, from_update_tab=True)
 
+        # page_inputs, not refresh_inputs: refresh_inputs blanks out page_slider so the
+        # search/refresh buttons always land on page 1, which is right for THEM. Reusing
+        # it here made every finished download throw the user back to page 1 (issue #4).
+        # initial_model_page's from_update_tab branch re-fetches gl.url_list[current_page],
+        # so passing the real page re-renders the page the user is actually on.
         _download_finish_event.then(
             fn=_post_download_page_refresh,
-            inputs=refresh_inputs,
+            inputs=page_inputs,
             outputs=page_outputs
         )
 
