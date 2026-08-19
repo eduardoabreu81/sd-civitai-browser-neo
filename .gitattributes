@@ -28,3 +28,11 @@
 *.webp binary
 *.mp4 binary
 *.webm binary
+
+# Keep development-only files out of release archives.
+# Affects `git archive` and GitHub's "Download ZIP" alike; the files stay in the
+# repository, they just don't ship to someone installing the extension.
+docs/               export-ignore
+tests/              export-ignore
+_mockup_banner.html export-ignore
+.vscode/            export-ignore
