@@ -22,6 +22,26 @@
 
 ## Linha do Tempo
 
+### 2026-08-19 — Issue #4 (batch download crash) and PR #3 (Forge Neo directory args)
+
+Both landed on v1.0.0; the version was deliberately NOT bumped, since v1.0.0 shipped the same day.
+
+**Issue #4 — "Download all selected" dead on revamp**
+- Root cause: `build_installed_index` walks every `.json` under the model roots and called `.get()` on the payload. `safe_json_load` returns whatever the file holds, and the `if not data` guard only filtered `None` / `[]` / `{}`. A non-empty non-dict JSON — an array, a string, a number — raised `AttributeError` and aborted the whole batch. The model roots include the Wildcards folder, where array-shaped `.json` is normal, so this was routine rather than exotic.
+- Regression window: `build_installed_index` arrived with `47d0eea` (batch tree scan), revamp-only — which is why the reporter saw `main` work.
+- Two unreported siblings fixed with it: `_sidecar_matches` (SHA256 search) and `find_installed_file_by_model_id` (update retention). Same walk, same assumption, same crash.
+- Fix: `_load_sidecar_dict()` returns the payload only when it is a dict; all three walks go through it.
+- Second symptom, page reset after download: `_post_download_page_refresh` was wired to `refresh_inputs`, which blanks `page_slider` on purpose so the search/refresh buttons land on page 1. Correct for them, wrong here. Now uses `page_inputs`.
+- `tests/test_sidecar_walk_safety.py` — 13 cases over every top-level JSON shape, plus a guard test that reads the shipped source so a future walk cannot go back to calling `safe_json_load` directly.
+
+**PR #3 — Forge Neo append-list directory args (@SillySilk)**
+- Verified against Forge Neo's own sources before merging: `modules/cmd_args.py:80-83` declares `--ckpt-dirs`/`--lora-dirs`/`--vae-dirs` with `action="append"`, and `extensions-builtin/sd_forge_lora/preload.py` declares `--lora-dir` with a non-empty default. Neo declares no `--ckpt-dir` or `--vae-dir` at all. Both of the PR's premises hold.
+- Merged as-is (retargeted `revamp` → `main`), then a follow-up closed two gaps it left:
+  - `--vae-dirs` was still ignored (the VAE entry only looked at the non-existent `vae_dir`).
+  - Precedence change made the default folder invisible to scans: with `--lora-dirs` set, `contenttype_folder('LORA')` returns the extra folder, but Forge itself lists `[lora_dir, *lora_dirs]`. Everything in `models/Lora` would have read as uninstalled.
+- Added `contenttype_folders()` (plural) for readers, keeping `contenttype_folder()` as the single download destination. `_get_all_model_folders`, `_resolve_browser_local_folders` and `file_scan` now use it — which also collapsed three separately-grown copies of the same collection loop.
+- `tests/test_model_dir_args.py` — 16 cases. Negative control run: reverting either fix makes the new tests fail.
+
 ### 2026-08-19 — Release v1.0.0: `revamp` promoted to `main`
 
 **What changed**
