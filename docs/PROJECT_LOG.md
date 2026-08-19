@@ -32,6 +32,12 @@
 - UI version badge bumped `Beta-Revamp v0.1.0` → `v1.0.0` (`scripts/civitai_gui.py`).
 - Roadmap restructured: v1.0.0 marked complete; the remaining revamp backlog (cross-source SHA256 double-check, "Not found on CivitAI" filter, HF curated catalog, Organization by Tag phases 1-2, saved search presets, extra adapters) moved to a new v1.1.0 milestone.
 
+**Wiki split (same day)**
+- README slimmed from 725 to 202 lines, mirroring the structure used in `sd-webui-prompt-studio-neo`: badges + Wiki link, What's New, Features (bullets with a "Full details on the Wiki" link each), Installation, a documentation index, and Credits.
+- Everything deep moved to a 19-page GitHub Wiki: `Home`, `_Sidebar`, `Installation`, `Changelog` (full history back to v0.1.0), `Roadmap`, `Settings-Reference`, `Supported-Model-Types`, `Known-Issues`, `Credits`, and ten `Feature-*` pages.
+- `Settings-Reference` is generated from `scripts/civitai_gui.py` by walking the AST for `shared.opts.add_option` calls — all 50 options with key, default, and the `.info()` text. Regenerate it the same way when settings change rather than editing it by hand.
+- Wiki sources are not tracked in this repo; the wiki lives in its own `sd-civitai-browser-neo.wiki.git` repository.
+
 **Branch promotion**
 - `revamp` was 212 commits ahead of `main`; `main` carried 2 commits `revamp` did not have, both superseded:
   - `7e01c75` (drop `show_progress='hidden'` from the `download_create_thread` binding) — `revamp` was already in that state.
