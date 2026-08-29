@@ -8,7 +8,7 @@
 
 [![Forge Neo](https://img.shields.io/badge/Forge-Neo-blue)](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo)
 [![Gradio](https://img.shields.io/badge/Gradio-4.40.0-orange)](https://gradio.app/)
-[![Version](https://img.shields.io/badge/Version-1.0.0-brightgreen)](https://github.com/eduardoabreu81/sd-civitai-browser-neo/wiki/Changelog)
+[![Version](https://img.shields.io/badge/Version-1.0.1-brightgreen)](https://github.com/eduardoabreu81/sd-civitai-browser-neo/wiki/Changelog)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Wiki](https://img.shields.io/badge/📖-Wiki-blueviolet)](https://github.com/eduardoabreu81/sd-civitai-browser-neo/wiki)
 
@@ -34,6 +34,12 @@ Browse, download, and manage your model library directly inside Forge Neo — mu
 ---
 
 ## 🆕 What's New
+
+### v1.0.1 — Reliable Batch Downloads
+
+- **Complete multi-select batches** — **Download all selected** snapshots the live Browser selection at click time, preventing rapid checkbox changes from reaching Python as a partial list.
+- **Browser/Local isolation** — Browser selections, hidden state, installed/creator filters, and model resolution no longer leak through the Local Models dataset or grid.
+- **Clear queue accounting** — the terminal reports how many selected models were received, enqueued, already current, or skipped; already-installed current models are also explained in the queue UI.
 
 ### v1.0.0 — First Stable Release
 

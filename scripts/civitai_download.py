@@ -10,8 +10,10 @@ import json
 import time
 import re
 import os
-import gradio as gr
+from html import escape
 from pathlib import Path
+
+import gradio as gr
 
 # === WebUI imports ===
 from modules.shared import opts, cmd_opts
@@ -168,7 +170,7 @@ def create_model_item(dl_url, model_filename, install_path, model_name, version_
     filtered_items = []
     main_folder = None
 
-    for item in _all_known_items():
+    for item in _all_known_items(origin):
         if _api.model_id_matches(item.get('id'), model_id):
             filtered_items.append(item)
             content_type = item['type']
@@ -225,7 +227,12 @@ def _pick_filtered_or_first(versions_list, base_filter):
     (e.g. Anima/Chroma when the user filtered Illustrious/NoobAI in the search).
     """
     if base_filter:
-        wanted = {str(b).strip().lower() for b in base_filter if b}
+        base_values = (
+            base_filter
+            if isinstance(base_filter, (list, tuple, set))
+            else [base_filter]
+        )
+        wanted = {str(b).strip().lower() for b in base_values if b}
         if wanted:
             for ver in versions_list:
                 if (ver.get('baseModel') or '').strip().lower() in wanted:
@@ -279,6 +286,37 @@ def _resolve_versions_to_download(versions_list, model_folder, base_filter=None,
 
     if not installed_hashes and not installed_cached_ver_ids:
         return [_pick_filtered_or_first(versions_list, base_filter)]
+
+    # An active Browser base-model filter is an explicit download choice. Resolve
+    # that lineage before considering other installed families; otherwise an
+    # up-to-date SDXL version on disk can suppress a selected Pony/Illustrious
+    # version from the filtered Browser results.
+    base_values = (
+        base_filter
+        if isinstance(base_filter, (list, tuple, set))
+        else ([base_filter] if base_filter else [])
+    )
+    wanted_bases = {
+        str(base).strip().lower()
+        for base in base_values
+        if base
+    }
+    if wanted_bases:
+        filtered_versions = [
+            version
+            for version in versions_list
+            if (version.get('baseModel') or '').strip().lower() in wanted_bases
+        ]
+        if filtered_versions:
+            candidate = filtered_versions[0]
+            candidate_installed = candidate.get('id') in installed_cached_ver_ids
+            if not candidate_installed:
+                candidate_installed = any(
+                    (file_entry.get('hashes', {}).get('SHA256') or '').upper()
+                    in installed_hashes
+                    for file_entry in candidate.get('files', [])
+                )
+            return [] if candidate_installed else [candidate]
 
     # Build two parallel maps:
     #  - family  (extracted from version name) — more precise when it works
@@ -362,15 +400,28 @@ def _resolve_versions_to_download(versions_list, model_folder, base_filter=None,
     return [_pick_filtered_or_first(versions_list, base_filter)]
 
 
-def _all_known_items():
-    """Model items from both tab datasets — Browser (gl.json_data) first, then Local
-    Models (gl.local_json_data). The tabs keep separate datasets so one doesn't clobber
-    the other, but download/update flows may be fed from either."""
-    items = []
-    for data in (gl.json_data, getattr(gl, 'local_json_data', None)):
-        if isinstance(data, dict):
-            items.extend(data.get('items', []))
-    return items
+def _all_known_items(preferred_origin=None):
+    """Return model items without leaking Local filters into Browser downloads.
+
+    Browser selections are valid only against the Browser page that rendered their
+    checkboxes. Falling back to ``gl.local_json_data`` made a stale hidden Browser
+    selection resolve only the subset currently present under the Local filters.
+
+    Local/update actions still keep the Browser dataset as a compatibility fallback
+    for the legacy Update Mode, but prefer their own self-contained dataset first.
+    """
+    browser_data = gl.json_data if isinstance(gl.json_data, dict) else {}
+    local_data = getattr(gl, 'local_json_data', None)
+    local_data = local_data if isinstance(local_data, dict) else {}
+
+    browser_items = list(browser_data.get('items', []))
+    local_items = list(local_data.get('items', []))
+
+    if preferred_origin == 'browser':
+        return browser_items
+    if preferred_origin == 'local':
+        return local_items + browser_items
+    return browser_items + local_items
 
 
 def selected_to_queue(model_list, subfolder, download_start, create_json, current_html, forced_version_ids=None, keep_installed=False, origin='browser', base_filter=None, forced_file_labels=None):
@@ -394,10 +445,13 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
         current_count = 0
 
     model_list = json.loads(model_list)
+    requested_count = len(model_list)
+    enqueued_count = 0
     skipped_names = []
+    already_current_names = []
 
     ## === ANXETY EDITs ===
-    known_items = _all_known_items()
+    known_items = _all_known_items(origin)
     # Scan the model tree ONCE for the whole batch (installed hashes/version-ids for
     # version resolution + modelId->paths for retention), instead of re-walking it
     # per model in _resolve_versions_to_download and find_installed_file_by_model_id.
@@ -438,6 +492,19 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
             # Auto-resolve: one per installed family for multi-family models
             versions_to_download = _resolve_versions_to_download(
                 versions_list, model_folder, base_filter=base_filter, installed_scan=_batch_scan)
+
+        if not versions_to_download:
+            if forced_version_ids and str(model_id) in forced_version_ids:
+                skipped_names.append(model_name)
+                debug_print(
+                    f"Skipped model {model_name} ({model_id}) — selected version not found"
+                )
+            else:
+                already_current_names.append(model_name)
+                debug_print(
+                    f"Skipped model {model_name} ({model_id}) — already installed and up to date"
+                )
+            continue
 
         for version in versions_to_download:
             version_name = version.get('name')
@@ -565,19 +632,38 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
             if model_item:
                 gl.download_queue.append(model_item)
                 total_count += 1
+                enqueued_count += 1
             else:
                 skipped_names.append(f"{model_name} ({version_name})")
                 debug_print(f"Skipped model {model_name} ({model_id}){f' version {version_name}' if version_name else ''} due to processing error")
 
     html = download_manager_html(current_html)
+    notices = []
+    if already_current_names:
+        names_str = ', '.join(escape(str(name)) for name in already_current_names[:5])
+        names_str += '…' if len(already_current_names) > 5 else ''
+        notices.append(
+            f'<div style="background:#172d3a;border:1px solid #34708f;border-radius:6px;'
+            f'padding:8px 12px;margin:4px 0;color:#9fdcff;font-size:13px;">'
+            f'ℹ️ {len(already_current_names)} selected model(s) already installed and up to date: {names_str}'
+            f'</div>'
+        )
     if skipped_names:
-        names_str = ', '.join(skipped_names[:5]) + ('…' if len(skipped_names) > 5 else '')
-        html = html.rsplit('</div>', 1)[0] + (
+        names_str = ', '.join(escape(str(name)) for name in skipped_names[:5])
+        names_str += '…' if len(skipped_names) > 5 else ''
+        notices.append(
             f'<div style="background:#3a1a1a;border:1px solid #8b3030;border-radius:6px;'
             f'padding:8px 12px;margin:4px 0;color:#ff9999;font-size:13px;">'
             f'⚠️ Skipped {len(skipped_names)} model(s) — could not load info: {names_str}'
             f'</div>'
-        ) + '</div>'
+        )
+    if notices:
+        html = html.rsplit('</div>', 1)[0] + ''.join(notices) + '</div>'
+
+    print(
+        f"[batch:{origin}] received={requested_count} enqueued={enqueued_count} "
+        f"already_current={len(already_current_names)} skipped={len(skipped_names)}"
+    )
 
     return (
         gr.update(interactive=False, visible=False),  # Download Button
@@ -681,7 +767,7 @@ def download_single_update(trigger_value, download_start, create_json, current_h
     # Browser/Maintenance-scan artifact, and a stale entry would otherwise leak a wrong
     # version/retention target into a Local update ("updates misturados"). selected_to_queue
     # auto-resolves the newest version per installed family (or the forced version below).
-    item = next((it for it in _all_known_items()
+    item = next((it for it in _all_known_items('local')
                  if str(it.get('id')) == str(model_id_int)), None)
     # 'partial' items only carry the installed version (recovered via by-hash) —
     # "updating" them would re-download the installed version itself. Refuse.

@@ -338,7 +338,7 @@ def on_ui_tabs():
     with gr.Blocks() as civitai_interface:
         gr.HTML(
             '<div style="text-align:right;opacity:0.6;font-size:12px;padding:2px 8px;letter-spacing:0.3px;">'
-            'v1.0.0</div>',
+            'v1.0.1</div>',
             elem_id='civitai_neo_version_badge'
         )
         ## Browser Tab
@@ -847,8 +847,6 @@ def on_ui_tabs():
         banned_creators_list_txt.change(fn=None, inputs=[banned_creators_list_txt, hide_banned_creators], _js='(bList, checked) => refreshBannedCreators(bList, checked)')
 
         civitai_text2img_output.change(fn=None, inputs=civitai_text2img_output, _js='(genInfo) => genInfo_to_txt2img(genInfo)')
-
-        download_selected.click(fn=None, _js='() => deselectAllModels()')
 
         select_all.click(fn=None, _js='() => selectAllModels()')
 
@@ -1591,6 +1589,10 @@ def on_ui_tabs():
                 download_progress,
                 download_manager_html
             ],
+            _js=(
+                '(models, folder, start, saveJson, html, bases) => '
+                'prepareSelectedBrowserDownload(models, folder, start, saveJson, html, bases)'
+            ),
             show_progress='hidden'
         )
 
@@ -1608,7 +1610,7 @@ def on_ui_tabs():
             inputs=[],
             outputs=[list_html, preview_html, list_models, list_versions, file_list],
             show_progress='hidden'
-        )
+        ).then(fn=None, _js='() => clearModelSelection("browser")')
 
         for component in [download_start, queue_trigger]:
             component.change(fn=None, _js='() => setDownloadProgressBar()')

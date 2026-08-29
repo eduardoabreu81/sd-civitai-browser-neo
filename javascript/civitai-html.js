@@ -1160,6 +1160,37 @@ var selectedTypes = [];
 var selectedModelsLocal = [];
 var selectedTypesLocal = [];
 
+function _syncBrowserSelectionInputs() {
+    const selectedModelList = gradioApp().querySelector('#selected_model_list textarea');
+    const selectedTypeList = gradioApp().querySelector('#selected_type_list textarea');
+
+    if (selectedModelList) {
+        selectedModelList.value = JSON.stringify(selectedModels);
+        updateInput(selectedModelList);
+    }
+    if (selectedTypeList) {
+        selectedTypeList.value = JSON.stringify(selectedTypes);
+        updateInput(selectedTypeList);
+    }
+    syncUpdateBtn();
+}
+
+// Reset one grid only. Browser refresh/pagination used to clear both in-memory
+// arrays while leaving #selected_model_list stale, allowing old Browser ids to be
+// resolved against whatever happened to be loaded under the Local filters.
+function clearModelSelection(scope = 'browser') {
+    if (scope === 'local') {
+        selectedModelsLocal = [];
+        selectedTypesLocal = [];
+        return;
+    }
+
+    selectedModels = [];
+    selectedTypes = [];
+    _browserCheckboxes().forEach((checkbox) => { checkbox.checked = false; });
+    _syncBrowserSelectionInputs();
+}
+
 // True when the toggled checkbox element lives in the Local Models grid.
 // Gradio 4 may wrap HTML content in ways that break el.closest('#local_list_html'),
 // so we also rely on an explicit data-local marker stamped by the Python renderer.
@@ -1171,10 +1202,7 @@ function _isLocalCheckbox(el) {
 
 function multi_model_select(modelName, modelType, isChecked, el) {
     if (arguments.length === 0) {
-        selectedModels = [];
-        selectedTypes = [];
-        selectedModelsLocal = [];
-        selectedTypesLocal = [];
+        clearModelSelection('browser');
         return;
     }
     const isLocal = _isLocalCheckbox(el);
@@ -1211,15 +1239,7 @@ function multi_model_select(modelName, modelType, isChecked, el) {
         return;
     }
 
-    const selected_model_list = gradioApp().querySelector('#selected_model_list textarea');
-    selected_model_list.value = JSON.stringify(selectedModels);
-
-    const selected_type_list = gradioApp().querySelector('#selected_type_list textarea');
-    selected_type_list.value = JSON.stringify(selectedTypes);
-
-    updateInput(selected_model_list);
-    updateInput(selected_type_list);
-    syncUpdateBtn();
+    _syncBrowserSelectionInputs();
 }
 
 // Local Models tab: update only the checked (outdated) cards. Reads the
@@ -1626,6 +1646,30 @@ function deselectAllModels() {
     }, 1000);
 }
 
+// Gradio's hidden textbox can lag a rapid sequence of checkbox input events. Capture
+// the authoritative JS array in the SAME click that starts the batch, then forward
+// that snapshot as the first Python input. This closes the race where four visible
+// checks could arrive at selected_to_queue as an older two-item textbox value.
+function prepareSelectedBrowserDownload(
+    modelList,
+    subfolder,
+    downloadStart,
+    createJson,
+    currentHtml,
+    baseFilter
+) {
+    const selectionSnapshot = JSON.stringify(selectedModels);
+    deselectAllModels();
+    return [
+        selectionSnapshot,
+        subfolder,
+        downloadStart,
+        createJson,
+        currentHtml,
+        baseFilter
+    ];
+}
+
 // Sends Image URL to Python to pull generation info
 function sendImgUrl(image_url) {
     const randomNumber = Math.floor(Math.random() * 1000);
@@ -1776,17 +1820,35 @@ function localGoToPage(page) {
     updateInput(trigger);
 }
 
-// Hide installed models
-function hideInstalled(toggleValue) {
-    const modelList = document.querySelectorAll('.column.civmodellist > .civmodelcardinstalled');
-    modelList.forEach((item) => {
-        item.style.display = toggleValue ? 'none' : 'block';
+// Browser-only card filters. Gradio keeps Browser and Local Models mounted at the
+// same time, and both grids use .civmodellist/.civmodelcard classes.
+function _browserCardElements(selector) {
+    return Array.from(document.querySelectorAll(selector))
+        .filter((card) => !card.closest('#local_list_html'));
+}
+
+let _bannedCreators = [];
+let _hideInstalledModels = false;
+let _hideBannedCreatorsEnabled = false;
+
+function _applyBrowserCardFilters() {
+    _browserCardElements('.civmodelcard').forEach((card) => {
+        const creator = card.getAttribute('data-creator');
+        const hideForInstalled =
+            _hideInstalledModels && card.classList.contains('civmodelcardinstalled');
+        const hideForCreator =
+            _hideBannedCreatorsEnabled && creator && _bannedCreators.includes(creator);
+        card.style.display = (hideForInstalled || hideForCreator) ? 'none' : '';
     });
 }
 
-// === Creator Management (ban / favorite) ===
-let _bannedCreators = [];
+// Hide installed models in the Browser grid only.
+function hideInstalled(toggleValue) {
+    _hideInstalledModels = !!toggleValue;
+    _applyBrowserCardFilters();
+}
 
+// === Creator Management (ban / favorite) ===
 // Called when a new model list loads — sync banned list then apply filter
 function initBannedCreators(listStr, checked) {
     _bannedCreators = listStr ? listStr.split(',').map(s => s.trim()).filter(Boolean) : [];
@@ -1801,13 +1863,8 @@ function refreshBannedCreators(listStr, checked) {
 
 // Show or hide cards of banned creators
 function hideBannedCreators(checked) {
-    document.querySelectorAll('.civmodelcard[data-creator]').forEach(card => {
-        const creator = card.getAttribute('data-creator');
-        const isBanned = creator && _bannedCreators.includes(creator);
-        if (isBanned) {
-            card.style.display = checked ? 'none' : '';
-        }
-    });
+    _hideBannedCreatorsEnabled = !!checked;
+    _applyBrowserCardFilters();
 }
 
 // Re-apply hideInstalled and banned-creator filters by reading current toggle states.
