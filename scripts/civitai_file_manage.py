@@ -6432,13 +6432,31 @@ def scan_lora_dex_data(base_filter=None, category_filter='All', pending_only=Fal
     return _filter_lora_dex_data(data, base_filter, category_filter, pending_only, search_term)
 
 
-def _filter_lora_dex_data(data, base_filter, category_filter, pending_only, search_term):
+# Sort modes offered by the LoraDex 'Sort' dropdown.
+LORA_DEX_SORT_MODES = ['Name', 'Least confident first', 'Category', 'Base model']
+
+# Ranking for 'Least confident first': the guesses most worth a human look come
+# first. A confirmed or manual category needs no review at all, so it sinks.
+_CONFIDENCE_RANK = {
+    None: 0,
+    'low': 1,
+    'medium': 2,
+    'high': 3,
+    'manual': 4,
+}
+
+
+def _filter_lora_dex_data(data, base_filter, category_filter, pending_only,
+                          search_term, suggested_only=False):
     """Apply filters to the LoraDex dataset."""
     result = list(data)
 
     term = (search_term or '').strip().lower()
     if term:
-        result = [d for d in result if term in d['name'].lower()]
+        # Filename included: the table shows that column, so searching it is
+        # what a user expects — several LoRAs share a CivitAI model name.
+        result = [d for d in result
+                  if term in d['name'].lower() or term in d.get('file_name', '').lower()]
 
     if base_filter:
         if isinstance(base_filter, str):
@@ -6450,12 +6468,42 @@ def _filter_lora_dex_data(data, base_filter, category_filter, pending_only, sear
 
     if category_filter and str(category_filter).lower() != 'all':
         cat = str(category_filter).strip()
-        result = [d for d in result if d.get('saved_category', 'Auto') == cat]
+        # Matches what the row currently SHOWS (a pending suggestion included),
+        # not only what is already saved. Filtering by saved_category made it
+        # impossible to review "everything suggested as Style" before applying,
+        # which is why users resorted to accepting every suggestion blind and
+        # fixing categories afterwards.
+        result = [d for d in result if d.get('current_category', 'Auto') == cat]
+
+    if suggested_only:
+        result = [d for d in result if d.get('suggested_category')]
 
     if pending_only:
         result = [d for d in result if d.get('file_path') in gl.lora_dex_pending]
 
     return result
+
+
+def _sort_lora_dex_data(data, sort_mode):
+    """Order the filtered LoraDex rows for display."""
+    mode = (sort_mode or 'Name').strip()
+
+    if mode == 'Least confident first':
+        return sorted(data, key=lambda d: (
+            _CONFIDENCE_RANK.get(d.get('suggested_confidence'), 0),
+            d.get('name', '').lower(),
+        ))
+    if mode == 'Category':
+        return sorted(data, key=lambda d: (
+            str(d.get('current_category') or 'Auto'),
+            d.get('name', '').lower(),
+        ))
+    if mode == 'Base model':
+        return sorted(data, key=lambda d: (
+            d.get('base_model', '').lower(),
+            d.get('name', '').lower(),
+        ))
+    return sorted(data, key=lambda d: d.get('name', '').lower())
 
 
 def _build_lora_dex_pagination_bar(page, pages, total, page_size):
@@ -6494,7 +6542,21 @@ def _build_lora_dex_table(items, page, page_size):
             gl.lora_dex_pending.pop(fp, None)
         pending_class = ' loradex-pending' if is_pending else ''
         suggested_class = ' loradex-suggested' if is_suggested else ''
-        suggested_badge = '<span class="loradex-suggested-badge" title="Suggested by tag/description heuristic">🤖</span>' if is_suggested else ''
+        confidence = item.get('suggested_confidence')
+        suggested_badge = ''
+        if is_suggested:
+            # The badge carries the confidence so a low-confidence guess is
+            # visible at a glance, not just when sorting by it.
+            titles = {
+                'high': 'Suggested from a model tag — most reliable',
+                'medium': 'Suggested from the model or file name',
+                'low': 'Suggested from the description, or the evidence was contested — worth checking',
+            }
+            title = titles.get(confidence, 'Suggested by the tag/name/description heuristic')
+            conf_class = f' loradex-confidence-{confidence}' if confidence else ''
+            suggested_badge = (
+                f'<span class="loradex-suggested-badge{conf_class}" title="{html.escape(title, quote=True)}">🤖</span>'
+            )
         preview = item.get('preview_path', '')
         # Gradio serves local files via ./file=<path>; normalize separators to forward slashes.
         preview_url = './file=' + preview.replace('\\', '/') if preview else ''
@@ -6513,6 +6575,10 @@ def _build_lora_dex_table(items, page, page_size):
         )
         rows_html.append(f'''
         <div class="loradex-row{pending_class}{suggested_class}" data-filepath="{fp_escaped}">
+            <div class="loradex-select">
+                <input type="checkbox" class="loradex-check" data-filepath="{fp_escaped}"
+                       onchange="loradexSyncSelection()" title="Select for bulk category change">
+            </div>
             <div class="loradex-thumb-wrap">{preview_html}</div>
             <div class="loradex-filename" title="{file_name_escaped}">{file_name}</div>
             <div class="loradex-name" title="{name_escaped}">{suggested_badge}{item['name']}</div>
@@ -6533,9 +6599,27 @@ def _build_lora_dex_table(items, page, page_size):
         </div>
         ''')
 
+    bulk_options = ''.join(
+        f'<option value="{cat}">{cat}</option>' for cat in LORA_DEX_CATEGORIES
+    )
+
     return f'''
+    <div class="loradex-bulk-bar">
+        <label class="loradex-bulk-label">
+            <input type="checkbox" class="loradex-check-all" onchange="loradexSelectAllPage(this)"
+                   title="Select every row on this page">
+            Select page
+        </label>
+        <span class="loradex-selection-count">0 selected</span>
+        <span class="loradex-bulk-spacer"></span>
+        <label class="loradex-bulk-label">Set selected to:</label>
+        <select class="loradex-bulk-cat">{bulk_options}</select>
+        <button class="lg secondary svelte-cmf5ev loradex-bulk-apply"
+                onclick="loradexApplySelected()" disabled>Apply to selected</button>
+    </div>
     <div class="loradex-table">
         <div class="loradex-header">
+            <div class="loradex-select"></div>
             <div class="loradex-thumb-wrap"></div>
             <div class="loradex-filename">Filename</div>
             <div class="loradex-name">LoRA name</div>
@@ -6549,17 +6633,30 @@ def _build_lora_dex_table(items, page, page_size):
     '''
 
 
-def _render_lora_dex_slice(page, page_size=None, pending_only=False):
-    """Render one page of the cached LoraDex list."""
+def _current_lora_dex_selection():
+    """The filtered, sorted dataset the user is currently looking at.
+
+    Single source of truth for both rendering and the bulk actions, so
+    "apply all" always means the rows the filters actually describe.
+    """
     raw_data = getattr(gl, 'lora_dex_data', [])
     filters = getattr(gl, 'lora_dex_filters', {})
     data = _filter_lora_dex_data(
         raw_data,
         filters.get('base_filter'),
         filters.get('category_filter', 'All'),
-        filters.get('pending_only', False) if not pending_only else pending_only,
+        filters.get('pending_only', False),
         filters.get('search_term', ''),
+        filters.get('suggested_only', False),
     )
+    return _sort_lora_dex_data(data, filters.get('sort_mode', 'Name'))
+
+
+def _render_lora_dex_slice(page, page_size=None, pending_only=False):
+    """Render one page of the cached LoraDex list."""
+    data = _current_lora_dex_selection()
+    if pending_only:
+        data = [d for d in data if d.get('file_path') in gl.lora_dex_pending]
     if not data:
         return gr.update(value='<div style="padding: 40px; text-align: center;">No LoRAs match the current filters.</div>')
 
@@ -6590,9 +6687,12 @@ def _render_lora_dex_slice(page, page_size=None, pending_only=False):
     return gr.update(value=_wrap_html_with_css(html))
 
 
-def render_lora_dex_page(base_filter=None, category_filter='All', pending_only=False, search_term='', page_size=25):
+def render_lora_dex_page(base_filter=None, category_filter='All', pending_only=False,
+                         search_term='', page_size=25, suggested_only=False, sort_mode='Name'):
     """Public entry: scan and render page 1 of LoraDex."""
     scan_lora_dex_data(base_filter, category_filter, pending_only, search_term)
+    gl.lora_dex_filters['suggested_only'] = bool(suggested_only)
+    gl.lora_dex_filters['sort_mode'] = sort_mode or 'Name'
     try:
         gl.lora_dex_page_size = max(1, int(page_size))
     except (TypeError, ValueError):
@@ -6661,12 +6761,93 @@ def apply_all_lora_dex_changes(pending_items):
     return status, _render_lora_dex_slice(getattr(gl, 'lora_dex_page', 0))
 
 
+def count_pending_lora_dex_suggestions():
+    """How many rows across ALL pages differ from what is saved."""
+    return sum(1 for item in _current_lora_dex_selection()
+               if item.get('current_category') != item.get('saved_category'))
+
+
+def preview_all_lora_dex_suggestions():
+    """First stage of 'apply everywhere': report the count, reveal the confirm button.
+
+    Two-stage like the Organization tab's verify → fix, rather than a native
+    confirm() dialog — a blocking dialog inside the WebUI is worse than a button
+    that states exactly how many files it is about to write to.
+    """
+    total = count_pending_lora_dex_suggestions()
+    if not total:
+        return ('<div style="padding:8px;">Nothing pending across the current filters.</div>',
+                gr.update(visible=False))
+
+    status = (
+        '<div style="padding:8px;">'
+        f'⚠️ This will write a category to <strong>{total}</strong> LoRA(s) across every page '
+        'of the current filters. Confirm to continue.'
+        '<br><span style="color:var(--body-text-color-subdued);font-size:12px;">'
+        'Dropdown edits you have made on this page but not applied yet are not included — '
+        'use “Apply page changes” for those first.'
+        '</span></div>'
+    )
+    return status, gr.update(visible=True, value=f'✅ Confirm — apply {total} change(s)')
+
+
+def apply_all_lora_dex_suggestions():
+    """Second stage: apply every pending change in the current filtered set.
+
+    Works from gl.lora_dex_data rather than the DOM — the page-scoped
+    "Apply page changes" button could only ever see the rows currently
+    rendered, which meant reviewing a large library one page at a time.
+    """
+    ok = 0
+    failed = 0
+    for item in list(_current_lora_dex_selection()):
+        current = item.get('current_category')
+        if current == item.get('saved_category'):
+            continue
+        if apply_lora_dex_change(item.get('file_path'), current):
+            ok += 1
+        else:
+            failed += 1
+
+    status = f'<div style="padding:8px;">✅ Applied {ok} change(s) across all pages'
+    if failed:
+        status += f' • ⚠️ {failed} failed'
+    status += '</div>'
+    return status, _render_lora_dex_slice(getattr(gl, 'lora_dex_page', 0)), gr.update(visible=False)
+
+
+def apply_selected_lora_dex_changes(selection):
+    """Set one category on an explicitly selected set of rows.
+
+    selection is {'file_paths': [...], 'category': 'Style'}.
+    """
+    file_paths = (selection or {}).get('file_paths') or []
+    category = (selection or {}).get('category')
+    if not file_paths or not category:
+        return '<div style="padding:8px;">Nothing selected.</div>', gr.update()
+
+    ok = 0
+    failed = 0
+    for file_path in file_paths:
+        if apply_lora_dex_change(file_path, category):
+            ok += 1
+        else:
+            failed += 1
+
+    status = f'<div style="padding:8px;">✅ Set {ok} LoRA(s) to <strong>{html.escape(str(category))}</strong>'
+    if failed:
+        status += f' • ⚠️ {failed} failed'
+    status += '</div>'
+    return status, _render_lora_dex_slice(getattr(gl, 'lora_dex_page', 0))
+
+
 def handle_lora_dex_command(command_json):
     """Dispatch a LoraDex command sent from the JS frontend.
 
     command_json is a JSON object: {command, data}
-      command: 'apply' | 'apply-all' | 'reset' | 'reset-all'
-      data: for apply -> {file_path, category}; for apply-all/reset-all -> list of entries
+      command: 'apply' | 'apply-all' | 'apply-selected' | 'reset' | 'reset-all'
+      data: for apply -> {file_path, category}; for apply-all/reset-all -> list of
+            entries; for apply-selected -> {file_paths: [...], category}
     Returns (status_html, rendered_list_update).
     """
     import json as _json
@@ -6687,6 +6868,9 @@ def handle_lora_dex_command(command_json):
 
     if command == 'apply-all':
         return apply_all_lora_dex_changes(data or [])
+
+    if command == 'apply-selected':
+        return apply_selected_lora_dex_changes(data or {})
 
     if command == 'reset':
         fp = data.get('file_path')

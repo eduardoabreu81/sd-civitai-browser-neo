@@ -808,11 +808,62 @@ a:hover::after {
 .loradex-header,
 .loradex-row {
     display: grid;
-    grid-template-columns: 56px 1.2fr 2fr 90px 120px 140px 100px;
+    /* Leading column is the bulk-selection checkbox. */
+    grid-template-columns: 28px 56px 1.2fr 2fr 90px 120px 140px 100px;
     align-items: center;
     gap: 10px;
     padding: 8px 12px;
     min-height: 48px;
+}
+
+.loradex-select {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.loradex-select input {
+    cursor: pointer;
+    margin: 0;
+}
+
+.loradex-bulk-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    border: 1px solid var(--border-color-primary);
+    border-radius: 8px;
+    background: var(--background-fill-secondary);
+    font-size: 13px;
+}
+
+.loradex-bulk-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.loradex-bulk-spacer {
+    flex: 1 1 auto;
+}
+
+.loradex-selection-count {
+    color: var(--body-text-color-subdued);
+    white-space: nowrap;
+}
+
+.loradex-bulk-cat {
+    min-width: 130px;
+}
+
+.loradex-bulk-apply:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .loradex-header {
@@ -864,6 +915,21 @@ a:hover::after {
     margin-right: 6px;
     font-size: 12px;
     cursor: help;
+}
+
+/* How much to trust the robot. A low-confidence guess came from the description
+   alone, or from evidence that pointed two ways — the rows worth reviewing. */
+.loradex-suggested-badge.loradex-confidence-high {
+    opacity: 1;
+}
+
+.loradex-suggested-badge.loradex-confidence-medium {
+    opacity: 0.75;
+}
+
+.loradex-suggested-badge.loradex-confidence-low {
+    opacity: 0.55;
+    filter: grayscale(1);
 }
 
 .loradex-thumb-wrap {

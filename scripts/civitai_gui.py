@@ -561,8 +561,10 @@ def on_ui_tabs():
                     with gr.Row(elem_id='loradexFilterRow'):
                         loradex_base_filter = gr.Dropdown(label='Base model:', choices=get_base_models(), value=None, type='value', multiselect=True)
                         loradex_cat_filter = gr.Dropdown(label='Category:', choices=['All'] + _file.LORA_DEX_CATEGORIES, value='All')
+                        loradex_sort = gr.Dropdown(label='Sort:', choices=_file.LORA_DEX_SORT_MODES, value='Name', type='value', min_width=150)
+                        loradex_suggested_only = gr.Checkbox(label='Suggested only', value=False)
                         loradex_pending_only = gr.Checkbox(label='Pending only', value=False)
-                        loradex_search = gr.Textbox(label='Search:', placeholder='Filter by LoRA name')
+                        loradex_search = gr.Textbox(label='Search:', placeholder='Filter by LoRA or file name')
                         loradex_page_size = gr.Dropdown(label='Per page:', choices=['10', '25', '50', '100'], value='25', type='value', min_width=90)
                         loradex_load_btn = gr.Button(value='🔄 Load', variant='primary')
 
@@ -573,7 +575,10 @@ def on_ui_tabs():
                     # ── Pagination + bulk actions ──
                     with gr.Row():
                         loradex_apply_all_btn = gr.Button(value='✅ Apply page changes', variant='primary')
+                        loradex_apply_everywhere_btn = gr.Button(value='✅✅ Apply changes on ALL pages')
+                        loradex_confirm_everywhere_btn = gr.Button(value='✅ Confirm', variant='stop', visible=False)
                         loradex_reset_all_btn = gr.Button(value='↺ Reset page changes')
+                    with gr.Row():
                         loradex_status = gr.HTML()
 
         ## Organization Tab
@@ -1396,15 +1401,19 @@ def on_ui_tabs():
         local_send_tags_btn.click(fn=None, inputs=[local_trained_tags], _js='(tags) => sendTagsToPrompt(tags)')
 
         # ── LoraDex bindings ──
+        loradex_filter_inputs = [
+            loradex_base_filter, loradex_cat_filter, loradex_pending_only,
+            loradex_search, loradex_page_size, loradex_suggested_only, loradex_sort,
+        ]
         loradex_load_btn.click(
             fn=_file.render_lora_dex_page,
-            inputs=[loradex_base_filter, loradex_cat_filter, loradex_pending_only, loradex_search, loradex_page_size],
+            inputs=loradex_filter_inputs,
             outputs=[loradex_html],
             show_progress='full'
         )
         loradex_search.submit(
             fn=_file.render_lora_dex_page,
-            inputs=[loradex_base_filter, loradex_cat_filter, loradex_pending_only, loradex_search, loradex_page_size],
+            inputs=loradex_filter_inputs,
             outputs=[loradex_html],
             show_progress='full'
         )
@@ -1431,6 +1440,23 @@ def on_ui_tabs():
         )
         loradex_apply_all_btn.click(fn=None, _js='() => loradexApplyAll()')
         loradex_reset_all_btn.click(fn=None, _js='() => loradexResetAll()')
+
+        # "Apply on ALL pages" is two-stage: the first click only reports how
+        # many files it would write to and reveals the confirm button, matching
+        # the Organization tab's verify → fix flow.
+        loradex_apply_everywhere_btn.click(
+            fn=_file.preview_all_lora_dex_suggestions,
+            outputs=[loradex_status, loradex_confirm_everywhere_btn],
+            show_progress='hidden'
+        )
+        loradex_confirm_everywhere_btn.click(
+            fn=_file.apply_all_lora_dex_suggestions,
+            outputs=[loradex_status, loradex_html, loradex_confirm_everywhere_btn],
+            show_progress='full'
+        ).then(
+            fn=None,
+            _js='() => { requestNativeBadgeData(); }'
+        )
 
         model_sent.change(
             fn=_file.model_from_sent,

@@ -2795,6 +2795,53 @@ function loradexResetAll() {
     loradexSyncActionButtons();
 }
 
+// ── LoraDex bulk selection ───────────────────────────────────────────────────
+// Selection is page-local by design: it lives in the DOM and every re-render
+// (paging, filtering, applying) clears it, so a click can never reach a row the
+// user is no longer looking at.
+
+function loradexSyncSelection() {
+    const checked = document.querySelectorAll('.loradex-check:checked');
+    const count = checked.length;
+
+    const label = document.querySelector('.loradex-selection-count');
+    if (label) label.textContent = `${count} selected`;
+
+    const applyBtn = document.querySelector('.loradex-bulk-apply');
+    if (applyBtn) applyBtn.disabled = count === 0;
+
+    // Keep the header checkbox honest about a partial selection.
+    const all = document.querySelectorAll('.loradex-check');
+    const checkAll = document.querySelector('.loradex-check-all');
+    if (checkAll) {
+        checkAll.checked = count > 0 && count === all.length;
+        checkAll.indeterminate = count > 0 && count < all.length;
+    }
+}
+
+function loradexSelectAllPage(source) {
+    document.querySelectorAll('.loradex-check').forEach(box => {
+        box.checked = source.checked;
+    });
+    loradexSyncSelection();
+}
+
+function loradexApplySelected() {
+    const filePaths = [];
+    document.querySelectorAll('.loradex-check:checked').forEach(box => {
+        filePaths.push(box.dataset.filepath);
+    });
+    if (!filePaths.length) return;
+
+    const select = document.querySelector('.loradex-bulk-cat');
+    if (!select) return;
+
+    _loradexSetCommand({
+        command: 'apply-selected',
+        data: { file_paths: filePaths, category: select.value }
+    });
+}
+
 function loradexGoToPage(n) {
     const trigger = gradioApp().querySelector('#loradex_page_trigger textarea');
     if (!trigger) return;
