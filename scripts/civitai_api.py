@@ -1079,15 +1079,18 @@ def model_list_html(json_data, target=''):
         else:
             source_badge = ''
 
-        # LoRA category badge: manual override from .json sidecar wins, otherwise
-        # fall back to the model-level tags returned by the CivitAI API.
+        # LoRA category badge: only a category the user actually confirmed is
+        # shown. The heuristic is deliberately NOT used as a fallback here — the
+        # same policy build_native_card_badge_map documents, so an unconfirmed
+        # guess never appears on every card in the grid. ('None' is the user
+        # opting out, so it is blank too.)
         lora_category_badge = ''
         if item.get('type') in ('LORA', 'LoCon', 'DoRA'):
             category = None
             if installed_path:
                 category = _file.get_lora_category_from_sidecar(installed_path)
-            if not category or str(category).strip().lower() == 'auto':
-                category = _file.categorize_lora_by_tags(item.get('tags', []))
+            if category and str(category).strip().lower() in ('auto', 'none'):
+                category = None
             if category:
                 lora_category_badge = (
                     f'<div class="lora-category-badge {category.lower()}">{category}</div>'

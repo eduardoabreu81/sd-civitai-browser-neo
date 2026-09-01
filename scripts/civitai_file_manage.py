@@ -26,6 +26,7 @@ import scripts.civitai_global as gl
 import scripts.civitai_api as _api
 import scripts.browser_sources as _browser_sources
 import scripts.organization_paths as _org_paths
+import scripts.lora_categorizer as _categorizer
 from scripts.civitai_global import print, debug_print
 
 
@@ -48,41 +49,10 @@ no_update = False
 last_update_scan = None  # Stores last update scan results for Dashboard summary
 last_dashboard_data = None  # Stores last dashboard scan raw data (categories, top files, orphans)
 
-# LoRA category mapping based on model tags/description (heuristic, same idea as models-info)
-LORA_CATEGORIES = {
-    "Character":  {"character", "celebrity", "person", "people"},
-    "Style":      {"style", "art style", "aesthetic"},
-    "Clothing":   {"clothing", "fashion", "outfit", "costume", "dress", "shirt"},
-    "Concept":    {"concept", "theme", "object", "item", "weapon", "vehicle"},
-    "Pose":       {"pose", "action", "stance", "position", "standing", "sitting"},
-    "Background": {"background", "environment", "scenery", "landscape", "indoor", "outdoor"},
-    "Utility":    {"utility", "tool", "helper", "noise", "offset", "detail"},
-    "Slider":     {"slider", "increase", "decrease", "boost", "reduce", "enhance", "diminish",
-                   "more", "less", "intensify", "weaken", "adjust", "strength"},
-}
-
-
-def _detect_slider_semantics(text):
-    """Detect strong slider semantics in free text.
-
-    Matches patterns like:
-      - "X slider", "slider for X", "slider of X"
-      - "increase X", "decrease X", "boost X", "reduce X"
-      - "more X", "less X", "enhance X", "weaken X"
-      - "X adjuster", "X booster"
-    Returns True if the text strongly suggests a slider LoRA.
-    """
-    if not text:
-        return False
-    t = str(text).lower()
-    slider_patterns = [
-        r'\w+\s+slider',
-        r'slider\s+(?:for|of)\s+\w+',
-        r'(?:increase|decrease|boost|reduce|enhance|diminish|intensify|weaken|adjust)\s+\w+',
-        r'(?:more|less)\s+\w+',
-        r'\w+\s+(?:adjuster|booster)',
-    ]
-    return any(re.search(p, t) for p in slider_patterns)
+# LoRA category heuristic. The rules live in scripts/lora_categorizer, which has
+# no gradio/WebUI imports and is therefore unit-testable; these names stay here
+# because civitai_api and civitai_download already import them from this module.
+LORA_CATEGORIES = _categorizer.LORA_CATEGORIES
 
 
 def categorize_lora_by_tags(tags, manual_category=None, description=None, name_hints=None):
@@ -91,50 +61,32 @@ def categorize_lora_by_tags(tags, manual_category=None, description=None, name_h
     Args:
         tags: list of tags from the model/API.
         manual_category: optional category saved in the .json sidecar
-            (loraCategory). Takes precedence over heuristics. 'Auto'
-            means "fall back to heuristic"; None disables auto-detection.
-        description: optional model description text. Used as a fallback
-            when tags do not match any known category.
+            (loraCategory). Takes precedence over heuristics. None, '' and
+            'Auto' all run the heuristic; the string 'None' disables it.
+        description: optional model description text.
         name_hints: optional list of strings (e.g. CivitAI model name, filename)
             that can also be inspected by the heuristic. Useful for installed
             files whose filename or model name contains category clues that are
             not present in tags/description.
+
+    Note on the manual_category contract: the object None used to mean
+    "auto-detection disabled", which was also this parameter's default and also
+    what get_lora_category_from_sidecar returned for a file with no sidecar. Any
+    caller that simply omitted the argument therefore got a silent None back —
+    that is why the Browser card's tag badge and the download-time category
+    subfolder never worked. 'None' (the string) now carries the disabled meaning.
     """
-    if manual_category and str(manual_category).strip().lower() not in ('', 'auto'):
-        return manual_category
-    if manual_category is None:
-        return None
+    return _categorizer.categorize_lora_by_tags(tags, manual_category, description, name_hints)
 
-    hints = list(name_hints or [])
 
-    # Strong slider semantics take precedence over generic keyword matching.
-    all_texts = list(tags or []) + hints + ([description] if description else [])
-    for text in all_texts:
-        if _detect_slider_semantics(text):
-            return 'Slider'
+def categorize_lora_with_confidence(tags, manual_category=None, description=None, name_hints=None):
+    """As categorize_lora_by_tags, but also returns how trustworthy the guess is.
 
-    def _match(texts):
-        for text in texts:
-            if not text:
-                continue
-            text_lower = str(text).strip().lower()
-            for category, keywords in LORA_CATEGORIES.items():
-                for keyword in keywords:
-                    if keyword in text_lower:
-                        return category
-        return None
-
-    category = _match(tags or [])
-    if category:
-        return category
-    category = _match(hints)
-    if category:
-        return category
-    if description:
-        category = _match([description])
-        if category:
-            return category
-    return None
+    Returns (category, confidence) where confidence is 'high' (matched a tag),
+    'medium' (a name), 'low' (only the description, or a contested tie),
+    'manual' (user-set) or None. Advisory only — never persisted.
+    """
+    return _categorizer.categorize(tags, manual_category, description, name_hints)
 
 
 def _format_size(size_bytes: int) -> str:
@@ -3662,16 +3614,25 @@ def _extract_base_model_from_api_data(data, file_path=None, quiet=False):
 def get_lora_category_from_sidecar(file_path):
     """Read the manual LoRA category from the .json sidecar if present.
 
-    Returns the stored string (including 'Auto'/'None') or None if unset.
+    Returns the stored string, the string 'None' when the user explicitly opted
+    the LoRA out of categorization, or None when nothing is stored.
+
+    Choosing 'None' in LoraDex writes ``loraCategory: null`` (see
+    _save_lora_category). This used to collapse into the same Python None as a
+    missing key, so LoraDex showed the row as 'Auto' again and re-suggested a
+    category on the next load, while the organizer read the very same file as
+    "do not categorize". The key's presence is what tells the two apart.
     """
     json_file = os.path.splitext(file_path)[0] + '.json'
     if not os.path.exists(json_file):
         return None
     try:
         content = _api.safe_json_load(json_file) or {}
+        if 'loraCategory' not in content:
+            return None
         category = content.get('loraCategory')
         if category is None:
-            return None
+            return 'None'
         return str(category).strip()
     except Exception as e:
         _debug_log(f"Error reading loraCategory for {file_path}: {e}")
@@ -3862,6 +3823,16 @@ def analyze_organization_plan(folders, progress=None, organize_by_base=True, org
                 description=description,
                 name_hints=[model_name, file_stem],
             )
+
+            # Never un-organize what is already organized. The heuristic runs
+            # fresh on every scan and its result is stored nowhere but the folder
+            # on disk, so a LoRA sitting in Lora/Anima/Slider/ has no other record
+            # of that decision. Without this, tightening the heuristic — as this
+            # release does — would propose dragging a whole sorted library back
+            # out to its base-model folders. An explicit 'None' still wins: that
+            # is the user asking for no category at all.
+            if not category and str(manual_category or '').strip().lower() != 'none':
+                category = _org_paths.category_from_current_folder(file_path)
 
         # Build target suffix in Base > Category order
         target_parts = []
@@ -6330,7 +6301,9 @@ def build_native_card_badge_map():
             lora_category = None
             if content_type == 'LORA':
                 saved_category = get_lora_category_from_sidecar(file_path)
-                if saved_category and str(saved_category).strip().lower() != 'auto':
+                # 'None' now reaches us as a real value (a user who deliberately
+                # opted this LoRA out); it is a state, not a category to display.
+                if saved_category and str(saved_category).strip().lower() not in ('auto', 'none'):
                     lora_category = saved_category
 
             display_name = _lora_dex_model_name(file_path)
@@ -6426,8 +6399,9 @@ def scan_lora_dex_data(base_filter=None, category_filter='All', pending_only=Fal
         tags = _lora_dex_tags(file_path)
         description = _lora_dex_description(file_path)
         suggested = None
+        confidence = None
         if str(saved_category).strip().lower() == 'auto':
-            suggested = categorize_lora_by_tags(
+            suggested, confidence = categorize_lora_with_confidence(
                 tags,
                 manual_category='Auto',
                 description=description,
@@ -6445,6 +6419,7 @@ def scan_lora_dex_data(base_filter=None, category_filter='All', pending_only=Fal
             'saved_category': saved_category,
             'current_category': suggested or saved_category,
             'suggested_category': suggested,
+            'suggested_confidence': confidence,
         })
 
     gl.lora_dex_data = data

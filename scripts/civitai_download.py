@@ -571,6 +571,11 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
                                 break
                             if not tags:
                                 tags = _file._read_model_tags_from_sidecar(installed_path)
+                        # manual_category stays None for a model that is not
+                        # installed yet, which is the common case for a download.
+                        # That used to disable the heuristic outright, so this
+                        # option only ever sorted re-downloads of LoRAs the user
+                        # had already categorized by hand; None now means "auto".
                         category = categorize_lora_by_tags(tags, manual_category=manual_category)
                         if category:
                             base_folder = os.path.join(base_folder, category)
