@@ -1321,7 +1321,29 @@ def download_file(url, file_path, install_path, model_id, progress=gr.Progress()
             os.remove(file_path)
         time.sleep(5)
 
-def info_to_json(install_path, model_id, model_sha256, unpackList=None):
+def _model_tags_from_response(model_json):
+    """Pull the model-level tags out of a /api/v1/models response.
+
+    The payload is {'items': [model, ...]}; tags live on the model object, not
+    on the version. Returns [] for anything unexpected.
+    """
+    if not isinstance(model_json, dict):
+        return []
+    items = model_json.get('items')
+    if not isinstance(items, list) or not items:
+        return []
+    first = items[0]
+    if not isinstance(first, dict):
+        return []
+    tags = first.get('tags')
+    if isinstance(tags, list):
+        return [str(t).strip() for t in tags if str(t).strip()]
+    if isinstance(tags, str):
+        return [t.strip() for t in tags.split(',') if t.strip()]
+    return []
+
+
+def info_to_json(install_path, model_id, model_sha256, unpackList=None, model_json=None):
     json_file = os.path.splitext(install_path)[0] + '.json'
     data = _api.safe_json_load(json_file) or {}
     data.update({
@@ -1330,6 +1352,18 @@ def info_to_json(install_path, model_id, model_sha256, unpackList=None):
     })
     if unpackList:
         data['unpackList'] = unpackList
+
+    # Persist the model-level tags while we still have the API response in hand.
+    # save_model_info() also writes these, but only when "Save info after
+    # download" is enabled — with it off the sidecar was created here anyway and
+    # carried just modelId/sha256, leaving LoRAs with no tags at all. The LoraDex
+    # heuristic weights tags above every other signal, so a tagless library gets
+    # nothing but low-confidence guesses from filenames and descriptions.
+    # Free: no extra request, the payload is already in memory.
+    if not data.get('modelTags'):
+        model_tags = _model_tags_from_response(model_json)
+        if model_tags:
+            data['modelTags'] = model_tags
 
     _api.safe_json_save(json_file, data)
 
@@ -1724,7 +1758,8 @@ def download_create_thread(download_finish, queue_trigger, progress=gr_progress_
             if not gl.cancel_status:
                 if item['create_json']:
                     _file.save_model_info(effective_install_path, item['model_filename'], item['sub_folder'], item['model_sha256'], item['preview_html'], overwrite_toggle=True, api_response=item['model_json'])
-                info_to_json(path_to_new_file, item['model_id'], item['model_sha256'], unpackList)
+                info_to_json(path_to_new_file, item['model_id'], item['model_sha256'], unpackList,
+                             model_json=item.get('model_json'))
 
                 if _item_content_type == 'Checkpoint' and os.path.exists(path_to_new_file):
                     sidecar_path = os.path.splitext(path_to_new_file)[0] + '.json'

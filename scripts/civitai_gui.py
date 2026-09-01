@@ -579,6 +579,18 @@ def on_ui_tabs():
                         loradex_confirm_everywhere_btn = gr.Button(value='✅ Confirm', variant='stop', visible=False)
                         loradex_reset_all_btn = gr.Button(value='↺ Reset page changes')
                     with gr.Row():
+                        # Shortcut for the same fetch that lives in Organization:
+                        # tags are the strongest signal behind these suggestions,
+                        # and this is where a user notices they are missing.
+                        loradex_fetch_tags_btn = gr.Button(value='🏷️ Fetch official tags from CivitAI')
+                        loradex_cancel_fetch_tags = gr.Button(value='✖ Cancel', interactive=False, visible=False, variant='stop')
+                    # Fixed arguments for the shortcut above: LoRAs only, never
+                    # overwrite tags that already exist, CivArchive fallback on.
+                    # The Organization tab is where those choices are exposed.
+                    loradex_tag_scope = gr.CheckboxGroup(choices=['LORA'], value=['LORA'], visible=False)
+                    loradex_tag_refresh = gr.Checkbox(value=False, visible=False)
+                    loradex_tag_civarchive = gr.Checkbox(value=True, visible=False)
+                    with gr.Row():
                         loradex_status = gr.HTML()
 
         ## Organization Tab
@@ -607,6 +619,19 @@ def on_ui_tabs():
                 tag_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
                 preview_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
                 sync_sha256_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+
+            gr.Markdown(
+                '**🏷️ Official tags** — fetch only the model-level tags CivitAI publishes, using the '
+                'model ID already cached in each sidecar. Much faster than a full "Update info & tags" '
+                'scan, and it is what LoraDex trusts most when suggesting categories.'
+            )
+            with gr.Row():
+                fetch_tags_btn = gr.Button(value='🏷️ Fetch official tags', interactive=True, variant='primary')
+                cancel_fetch_tags = gr.Button(value='✖ Cancel', interactive=False, visible=False, variant='stop')
+                fetch_tags_refresh = gr.Checkbox(label='Refresh tags that already exist', value=False, min_width=240)
+                fetch_tags_civarchive = gr.Checkbox(label='Fall back to CivArchive for delisted models', value=True, min_width=280)
+            with gr.Row():
+                fetch_tags_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
 
             gr.Markdown('**⚙️ Organization mode** — choose how models are sorted into subfolders.')
             with gr.Row():
@@ -1441,6 +1466,25 @@ def on_ui_tabs():
         loradex_apply_all_btn.click(fn=None, _js='() => loradexApplyAll()')
         loradex_reset_all_btn.click(fn=None, _js='() => loradexResetAll()')
 
+        # Same fetch as the Organization tab, scoped to LoRAs and leaving
+        # existing tags alone. Reloading afterwards is what makes the freshly
+        # fetched tags actually change the suggestions on screen.
+        loradex_fetch_tags_btn.click(
+            fn=_file.fetch_official_tags,
+            inputs=[loradex_tag_scope, loradex_tag_refresh, loradex_tag_civarchive],
+            outputs=[loradex_status, loradex_cancel_fetch_tags],
+            show_progress='full'
+        ).then(
+            fn=_file.render_lora_dex_page,
+            inputs=loradex_filter_inputs,
+            outputs=[loradex_html],
+            show_progress='full'
+        ).then(
+            fn=None,
+            _js='() => { requestNativeBadgeData(); }'
+        )
+        loradex_cancel_fetch_tags.click(fn=_file.cancel_tag_fetch)
+
         # "Apply on ALL pages" is two-stage: the first click only reports how
         # many files it would write to and reveals the confirm button, matching
         # the Organization tab's verify → fix flow.
@@ -2171,6 +2215,20 @@ def on_ui_tabs():
             ],
             show_progress="full"
         )
+
+        # Official tags: light path — one request per unique cached model id,
+        # no hashing and no full file_scan. Refreshes the native card badges
+        # afterwards so newly-tagged LoRAs pick up their category right away.
+        fetch_tags_btn.click(
+            fn=_file.fetch_official_tags,
+            inputs=[selected_tags, fetch_tags_refresh, fetch_tags_civarchive],
+            outputs=[fetch_tags_progress, cancel_fetch_tags],
+            show_progress='full'
+        ).then(
+            fn=None,
+            _js='() => { requestNativeBadgeData(); }'
+        )
+        cancel_fetch_tags.click(fn=_file.cancel_tag_fetch)
 
         resolve_civarchive_btn.click(
             fn=_file.resolve_civarchive_issues,

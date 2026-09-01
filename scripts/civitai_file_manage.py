@@ -4908,6 +4908,225 @@ def resolve_civarchive_issues(issues_json, progress=gr.Progress() if queue else 
     yield gr.update(value=result_html), gr.update(visible=False), '{}'
 
 
+def _normalize_tag_list(tags):
+    """Coerce an API tags field into a clean list of strings."""
+    if isinstance(tags, list):
+        return [str(t).strip() for t in tags if str(t).strip()]
+    if isinstance(tags, str):
+        return [t.strip() for t in tags.split(',') if t.strip()]
+    return []
+
+
+def _fetch_tags_for_model_id(model_id, civarchive_adapter=None):
+    """Return (tags, source) for one CivitAI model id.
+
+    source is 'civitai', 'civarchive' or None. CivArchive is a mirror of
+    delisted listings — the same fallback resolve_civarchive_issues() uses — so
+    a LoRA whose CivitAI page is gone can still recover its tags.
+    """
+    api_url = f'https://{_api.get_civitai_domain()}/api/v1/models/{model_id}'
+    data = _api.request_civit_api(api_url)
+
+    if isinstance(data, dict):
+        tags = _normalize_tag_list(data.get('tags'))
+        if tags:
+            return tags, 'civitai'
+        # A live listing with genuinely no tags is a real answer, not a failure:
+        # falling through to CivArchive would just cost a second request.
+        return [], 'civitai'
+
+    # 'not_found' (404) is the delisted case CivArchive exists for. Transient
+    # states ('error'/'offline') are not retried here — the run reports them and
+    # the user can re-run, since re-running only touches what is still missing.
+    if data == 'not_found' and civarchive_adapter is not None:
+        try:
+            canonical = civarchive_adapter.get_model(str(model_id))
+            if isinstance(canonical, dict):
+                tags = _normalize_tag_list(canonical.get('tags'))
+                if tags:
+                    return tags, 'civarchive'
+        except Exception as e:
+            debug_print(f'[fetch-tags] CivArchive lookup failed for model {model_id}: {e}')
+
+    return [], None
+
+
+def fetch_official_tags(folders, refresh_existing=False, use_civarchive=True,
+                        progress=gr.Progress() if queue else None):
+    """Fetch model-level tags from CivitAI for installed models.
+
+    Tags are the strongest signal the LoraDex heuristic has (weighted above
+    names and descriptions), but nothing writes them unless "Save info after
+    download" was on, or the heavy "Update info & tags" scan has been run. The
+    by-hash endpoint that fills .api_info.json returns a model *version*, which
+    carries no tags at all. This is the light path: it reuses the modelId
+    already cached in the sidecar, so it needs no hashing and no file walking
+    beyond listing, and issues one request per unique model id.
+
+    Generator: yields inline HTML progress updates to the UI.
+    """
+    if not folders:
+        html = '''<div style="padding:20px;text-align:center;">
+            <strong>No content types selected.</strong><br>
+            <span style="color:var(--body-text-color-subdued);">Select at least one type above.</span>
+        </div>'''
+        yield gr.update(value=html), gr.update(visible=False)
+        return
+
+    if 'All' in folders:
+        folders = _file.get_content_choices()
+
+    folders_to_check = []
+    for item in folders:
+        for folder in _api.contenttype_folders(item):
+            if folder and folder not in folders_to_check:
+                folders_to_check.append(folder)
+
+    gl.cancel_status = False
+
+    yield (
+        gr.update(value='<div style="padding:12px 15px;border:1px solid var(--border-color-primary);border-radius:8px;margin:6px 0;">'
+                        '🏷️ <strong>Scanning sidecars…</strong>'
+                        '</div>'),
+        gr.update(visible=True, interactive=True),
+    )
+
+    # Group targets by model id: several files (versions, or the same LoRA at
+    # different precisions) share one listing, and one request serves them all.
+    targets = {}
+    already_had = 0
+    no_model_id = 0
+
+    for file_path in list_files(folders_to_check):
+        json_file = os.path.splitext(file_path)[0] + '.json'
+        if not os.path.exists(json_file):
+            no_model_id += 1
+            continue
+        sidecar = _api.safe_json_load(json_file)
+        if not isinstance(sidecar, dict):
+            no_model_id += 1
+            continue
+
+        if sidecar.get('modelTags') and not refresh_existing:
+            already_had += 1
+            continue
+
+        model_id = _normalize_model_id(sidecar.get('modelId'))
+        if not model_id:
+            no_model_id += 1
+            continue
+
+        targets.setdefault(model_id, []).append(file_path)
+
+    total = len(targets)
+    if not total:
+        html = f'''
+        <div style="padding:20px;text-align:center;">
+            <div style="font-size:48px;margin-bottom:12px;">✅</div>
+            <h3 style="margin:0 0 8px 0;color:var(--body-text-color);">Nothing to fetch.</h3>
+            <p style="color:var(--body-text-color-subdued);margin:0;font-size:13px;">
+                {already_had} model(s) already have tags • {no_model_id} have no cached CivitAI id.
+            </p>
+        </div>'''
+        yield gr.update(value=html), gr.update(visible=False)
+        return
+
+    civarchive_adapter = None
+    if use_civarchive:
+        try:
+            civarchive_adapter = _browser_sources.get_browser_source('civarchive')
+        except Exception as e:
+            debug_print(f'[fetch-tags] CivArchive adapter unavailable: {e}')
+
+    updated_files = 0
+    from_civitai = 0
+    from_civarchive = 0
+    not_found = 0
+    no_tags = 0
+
+    for i, (model_id, file_paths) in enumerate(targets.items()):
+        if gl.cancel_status:
+            break
+
+        if progress is not None:
+            progress((i + 1) / total, desc=f"Fetching tags: model {model_id} ({i + 1}/{total})")
+
+        try:
+            tags, source = _fetch_tags_for_model_id(model_id, civarchive_adapter)
+        except Exception as e:
+            debug_print(f'[fetch-tags] model {model_id} failed: {e}')
+            tags, source = [], None
+
+        if tags:
+            for file_path in file_paths:
+                json_file = os.path.splitext(file_path)[0] + '.json'
+                sidecar = _api.safe_json_load(json_file)
+                if not isinstance(sidecar, dict):
+                    continue
+                sidecar['modelTags'] = tags
+                if source == 'civarchive':
+                    sidecar['modelTagsSource'] = 'civarchive'
+                elif 'modelTagsSource' in sidecar:
+                    sidecar.pop('modelTagsSource', None)
+                if _api.safe_json_save(json_file, sidecar):
+                    updated_files += 1
+            if source == 'civarchive':
+                from_civarchive += 1
+            else:
+                from_civitai += 1
+        elif source == 'civitai':
+            no_tags += 1
+        else:
+            not_found += 1
+
+        if (i + 1) % 5 == 0 or i == total - 1:
+            yield (
+                gr.update(value=_make_progress_bar_html(i + 1, total, f'🏷️ Fetching tags for model {model_id}')),
+                gr.update(visible=True, interactive=True),
+            )
+
+    cancelled = gl.cancel_status
+    gl.cancel_status = False
+    civarchive_line = (
+        f'<div>🗄️ {from_civarchive} recovered from CivArchive (delisted on CivitAI)</div>'
+        if from_civarchive else ''
+    )
+    skipped_line = (
+        f'<div style="margin-top:6px;">⏭️ {no_model_id} file(s) skipped — no cached CivitAI id in the sidecar. '
+        'Run <strong>Update info & tags</strong> to resolve those by hash first.</div>'
+        if no_model_id else ''
+    )
+    unresolved_line = (
+        f'<div>❔ {not_found} model(s) could not be resolved on CivitAI'
+        + (' or CivArchive' if civarchive_adapter else '')
+        + '</div>'
+        if not_found else ''
+    )
+    no_tags_line = (
+        f'<div>🏷️ {no_tags} model(s) have no tags on CivitAI</div>' if no_tags else ''
+    )
+
+    result_html = f'''
+    <div style="padding:20px;">
+        <div style="text-align:center;font-size:48px;margin-bottom:12px;">{'⏹️' if cancelled else '✅'}</div>
+        <h3 style="margin:0 0 12px 0;text-align:center;color:var(--body-text-color);">
+            {'Cancelled — ' if cancelled else ''}{updated_files} file(s) updated across {from_civitai + from_civarchive} model(s)
+        </h3>
+        <div style="color:var(--body-text-color-subdued);font-size:13px;line-height:1.7;">
+            <div>🌐 {from_civitai} fetched from CivitAI</div>
+            {civarchive_line}
+            {no_tags_line}
+            {unresolved_line}
+            <div>✔️ {already_had} model(s) already had tags</div>
+            {skipped_line}
+        </div>
+    </div>'''
+
+    print(f'[CivitAI Browser Neo] fetch_official_tags: files={updated_files}, civitai={from_civitai}, '
+          f'civarchive={from_civarchive}, no_tags={no_tags}, unresolved={not_found}, no_id={no_model_id}')
+    yield gr.update(value=result_html), gr.update(visible=False)
+
+
 def rollback_organization(progress=gr.Progress() if queue else None):
     """
     Rollback the last organization operation
@@ -6114,6 +6333,16 @@ def cancel_scan():
         else:
             time.sleep(0.5)
             continue
+
+
+def cancel_tag_fetch():
+    """Stop fetch_official_tags at the next model boundary.
+
+    Unlike cancel_scan() this does not wait on gl.scan_files: the tag fetch is a
+    plain generator that checks the flag between models and clears it itself, so
+    blocking here would just hang the click handler.
+    """
+    gl.cancel_status = True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
