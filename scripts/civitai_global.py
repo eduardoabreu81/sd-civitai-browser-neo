@@ -67,6 +67,7 @@ def init():
     lora_dex_page_size = 25
     lora_dex_pending = {}
     lora_dex_filters = {}
+lora_dex_category_suggestions = []
 
 _print = print
 def print(print_message):

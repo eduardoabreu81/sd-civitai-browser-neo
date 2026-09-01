@@ -216,3 +216,131 @@ def categorize(tags, manual_category=None, description=None, name_hints=None):
 def categorize_lora_by_tags(tags, manual_category=None, description=None, name_hints=None):
     """Category-only wrapper, preserving the original call signature."""
     return categorize(tags, manual_category, description, name_hints)[0]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# User-defined categories
+#
+# The list above is a SUGGESTION, not the whole truth. A user's own taxonomy —
+# typed in, already sitting in a sidecar, or implied by a folder they made
+# themselves — is as valid as ours, so nothing here rejects a category merely
+# for being unfamiliar. What it does police is the one place an arbitrary string
+# becomes dangerous: a category is concatenated into a filesystem path by the
+# organizer, so it has to be a safe single path segment.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# States, not categories: these two mean "decide for me" and "leave this alone".
+RESERVED_CATEGORY_STATES = ('Auto', 'None')
+
+# Characters Windows forbids in a name, plus both path separators. Spelled out
+# as a plain string and escaped programmatically: hand-written backslashes
+# inside a character class are far too easy to get subtly wrong, and a missing
+# one here silently lets a separator through into a path.
+_INVALID_NAME_CHARS = '<>:"|?*/' + chr(92)
+_INVALID_PATH_CHARS = re.compile('[' + re.escape(_INVALID_NAME_CHARS) + r'\x00-\x1f]')
+
+# Device names Windows still refuses, with or without an extension.
+_WINDOWS_RESERVED = {
+    'CON', 'PRN', 'AUX', 'NUL',
+    *{f'COM{i}' for i in range(1, 10)},
+    *{f'LPT{i}' for i in range(1, 10)},
+}
+
+MAX_CATEGORY_LENGTH = 64
+
+
+def sanitize_category(name):
+    """Make a user-supplied category safe to use as one folder name.
+
+    Returns (clean_name, note). ``note`` is None when the input was already
+    fine, otherwise a short human-readable explanation of what changed — the
+    caller surfaces it so a silently-altered name never surprises anyone.
+    ``clean_name`` is None when nothing usable survives.
+
+    Reserved states ('Auto'/'None') pass through with their canonical casing.
+    """
+    if name is None:
+        return None, None
+
+    raw = str(name).strip()
+    if not raw:
+        return None, None
+
+    for state in RESERVED_CATEGORY_STATES:
+        if raw.lower() == state.lower():
+            return state, None
+
+    cleaned = raw
+    notes = []
+
+    # Path traversal first: '..' must never survive in any form.
+    if '..' in cleaned:
+        cleaned = cleaned.replace('..', '.')
+        notes.append('removed ".."')
+
+    if _INVALID_PATH_CHARS.search(cleaned):
+        cleaned = _INVALID_PATH_CHARS.sub('-', cleaned)
+        notes.append('replaced characters that are not allowed in folder names')
+
+    # Windows silently drops trailing dots and spaces, which would make the
+    # saved category and the folder on disk disagree.
+    stripped = cleaned.rstrip(' .')
+    if stripped != cleaned:
+        cleaned = stripped
+        notes.append('removed trailing spaces/dots')
+
+    cleaned = cleaned.strip()
+
+    if len(cleaned) > MAX_CATEGORY_LENGTH:
+        cleaned = cleaned[:MAX_CATEGORY_LENGTH].rstrip(' .')
+        notes.append(f'shortened to {MAX_CATEGORY_LENGTH} characters')
+
+    if not cleaned:
+        return None, 'that name has no usable characters'
+
+    if cleaned.split('.')[0].upper() in _WINDOWS_RESERVED:
+        return None, f'"{cleaned}" is a reserved device name on Windows'
+
+    return cleaned, ('; '.join(notes) if notes else None)
+
+
+def is_reserved_state(name):
+    """True for 'Auto'/'None' — the two dropdown states that are not categories."""
+    return str(name or '').strip().lower() in {s.lower() for s in RESERVED_CATEGORY_STATES}
+
+
+def merge_category_suggestions(*sources):
+    """Combine category sources into one ordered, de-duplicated suggestion list.
+
+    The built-in categories come first so the familiar names stay at the top of
+    the datalist; everything the user contributed follows, alphabetically.
+    Matching is case-insensitive, and the first spelling seen wins — so a user
+    who already writes "anime" is never shown a competing "Anime".
+    """
+    ordered = []
+    seen = set()
+
+    def _add(value):
+        text = str(value or '').strip()
+        if not text or is_reserved_state(text):
+            return
+        key = text.lower()
+        if key in seen:
+            return
+        seen.add(key)
+        ordered.append(text)
+
+    for category in LORA_CATEGORIES:
+        _add(category)
+
+    extras = []
+    for source in sources:
+        for value in (source or []):
+            text = str(value or '').strip()
+            if text and not is_reserved_state(text) and text.lower() not in seen:
+                extras.append(text)
+
+    for value in sorted(extras, key=lambda v: v.lower()):
+        _add(value)
+
+    return ordered

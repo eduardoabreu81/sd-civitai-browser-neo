@@ -74,7 +74,7 @@ def resolve_model_root(file_path, roots):
     return best_root, best_type
 
 
-def category_from_current_folder(file_path):
+def category_from_current_folder(file_path, extra_categories=None):
     """Return the category implied by the folder a file already sits in.
 
     The organizer applies its heuristic on every scan and never records the
@@ -83,6 +83,21 @@ def category_from_current_folder(file_path):
     ``Lora/Anima/Slider/``, treating that folder as a confirmed category is what
     keeps an already-organized library from being shuffled back out on the next
     run. Returns None when the parent folder is not a category name.
+
+    ``extra_categories`` extends the built-in set with the user's own category
+    names, so a folder they invented is protected exactly like ours. It must be
+    a set of names actually *declared* somewhere — a loraCategory written in a
+    sidecar — never every folder that happens to exist: treating an arbitrary
+    folder as a category would quietly exempt whole trees (``ill_loras/``,
+    ``A/``) from ever being organized. The looser, guess-friendly list belongs
+    in the LoraDex suggestions, where a wrong guess costs nothing.
     """
     parent = os.path.basename(os.path.dirname(str(file_path)))
-    return parent if parent in CATEGORY_FOLDER_NAMES else None
+    if not parent:
+        return None
+    if parent in CATEGORY_FOLDER_NAMES:
+        return parent
+    for name in (extra_categories or ()):
+        if parent.lower() == str(name).strip().lower():
+            return parent
+    return None

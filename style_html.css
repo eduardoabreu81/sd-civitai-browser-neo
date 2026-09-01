@@ -1032,3 +1032,35 @@ a:hover::after {
         display: none;
     }
 }
+
+/* Category field: a free-text input backed by a datalist, not a closed select.
+   The built-in categories are suggestions; anything the user types is valid,
+   and a category they invented shows up here as their own text. */
+.loradex-cat,
+.loradex-bulk-cat {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 4px 6px;
+    border: 1px solid var(--border-color-primary);
+    border-radius: 4px;
+    background: var(--input-background-fill, var(--background-fill-primary));
+    color: var(--body-text-color);
+    font-size: 13px;
+}
+
+.loradex-bulk-cat {
+    width: auto;
+    min-width: 170px;
+}
+
+.loradex-cat:focus,
+.loradex-bulk-cat:focus {
+    outline: none;
+    border-color: #4af;
+}
+
+/* A value outside the built-in list is the user's own taxonomy, not an error —
+   marked, never corrected. */
+.loradex-cat.loradex-cat-custom {
+    border-left: 3px solid #9b7fe0;
+}

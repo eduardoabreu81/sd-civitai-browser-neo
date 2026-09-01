@@ -3758,6 +3758,13 @@ def analyze_organization_plan(folders, progress=None, organize_by_base=True, org
     folders_to_check = [folder for folder, _ in model_roots]
     files = list_files(folders_to_check)
 
+    # The user's own category names, gathered from what their sidecars actually
+    # declare. Folders matching these are protected from being re-organized
+    # exactly like the built-in ones — our list is a suggestion, not the only
+    # valid taxonomy. Deliberately not derived from folder names alone: that
+    # would exempt any folder at all from ever being organized.
+    declared_categories = declared_lora_categories(folders_to_check) if organize_by_category else set()
+
     organization_plan = {
         'moves': [],
         'summary': {},
@@ -3832,7 +3839,7 @@ def analyze_organization_plan(folders, progress=None, organize_by_base=True, org
             # out to its base-model folders. An explicit 'None' still wins: that
             # is the user asking for no category at all.
             if not category and str(manual_category or '').strip().lower() != 'none':
-                category = _org_paths.category_from_current_folder(file_path)
+                category = _org_paths.category_from_current_folder(file_path, declared_categories)
 
         # Build target suffix in Base > Category order
         target_parts = []
@@ -6579,29 +6586,109 @@ def get_native_card_badge_json(_trigger_value=None):
         return '{}'
 
 
+# A tag has to appear on at least this many LoRAs before it is offered as a
+# category. One-off tags are noise; a tag shared by dozens of models is the
+# user's library telling you how it is actually organized.
+LIBRARY_TAG_SUGGESTION_THRESHOLD = 8
+
+# Tags that describe everything and categorize nothing.
+_UNHELPFUL_TAGS = {'lora', 'lycoris', 'locon', 'dora', 'checkpoint', 'model', 'safetensors'}
+
+
+def declared_lora_categories(folders=None):
+    """Every category the user has actually declared in a sidecar.
+
+    This is the strict set: a name only counts once some LoRA claims it via
+    loraCategory. It is what the organizer trusts to decide that an existing
+    folder is a real category and must not be undone — see
+    organization_paths.category_from_current_folder for why the loose,
+    suggestion-grade list must not be used there.
+    """
+    if folders is None:
+        folders = [f for f in _api.contenttype_folders('LORA') if f]
+
+    declared = set()
+    for file_path in list_files(folders):
+        category = get_lora_category_from_sidecar(file_path)
+        if category and not _categorizer.is_reserved_state(category):
+            declared.add(category)
+    return declared
+
+
+def build_category_suggestions(data=None):
+    """Ordered suggestion list for the LoraDex category field.
+
+    Combines, in this order of trust: the built-in categories, the categories
+    the user has already declared in sidecars, the folder names their library
+    is actually organized into, and tags common enough across the library to
+    read as a category. Suggestions only ever populate a datalist — the field
+    accepts anything — so a wrong guess here costs the user nothing.
+    """
+    data = data if data is not None else getattr(gl, 'lora_dex_data', [])
+
+    declared = []
+    folder_names = []
+    tag_counts = {}
+
+    # Folder names that are really base models, not categories.
+    base_model_folders = {str(name).lower() for name in get_model_categories()}
+
+    for item in data:
+        saved = item.get('saved_category')
+        if saved and not _categorizer.is_reserved_state(saved):
+            declared.append(saved)
+
+        parent = os.path.basename(os.path.dirname(item.get('file_path', '')))
+        if parent and parent.lower() not in base_model_folders:
+            folder_names.append(parent)
+
+        for tag in (item.get('tags') or []):
+            text = str(tag).strip()
+            if text and text.lower() not in _UNHELPFUL_TAGS:
+                tag_counts[text] = tag_counts.get(text, 0) + 1
+
+    common_tags = [tag for tag, count in tag_counts.items()
+                   if count >= LIBRARY_TAG_SUGGESTION_THRESHOLD]
+
+    return _categorizer.merge_category_suggestions(declared, folder_names, common_tags)
+
+
 def _save_lora_category(file_path, category):
     """Persist the manual LoRA category in the .json sidecar.
 
     Rules:
       - 'Auto'  → remove the loraCategory key (fall back to heuristic).
       - 'None'  → store null.
-      - other   → store the string.
-    Returns True on success.
+      - other   → store the sanitized string.
+
+    Any category name is accepted, not just the built-in ones — the user's own
+    taxonomy is as valid as ours. It is sanitized first because the organizer
+    concatenates this value into a filesystem path.
+
+    Returns (ok, note): note is a human-readable explanation when the name had
+    to be altered or refused, and None when it was stored verbatim.
     """
     json_file = os.path.splitext(file_path)[0] + '.json'
-    data = _api.safe_json_load(json_file) or {}
+    data = _api.safe_json_load(json_file)
+    if not isinstance(data, dict):
+        data = {}
 
-    cat = (category or '').strip()
-    if cat.lower() == 'auto':
+    clean, note = _categorizer.sanitize_category(category)
+
+    if clean is None:
+        if note:
+            # Refused outright (reserved device name, nothing usable left).
+            # Leave the stored category untouched rather than silently clearing.
+            return False, note
         data.pop('loraCategory', None)
-    elif cat.lower() == 'none':
+    elif clean.lower() == 'auto':
+        data.pop('loraCategory', None)
+    elif clean.lower() == 'none':
         data['loraCategory'] = None
-    elif cat:
-        data['loraCategory'] = cat
     else:
-        data.pop('loraCategory', None)
+        data['loraCategory'] = clean
 
-    return _api.safe_json_save(json_file, data)
+    return _api.safe_json_save(json_file, data), note
 
 
 def scan_lora_dex_data(base_filter=None, category_filter='All', pending_only=False, search_term=''):
@@ -6652,6 +6739,8 @@ def scan_lora_dex_data(base_filter=None, category_filter='All', pending_only=Fal
         })
 
     gl.lora_dex_data = data
+    # Derived once per scan, then reused by every row render on every page.
+    gl.lora_dex_category_suggestions = build_category_suggestions(data)
     gl.lora_dex_filters = {
         'base_filter': base_filter,
         'category_filter': category_filter,
@@ -6755,6 +6844,12 @@ def _build_lora_dex_table(items, page, page_size):
     if not items:
         return '<div style="padding: 40px; text-align: center;">No LoRAs match the current filters.</div>'
 
+    # Shared vocabulary offered on every row. The built-in names are only the
+    # starting point — whatever the user has declared, foldered or tagged their
+    # library with belongs here too, and the field accepts anything regardless.
+    suggestions = getattr(gl, 'lora_dex_category_suggestions', None) or list(LORA_CATEGORIES)
+    _seen_suggestions = {str(s).lower() for s in suggestions}
+
     rows_html = []
     for item in items:
         fp = item['file_path']
@@ -6798,9 +6893,24 @@ def _build_lora_dex_table(items, page, page_size):
         name_escaped = html.escape(item['name'], quote=True)
         file_name = item.get('file_name', '')
         file_name_escaped = html.escape(file_name, quote=True)
-        options_html = ''.join(
-            f'<option value="{cat}"{" selected" if cat == current else ""}>{cat}</option>'
-            for cat in LORA_DEX_CATEGORIES
+        # Per-row suggestions: this model's own tags, which describe THIS file
+        # better than any global list can, on top of the shared vocabulary.
+        row_suggestions = []
+        for tag in (item.get('tags') or [])[:8]:
+            text = str(tag).strip()
+            if text and text.lower() not in _seen_suggestions and text.lower() not in _UNHELPFUL_TAGS:
+                row_suggestions.append(text)
+        # Marked, not corrected: a name outside the built-in list is the user's
+        # own taxonomy, and worth showing as deliberate rather than as an error.
+        custom_class = (
+            ' loradex-cat-custom'
+            if current and str(current).lower() not in {c.lower() for c in LORA_DEX_CATEGORIES}
+            else ''
+        )
+        list_id = f'loradex-cats-{page}-{abs(hash(fp)) % 10**9}'
+        row_options = ''.join(
+            f'<option value="{html.escape(str(c), quote=True)}"></option>'
+            for c in (suggestions + row_suggestions)
         )
         rows_html.append(f'''
         <div class="loradex-row{pending_class}{suggested_class}" data-filepath="{fp_escaped}">
@@ -6814,10 +6924,11 @@ def _build_lora_dex_table(items, page, page_size):
             <div class="loradex-base">{base}</div>
             <div class="loradex-version">{version}</div>
             <div class="loradex-category">
-                <select class="loradex-cat" data-filepath="{fp_escaped}" data-saved="{saved_escaped}"
-                        onchange="loradexMarkPending(this)">
-                    {options_html}
-                </select>
+                <input class="loradex-cat{custom_class}" list="{list_id}" value="{html.escape(str(current), quote=True)}"
+                       data-filepath="{fp_escaped}" data-saved="{saved_escaped}"
+                       placeholder="Auto" spellcheck="false"
+                       oninput="loradexMarkPending(this)" onchange="loradexMarkPending(this)">
+                <datalist id="{list_id}">{row_options}</datalist>
             </div>
             <div class="loradex-actions">
                 <button class="lg secondary svelte-cmf5ev loradex-apply" title="Apply"
@@ -6829,7 +6940,10 @@ def _build_lora_dex_table(items, page, page_size):
         ''')
 
     bulk_options = ''.join(
-        f'<option value="{cat}">{cat}</option>' for cat in LORA_DEX_CATEGORIES
+        f'<option value="{html.escape(str(c), quote=True)}"></option>'
+        for c in (list(LORA_DEX_CATEGORIES) + [s for s in suggestions
+                                               if str(s).lower() not in
+                                               {c.lower() for c in LORA_DEX_CATEGORIES}])
     )
 
     return f'''
@@ -6842,7 +6956,9 @@ def _build_lora_dex_table(items, page, page_size):
         <span class="loradex-selection-count">0 selected</span>
         <span class="loradex-bulk-spacer"></span>
         <label class="loradex-bulk-label">Set selected to:</label>
-        <select class="loradex-bulk-cat">{bulk_options}</select>
+        <input class="loradex-bulk-cat" list="loradex-bulk-cats" value="Style"
+               placeholder="Type or pick a category" spellcheck="false">
+        <datalist id="loradex-bulk-cats">{bulk_options}</datalist>
         <button class="lg secondary svelte-cmf5ev loradex-bulk-apply"
                 onclick="loradexApplySelected()" disabled>Apply to selected</button>
     </div>
@@ -6927,7 +7043,20 @@ def render_lora_dex_page(base_filter=None, category_filter='All', pending_only=F
     except (TypeError, ValueError):
         gl.lora_dex_page_size = 25
     gl.lora_dex_pending = {}
-    return _render_lora_dex_slice(0)
+    return _render_lora_dex_slice(0), lora_dex_filter_choices()
+
+
+def lora_dex_filter_choices():
+    """Choices for the Category filter dropdown, including the user's own.
+
+    Without this the filter could only ever offer the built-in names, so a LoRA
+    filed under a category the user invented was reachable only via 'All'.
+    """
+    suggestions = getattr(gl, 'lora_dex_category_suggestions', None) or []
+    builtin = list(LORA_DEX_CATEGORIES)
+    known = {c.lower() for c in builtin}
+    extra = [s for s in suggestions if str(s).lower() not in known]
+    return gr.update(choices=['All'] + builtin + extra)
 
 
 def render_lora_dex_page_trigger(page_value):
@@ -6948,20 +7077,55 @@ def change_lora_dex_page_size(size_value):
     return _render_lora_dex_slice(0)
 
 
+def _format_category_notes(notes):
+    """Render sanitizing notes as a subdued footnote, or '' when there are none.
+
+    A category the user typed can be altered on the way to disk (a slash
+    replaced, a reserved name refused). Saying so is the difference between the
+    tool respecting their input and quietly overruling it.
+    """
+    unique = []
+    for note in notes or []:
+        if note and note not in unique:
+            unique.append(note)
+    if not unique:
+        return ''
+    shown = ''.join(f'<div>• {html.escape(str(n))}</div>' for n in unique[:5])
+    if len(unique) > 5:
+        shown += f'<div>• …and {len(unique) - 5} more</div>'
+    return (
+        '<div style="margin-top:6px;color:var(--body-text-color-subdued);font-size:12px;">'
+        f'{shown}</div>'
+    )
+
+
 def apply_lora_dex_change(file_path, category):
-    """Apply a single LoRA category change and persist it."""
+    """Apply a single LoRA category change and persist it.
+
+    Returns (ok, note) — note explains any sanitizing the name needed, so the
+    caller can tell the user rather than silently storing something else.
+    """
     if not file_path or not os.path.exists(file_path):
-        return False
-    if _save_lora_category(file_path, category):
-        # Update cached dataset so the row is no longer pending
-        for item in getattr(gl, 'lora_dex_data', []):
-            if item.get('file_path') == file_path:
-                item['saved_category'] = category
-                item['current_category'] = category
-                break
-        gl.lora_dex_pending.pop(file_path, None)
-        return True
-    return False
+        return False, None
+
+    ok, note = _save_lora_category(file_path, category)
+    if not ok:
+        return False, note
+
+    # The stored value is the sanitized one, not the raw input.
+    clean, _ = _categorizer.sanitize_category(category)
+    stored = clean if clean is not None else 'Auto'
+
+    # Update cached dataset so the row is no longer pending
+    for item in getattr(gl, 'lora_dex_data', []):
+        if item.get('file_path') == file_path:
+            item['saved_category'] = stored
+            item['current_category'] = stored
+            item['suggested_category'] = None
+            item['suggested_confidence'] = None
+            break
+    gl.lora_dex_pending.pop(file_path, None)
+    return True, note
 
 
 def apply_all_lora_dex_changes(pending_items):
@@ -6975,17 +7139,22 @@ def apply_all_lora_dex_changes(pending_items):
 
     ok = 0
     failed = 0
+    notes = []
     for entry in pending_items:
         fp = entry.get('file_path')
         cat = entry.get('category')
-        if apply_lora_dex_change(fp, cat):
+        applied, note = apply_lora_dex_change(fp, cat)
+        if applied:
             ok += 1
         else:
             failed += 1
+        if note:
+            notes.append(f'{os.path.basename(fp or "?")}: {note}')
 
     status = f'<div style="padding:8px;">✅ Applied {ok} change(s) on this page'
     if failed:
         status += f' • ⚠️ {failed} failed'
+    status += _format_category_notes(notes)
     status += '</div>'
     return status, _render_lora_dex_slice(getattr(gl, 'lora_dex_page', 0))
 
@@ -7033,7 +7202,8 @@ def apply_all_lora_dex_suggestions():
         current = item.get('current_category')
         if current == item.get('saved_category'):
             continue
-        if apply_lora_dex_change(item.get('file_path'), current):
+        applied, _note = apply_lora_dex_change(item.get('file_path'), current)
+        if applied:
             ok += 1
         else:
             failed += 1
@@ -7057,15 +7227,21 @@ def apply_selected_lora_dex_changes(selection):
 
     ok = 0
     failed = 0
+    notes = []
     for file_path in file_paths:
-        if apply_lora_dex_change(file_path, category):
+        applied, note = apply_lora_dex_change(file_path, category)
+        if applied:
             ok += 1
         else:
             failed += 1
+        if note and note not in notes:
+            notes.append(note)
 
-    status = f'<div style="padding:8px;">✅ Set {ok} LoRA(s) to <strong>{html.escape(str(category))}</strong>'
+    shown, _ = _categorizer.sanitize_category(category)
+    status = f'<div style="padding:8px;">✅ Set {ok} LoRA(s) to <strong>{html.escape(str(shown or category))}</strong>'
     if failed:
         status += f' • ⚠️ {failed} failed'
+    status += _format_category_notes(notes)
     status += '</div>'
     return status, _render_lora_dex_slice(getattr(gl, 'lora_dex_page', 0))
 
@@ -7091,9 +7267,14 @@ def handle_lora_dex_command(command_json):
     if command == 'apply':
         fp = data.get('file_path')
         cat = data.get('category')
-        if apply_lora_dex_change(fp, cat):
-            return '<div style="padding:8px;">✅ Category saved.</div>', _render_lora_dex_slice(getattr(gl, 'lora_dex_page', 0))
-        return '<div style="padding:8px;color:#e57373;">⚠️ Failed to save category.</div>', gr.update()
+        applied, note = apply_lora_dex_change(fp, cat)
+        if applied:
+            status = '<div style="padding:8px;">✅ Category saved.'
+            status += _format_category_notes([note] if note else [])
+            status += '</div>'
+            return status, _render_lora_dex_slice(getattr(gl, 'lora_dex_page', 0))
+        reason = f' {html.escape(note)}' if note else ''
+        return f'<div style="padding:8px;color:#e57373;">⚠️ Category not saved.{reason}</div>', gr.update()
 
     if command == 'apply-all':
         return apply_all_lora_dex_changes(data or [])

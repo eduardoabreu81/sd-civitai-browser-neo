@@ -1433,13 +1433,13 @@ def on_ui_tabs():
         loradex_load_btn.click(
             fn=_file.render_lora_dex_page,
             inputs=loradex_filter_inputs,
-            outputs=[loradex_html],
+            outputs=[loradex_html, loradex_cat_filter],
             show_progress='full'
         )
         loradex_search.submit(
             fn=_file.render_lora_dex_page,
             inputs=loradex_filter_inputs,
-            outputs=[loradex_html],
+            outputs=[loradex_html, loradex_cat_filter],
             show_progress='full'
         )
         loradex_page_size.change(
@@ -1477,7 +1477,7 @@ def on_ui_tabs():
         ).then(
             fn=_file.render_lora_dex_page,
             inputs=loradex_filter_inputs,
-            outputs=[loradex_html],
+            outputs=[loradex_html, loradex_cat_filter],
             show_progress='full'
         ).then(
             fn=None,
