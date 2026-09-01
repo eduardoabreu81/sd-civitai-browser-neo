@@ -25,6 +25,7 @@ import scripts.civitai_file_manage as _file
 import scripts.civitai_global as gl
 import scripts.civitai_api as _api
 import scripts.browser_sources as _browser_sources
+import scripts.organization_paths as _org_paths
 from scripts.civitai_global import print, debug_print
 
 
@@ -3778,21 +3779,22 @@ def analyze_organization_plan(folders, progress=None, organize_by_base=True, org
 
     Returns organization plan dict with moves grouped by target folder.
     """
-    folders_to_check = []
-
     if 'All' in folders:
         folders = _file.get_content_choices()
 
+    # (root_folder, content_type) pairs. contenttype_folders() (plural) is what
+    # every reader of the library must use: a user launching Forge Neo with
+    # --lora-dirs keeps LoRAs there AND in the default models/Lora, and resolving
+    # only the download destination would leave the extra folders unorganized.
+    # Keeping the content type alongside the root is what tells us later whether
+    # a file is a LoRA — the folder's *name* never could.
+    model_roots = []
     for item in folders:
-        if item == 'LORA':
-            folder = _api.contenttype_folder('LORA')
-            if folder:
-                folders_to_check.append(folder)
-        else:
-            folder = _api.contenttype_folder(item)
-            if folder:
-                folders_to_check.append(folder)
+        for folder in _api.contenttype_folders(item):
+            if folder and (folder, item) not in model_roots:
+                model_roots.append((folder, item))
 
+    folders_to_check = [folder for folder, _ in model_roots]
     files = list_files(folders_to_check)
 
     organization_plan = {
@@ -3821,17 +3823,21 @@ def analyze_organization_plan(folders, progress=None, organize_by_base=True, org
         file_stem = os.path.splitext(os.path.basename(file_path))[0]
         description = _lora_dex_description(file_path)
 
-        # Get current directory and determine root model-type folder
+        # Get current directory and determine root model-type folder.
+        # Resolved by longest matching configured root rather than by folder name:
+        # --lora-dir may point anywhere, and the old name-matching walk fell back
+        # to the file's own directory whenever it failed, which made the organizer
+        # create Base/Category folders *inside* the user's existing subfolders.
         current_dir = os.path.dirname(file_path)
-        root_folder = current_dir
-        while os.path.basename(root_folder) not in ['Lora', 'Stable-diffusion', 'embeddings', 'VAE', 'ControlNet']:
-            parent = os.path.dirname(root_folder)
-            if parent == root_folder:  # We've reached filesystem root
-                root_folder = current_dir
-                break
-            root_folder = parent
+        root_folder, content_type = _org_paths.resolve_model_root(file_path, model_roots)
+        if root_folder is None:
+            # list_files() only returns files from under these roots, so this is
+            # unreachable in practice; skipping beats guessing a root and moving
+            # the file somewhere the user never configured.
+            continue
+        root_folder = str(root_folder)
 
-        is_lora = os.path.basename(root_folder) == 'Lora'
+        is_lora = content_type in _org_paths.LORA_CONTENT_TYPES
 
         # Determine base-model folder segment (may be empty if organize_by_base is False)
         base_model_folder = ''
@@ -3869,13 +3875,15 @@ def analyze_organization_plan(folders, progress=None, organize_by_base=True, org
             continue
 
         target_suffix = os.path.normpath(os.path.join(*target_parts))
+        target_folder = os.path.join(root_folder, target_suffix)
 
-        # Check if already in the correct subfolder
-        norm_current = os.path.normpath(current_dir)
-        if norm_current.endswith(os.sep + target_suffix) or norm_current == target_suffix:
+        # Check if already in the correct subfolder. Compared against the full
+        # target path rather than by suffix: an endswith() test also matched
+        # Lora/ill_loras/A/Anima/Character, marking a file nested under the
+        # user's own folders as already organized and leaving it there.
+        if os.path.normcase(os.path.normpath(current_dir)) == os.path.normcase(os.path.normpath(target_folder)):
             continue
 
-        target_folder = os.path.join(root_folder, target_suffix)
         target_path = os.path.join(target_folder, os.path.basename(file_path))
 
         # Add to plan
@@ -4665,9 +4673,11 @@ def find_metadata_issues(folders, progress=gr.Progress() if queue else None):
     if 'All' in folders:
         folders = _file.get_content_choices()
     for item in folders:
-        folder = _api.contenttype_folder('LORA') if item == 'LORA' else _api.contenttype_folder(item)
-        if folder:
-            folders_to_check.append(folder)
+        # Plural — models kept in a --lora-dirs / --ckpt-dirs folder must be
+        # checked too, or they silently look untracked.
+        for folder in _api.contenttype_folders(item):
+            if folder and folder not in folders_to_check:
+                folders_to_check.append(folder)
 
     files = list_files(folders_to_check)
 
@@ -6299,13 +6309,16 @@ def build_native_card_badge_map():
     wrong or force an extra API scan.
     """
     badge_map = {}
-    typed_folders = [
-        ('Checkpoint', _api.contenttype_folder('Checkpoint')),
-        ('LORA', _api.contenttype_folder('LORA')),
-    ]
+    # Plural: --ckpt-dirs / --lora-dirs folders carry badges too (see
+    # contenttype_folders). Each folder keeps its own entry so the relative-path
+    # key below is computed against the root the file actually lives under.
+    typed_folders = []
+    for content_type in ('Checkpoint', 'LORA'):
+        for folder in _api.contenttype_folders(content_type):
+            if folder:
+                typed_folders.append((content_type, folder))
+
     for content_type, folder in typed_folders:
-        if not folder:
-            continue
         for file_path in list_files([folder]):
             stem = os.path.splitext(os.path.basename(file_path))[0]
             base_model = _lora_dex_base_model(file_path, quiet=True)
@@ -6395,12 +6408,14 @@ def scan_lora_dex_data(base_filter=None, category_filter='All', pending_only=Fal
     Returns the filtered list of LoRA dicts and stores the full unfiltered list
     in gl.lora_dex_data so pagination can work without rescanning.
     """
-    folder = _api.contenttype_folder('LORA')
-    if not folder or not os.path.exists(folder):
+    # Plural: every configured LoRA folder, not just the download destination —
+    # otherwise LoRAs kept in a --lora-dirs folder never show up in LoraDex.
+    folders = [f for f in _api.contenttype_folders('LORA') if f and os.path.exists(f)]
+    if not folders:
         gl.lora_dex_data = []
         return []
 
-    files = list_files([folder])
+    files = list_files(folders)
     data = []
     for file_path in files:
         saved_category = get_lora_category_from_sidecar(file_path)
