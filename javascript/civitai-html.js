@@ -1065,6 +1065,28 @@ function inputHTMLPreviewContent(html_input) {
     }
 }
 
+// Re-echoes the txt2img tab's CURRENT Sampler / Schedule type / CFG scale into the
+// infotext the meta-click helpers build. The WebUI's #paste parser back-fills a
+// missing "Schedule type" to "Automatic" (treating it as pre-Forge infotext), which
+// silently overwrote the user's selection even when it already matched the image.
+// excludeKey skips the field the user is actively replacing so it isn't duplicated.
+function _currentGenParamsPad(excludeKey) {
+    const parts = [];
+    if (excludeKey !== 'Sampler') {
+        const samplerInput = gradioApp().querySelector('#txt2img_sampling input');
+        if (samplerInput && samplerInput.value) parts.push('Sampler: ' + samplerInput.value);
+    }
+    const scheduleInput = gradioApp().querySelector('#txt2img_scheduler input');
+    if (scheduleInput && scheduleInput.value) parts.push('Schedule type: ' + scheduleInput.value);
+    if (excludeKey !== 'CFG scale') {
+        const cfgInput = gradioApp().querySelector('#txt2img_cfg_scale > div:nth-child(2) > div > input');
+        if (cfgInput && cfgInput.value) parts.push('CFG scale: ' + cfgInput.value);
+    }
+    if (!parts.length) return '';
+    const line = parts.join(', ') + ', ';
+    return line + line + line;
+}
+
 function metaToTxt2Img(event, type, element) {
     const selection = window.getSelection();
     if (selection.toString().length > 0) {
@@ -1123,8 +1145,7 @@ function metaToTxt2Img(event, type, element) {
     const cfg_scale = gradioApp().querySelector('#txt2img_cfg_scale > div:nth-child(2) > div > input');
     if (!genButton || !prompt || !neg_prompt || !cfg_scale) return;
     let final = '';
-    let cfg = 'CFG scale: ' + cfg_scale.value + ', ';
-    let prompt_addon = cfg + cfg + cfg;
+    const prompt_addon = _currentGenParamsPad(null);
     if (is_positive) {
         if (isAppend) {
             const existing = prompt.value.trimEnd().replace(/,\s*$/, '');
@@ -1142,7 +1163,7 @@ function metaToTxt2Img(event, type, element) {
             final = prompt.value + '\n' + inf + '\n' + prompt_addon;
         }
     } else {
-        final = prompt.value + '\nNegative prompt: ' + neg_prompt.value + '\n' + inf;
+        final = prompt.value + '\nNegative prompt: ' + neg_prompt.value + '\n' + inf + '\n' + _currentGenParamsPad(type);
     }
     genInfo_to_txt2img(final, false);
     hideCivitaiOverlay();
@@ -1781,8 +1802,7 @@ function sendTagsToPrompt(tags) {
     const neg_prompt = gradioApp().querySelector('#txt2img_neg_prompt textarea');
     const cfg_scale = gradioApp().querySelector('#txt2img_cfg_scale > div:nth-child(2) > div > input');
     if (!genButton || !prompt || !neg_prompt || !cfg_scale) return;
-    const cfg = 'CFG scale: ' + cfg_scale.value + ', ';
-    const prompt_addon = cfg + cfg + cfg;
+    const prompt_addon = _currentGenParamsPad(null);
     const cleanTags = tags.trimEnd().replace(/,\s*$/, '');
     const existing = (prompt.value || '').trimEnd().replace(/,\s*$/, '');
     const combined = existing ? existing + ', ' + cleanTags : cleanTags;
