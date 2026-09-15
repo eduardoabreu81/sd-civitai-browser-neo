@@ -25,7 +25,27 @@ import itertools
 import requests
 
 from modules.shared import opts
-from scripts.civitai_global import print, debug_print
+
+# === Import bootstrap ===
+# Loaded by absolute path, never as `scripts.civitai_bootstrap`: it repairs the
+# very `scripts` namespace package that such an import would rely on. Another
+# extension shipping `scripts/__init__.py` breaks it for everyone (issue #5).
+import os as _bootstrap_os
+import importlib.util as _bootstrap_util
+
+_bootstrap_spec = _bootstrap_util.spec_from_file_location(
+    'civitai_bootstrap',
+    _bootstrap_os.path.join(
+        _bootstrap_os.path.dirname(_bootstrap_os.path.abspath(__file__)),
+        'civitai_bootstrap.py',
+    ),
+)
+_bootstrap = _bootstrap_util.module_from_spec(_bootstrap_spec)
+_bootstrap_spec.loader.exec_module(_bootstrap)
+_bootstrap.ensure_scripts_namespace()
+
+# E402 is expected below: the import must follow the bootstrap.
+from scripts.civitai_global import print, debug_print  # noqa: E402
 
 # Fixed endpoint. CivitAI's MCP lives on its own host, independent of any
 # custom REST proxy the user may have configured for the browse API.

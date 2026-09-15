@@ -22,6 +22,41 @@
 
 ## Linha do Tempo
 
+### 2026-09-15 — Issue #5: survive a `scripts` namespace closed by another extension
+
+**Symptom:** on Forge Neo 2.28 the extension failed to load with five stacked
+`Error loading script` blocks, every one of them a `ModuleNotFoundError` for
+`scripts.civitai_download`, `scripts.civitai_file_manage`, etc. The files were
+present and the install was up to date.
+
+**Cause:** A1111/Forge rely on `scripts` being an implicit *namespace package*, so
+Python merges `webui/scripts` with the `scripts/` folder of every installed
+extension — that merge is what makes `import scripts.civitai_api` resolve. A single
+other extension (or a package in `site-packages`) shipping a `scripts/__init__.py`
+turns `scripts` into a regular package bound to that one directory, and every
+extension importing `scripts.<module>` breaks at once, regardless of load order.
+Nothing in our code or in Forge Neo 2.28 was at fault; the reporter could only fix
+it by finding and removing the offending extension.
+
+**Fix:** `scripts/civitai_bootstrap.py` — a dependency-free module that puts our own
+`scripts/` directory back onto `scripts.__path__`, creating the module when nothing
+provides it. It repairs rather than replaces, so directories the WebUI already
+registered keep resolving and other extensions are unaffected. The five entry
+modules (`civitai_api`, `civitai_download`, `civitai_file_manage`, `civitai_gui`,
+`civitai_mcp`) load it **by absolute path** before their `scripts.*` imports —
+importing it as `scripts.civitai_bootstrap` would depend on the very namespace it
+repairs. The extension imports that follow now carry `# noqa: E402`.
+
+**Invariant:** the bootstrap must never import anything from `scripts.*`, and must
+stay idempotent — all five entry modules call it on every startup.
+
+**Tests:** `tests/test_import_bootstrap.py` (6 tests) reproduces the closed-namespace
+failure with a throwaway intruder extension and asserts the repair, path
+preservation, synthesis when `scripts` is absent, idempotence, and the default
+directory. Full suite: 423 passed. Ruff unchanged at its 96-warning baseline.
+
+**Status:** fix implemented; issue #5 not yet answered on GitHub.
+
 ### 2026-08-29 — Release v1.0.1: reliable Browser batch selection
 
 **Sintoma:** ao marcar vários cards e usar **Download all selected**, apenas parte dos

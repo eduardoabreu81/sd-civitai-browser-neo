@@ -10,14 +10,32 @@ from modules.shared import opts, cmd_opts
 from modules.paths import extensions_dir
 from modules.options import categories
 
-# === Extension imports ===
-import scripts.civitai_download as _download
-import scripts.civitai_file_manage as _file
-import scripts.civitai_global as gl
-import scripts.civitai_api as _api
-import scripts.civitai_mcp as _mcp
-import scripts.browser_sources as _browser_sources
-from scripts.civitai_global import print, debug_print
+# === Import bootstrap ===
+# Loaded by absolute path, never as `scripts.civitai_bootstrap`: it repairs the
+# very `scripts` namespace package that such an import would rely on. Another
+# extension shipping `scripts/__init__.py` breaks it for everyone (issue #5).
+import os as _bootstrap_os
+import importlib.util as _bootstrap_util
+
+_bootstrap_spec = _bootstrap_util.spec_from_file_location(
+    'civitai_bootstrap',
+    _bootstrap_os.path.join(
+        _bootstrap_os.path.dirname(_bootstrap_os.path.abspath(__file__)),
+        'civitai_bootstrap.py',
+    ),
+)
+_bootstrap = _bootstrap_util.module_from_spec(_bootstrap_spec)
+_bootstrap_spec.loader.exec_module(_bootstrap)
+_bootstrap.ensure_scripts_namespace()
+
+# === Extension imports (E402 is expected: they must follow the bootstrap) ===
+import scripts.civitai_download as _download  # noqa: E402
+import scripts.civitai_file_manage as _file  # noqa: E402
+import scripts.civitai_global as gl  # noqa: E402
+import scripts.civitai_api as _api  # noqa: E402
+import scripts.civitai_mcp as _mcp  # noqa: E402
+import scripts.browser_sources as _browser_sources  # noqa: E402
+from scripts.civitai_global import print, debug_print  # noqa: E402
 
 
 gl.init()
