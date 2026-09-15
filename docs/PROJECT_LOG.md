@@ -1,6 +1,6 @@
 # PROJECT_LOG
 
-## Current Scope (v1.0.0)
+## Current Scope (v1.0.1)
 
 - **Extension para Forge Neo** — Browse, download e organize modelos do CivitAI diretamente no WebUI com suporte a Gradio 4+
 - **Auto-organização inteligente** — Modelos organizados por base model (SDXL/, Pony/, FLUX/, Wan/, etc.) com backup/rollback automático e suporte a subpastas por subtipo Wan (I2V/T2V/TI2V)
@@ -14,13 +14,62 @@
 
 **Stack:** Python 3.x + Gradio 4.40.0 + Forge Neo + Aria2 + JavaScript vanilla  
 **Features ativas:** Multi-Source Browser (CivitAI/CivArchive/ModelScope/Arc en Ciel + URL paste), Download Queue, Local Models (self-contained, paginated, Update Models merged in), LoraDex, Auto-Organization, Metadata Maintenance (Verify / Resolve via CivArchive / Mark for review), Native Extra Networks cards, Dashboard, Creator Management  
-**Status (main):** v1.0.0 — First Stable Release. The `revamp` line was promoted to `main`: multi-source Browser, Local Models rebuilt, LoraDex, native Extra Networks cards, Paid vs. Early Access separation, metadata maintenance, GGUF support.  
+**Status (main):** v1.0.1 — Reliable Batch Downloads. Browser multi-select now snapshots its live JS state and remains isolated from Local Models filters/data.
 **Status (branch `revamp`):** promoted to `main` as v1.0.0. The branch is no longer a separate development line; its history is kept under "Linha do Tempo — Branch `revamp`".  
 **Twin project:** sd-civitai-browser-ex (Gradio 3, A1111/Forge Classic) — mudanças específicas do Neo não devem migrar automaticamente
 
 ---
 
 ## Linha do Tempo
+
+### 2026-08-29 — Release v1.0.1: reliable Browser batch selection
+
+**Sintoma:** ao marcar vários cards e usar **Download all selected**, apenas parte dos
+modelos podia chegar à fila. Também era possível perceber filtros do Browser afetando
+visualmente os cards de Local Models.
+
+**Causa:** havia quatro vazamentos do estado do Browser:
+- o clique de **Download all selected** consumia o valor do textbox oculto do Gradio;
+  após marcar vários cards rapidamente, esse estado podia estar atrasado em relação ao
+  array JavaScript e enviar apenas uma seleção parcial ao Python;
+- refresh, busca e paginação zeravam os arrays JavaScript, mas não sincronizavam os
+  textboxes ocultos `selected_model_list` / `selected_type_list`; o backend ainda podia
+  receber IDs de uma seleção antiga;
+- `selected_to_queue()` procurava esses IDs no conjunto combinado de `gl.json_data` e
+  `gl.local_json_data`; assim, uma seleção obsoleta do Browser podia resolver apenas a
+  parcela presente sob os filtros atuais do Local Models;
+- `hideInstalled()` e `hideBannedCreators()` usavam seletores DOM globais sobre classes
+  compartilhadas pelos dois grids.
+
+**Correção relacionada:** durante a investigação também foi corrigida a precedência do
+filtro de base sobre famílias já instaladas. Ela podia suprimir uma variante Pony quando
+havia SDXL local, mas **não era a causa do relato original**, pois o usuário confirmou
+que os quatro modelos não tinham famílias instaladas.
+
+**Correção:** o clique de lote agora captura `JSON.stringify(selectedModels)` no próprio
+evento e envia esse snapshot como input do callback. O Browser resolve lotes
+exclusivamente contra `gl.json_data`; ações
+locais priorizam `gl.local_json_data` e mantêm o Browser apenas como fallback para o
+Update Mode legado. O reset do Browser sincroniza arrays e campos ocultos sem apagar a
+seleção Local, e os filtros DOM do Browser excluem `#local_list_html`. O botão **Clear
+results** também limpa a seleção oculta. Quando há filtro de base ativo, a versão mais
+nova dessa base é resolvida antes das outras famílias instaladas. Itens selecionados que
+já estão instalados e atualizados passam a aparecer como aviso informativo na fila, em
+vez de serem ignorados silenciosamente.
+
+**Arquivos alterados:** `javascript/civitai-html.js`, `scripts/civitai_download.py`,
+`scripts/civitai_gui.py`, `tests/test_browser_local_state_isolation.py`.
+
+**Validação:** `python -m pytest tests -q` → **227 passed, 16 subtests passed**;
+`python -m py_compile scripts/civitai_download.py scripts/civitai_gui.py` e
+`node --check javascript/civitai-html.js` sem erros. Validação runtime no Forge Neo ainda
+necessária: selecionar quatro modelos no Browser, alternar filtros/abas, confirmar quatro
+entradas na fila (descontando os explicitamente reportados como já instalados).
+
+**Próximos passos / Next steps:**
+- Validar no Forge Neo um lote de quatro modelos não instalados e confirmar no terminal
+  `received=4 enqueued=4 already_current=0 skipped=0`.
+- Atualizar o Wiki Changelog quando a publicação/tag de v1.0.1 for criada.
 
 ### 2026-08-19 — Issue #4 (batch download crash) and PR #3 (Forge Neo directory args)
 
