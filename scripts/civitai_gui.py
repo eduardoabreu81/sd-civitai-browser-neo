@@ -33,7 +33,6 @@ import scripts.civitai_download as _download  # noqa: E402
 import scripts.civitai_file_manage as _file  # noqa: E402
 import scripts.civitai_global as gl  # noqa: E402
 import scripts.civitai_api as _api  # noqa: E402
-import scripts.civitai_mcp as _mcp  # noqa: E402
 import scripts.browser_sources as _browser_sources  # noqa: E402
 from scripts.civitai_global import print, debug_print  # noqa: E402
 
@@ -269,44 +268,6 @@ def get_base_models():
         return default_options
 
 ## === ANXETY EDITs ===
-def build_account_badge_html():
-    """Background account badge for the Dashboard.
-
-    Auto-connects with the saved API key via the MCP whoami (cached) and renders
-    a small passive badge — no button, no interaction. Returns '' (invisible)
-    when account features are disabled, no key is set, or the identity cannot be
-    resolved, so the slot collapses.
-
-    A failure renders NOTHING rather than a warning. This badge is decorative and
-    the failure mode is not the user's to fix: as of 2026-08-05 CivitAI's own
-    `user.getSelfStatus` rejects the MCP server's call, so the old code painted a
-    permanent "⚠️ CivitAI account not connected (Error: user.getSelfStatus:
-    Invalid input)" onto the Dashboard for a bug no local setting can address.
-    The reason still goes to the debug log, and the badge comes back on its own
-    if the identity ever resolves again — including from a partially-failed
-    response, since a broken status step should not cost us the name.
-    """
-    from html import escape
-    if not getattr(opts, 'account_features_mcp', True):
-        return ''
-    if not (getattr(opts, 'custom_api_key', '') or '').strip():
-        return ''
-
-    res = _mcp.whoami()
-    username, image = _mcp.extract_identity(res.get('data'))
-
-    if not username:
-        if res.get('ok'):
-            debug_print(f"[MCP] whoami succeeded but carried no username: {str(res.get('data'))[:200]}")
-        else:
-            debug_print(f"[MCP] account badge hidden — whoami failed: {res.get('error')}")
-        return ''
-
-    avatar = (f'<img src="{escape(str(image))}" style="width:24px;height:24px;border-radius:50%;'
-              'object-fit:cover;">') if image else '<span style="font-size:18px;">👤</span>'
-    return ('<div style="display:flex;align-items:center;gap:8px;font-size:14px;padding:4px 0;">'
-            f'{avatar}<span>Connected as <strong>{escape(username)}</strong></span></div>')
-
 def on_ui_tabs():
     page_header = getattr(opts, 'page_header', False)
     lobe_directory = None
@@ -713,11 +674,6 @@ def on_ui_tabs():
 
         ## Dashboard Tab
         with gr.Tab(label='Dashboard', elem_id='dashboardTab'):
-            # Account badge: auto-connects in the background with the saved API key
-            # (populated by civitai_interface.load). Renders empty/invisible when there
-            # is no key or the account feature is disabled — no button, no interaction.
-            account_badge_html = gr.HTML(value='', elem_id='civitai_account_badge')
-
             gr.Markdown('## 📊 Model Collection Statistics', elem_id='dashboard_header')
             gr.Markdown('View disk usage statistics for your model collection organized by type.')
 
@@ -2369,13 +2325,6 @@ def on_ui_tabs():
             outputs=[restore_queue_input]
         )
 
-        # Background account badge: connects with the saved API key on UI load,
-        # no button/interaction (renders empty when disabled or no key).
-        civitai_interface.load(
-            fn=build_account_badge_html,
-            outputs=[account_badge_html]
-        )
-
     tab_name = 'CivitAI Browser Neo'
     return (civitai_interface, tab_name, 'civitai_interface_neo'),
 
@@ -2412,16 +2361,6 @@ def on_ui_settings():
             section=browser,
             category_id=cat_id
         ).info('You can create your own API key in your CivitAI account settings, this required for some downloads. Requires UI reload')
-    )
-
-    shared.opts.add_option(
-        'account_features_mcp',
-        shared.OptionInfo(
-            default=True,
-            label='Account badge (MCP connection)',
-            section=browser,
-            category_id=cat_id
-        ).info('Connects automatically with your API key to show the CivitAI account badge on the Dashboard. Turn off to disable the badge. Requires UI reload')
     )
 
     shared.opts.add_option(

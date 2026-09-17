@@ -11,8 +11,13 @@ streamable HTTP. Probing established three facts that keep this client tiny:
     failures arrive as a JSON-RPC ``error`` object.
 
 Browse tools (search_models, get_model, ...) need no auth. Account/social tools
-(whoami, toggle_follow_user, ...) require a Bearer API key (``opts.custom_api_key``)
+(toggle_follow_user, ...) require a Bearer API key (``opts.custom_api_key``)
 from an onboarded account.
+
+Identity resolution is deliberately absent. CivitAI's ``whoami`` is one of the
+zero-argument tools its own tRPC layer rejects (``user.getSelfStatus: Invalid
+input``, probed 2026-08-05), so nothing here should depend on knowing who the
+key belongs to. The key is sent; the server decides.
 
 Every public function returns a result envelope so callers never see exceptions:
     {'ok': True,  'data': <structuredContent or text>, 'text': <human text>}
@@ -170,9 +175,9 @@ def call_tool(name, arguments=None, authed=True):
     text = '\n'.join(p for p in text_parts if p)
 
     if result.get('isError'):
-        # Pass structuredContent through: CivitAI's `whoami` resolves the account
-        # first and only then calls user.getSelfStatus, so a failure in that second
-        # step can still arrive with the identity attached.
+        # Pass structuredContent through: a tool can resolve part of its work and
+        # only then hit a failing step, so the payload that came with the error is
+        # worth keeping rather than discarding.
         return _error(text or 'tool reported an error', data=result.get('structuredContent'))
 
     data = result.get('structuredContent')
@@ -183,61 +188,11 @@ def call_tool(name, arguments=None, authed=True):
 
 # === High-level account/social helpers ======================================
 
-def extract_identity(payload):
-    """Dig a ``(username, avatar_url)`` pair out of a whoami payload.
-
-    Returns ``(None, None)`` when the payload carries no usable identity — which
-    is the current reality: CivitAI's `whoami` fails in `user.getSelfStatus` and
-    answers a bare ``{'ok': False, 'error': ...}`` with no account data at all.
-    The tolerance below (top level or nested under ``user``) exists because a
-    SUCCESSFUL whoami shape has never been observed here, so this must not assume
-    one exact layout. ``profilePicture: {url: ...}`` is not a guess — CivitAI uses
-    that shape for user objects embedded in notification payloads.
-    """
-    if not isinstance(payload, dict):
-        return None, None
-
-    sources = [payload]
-    nested = payload.get('user')
-    if isinstance(nested, dict):
-        sources.append(nested)
-
-    for source in sources:
-        username = source.get('username') or source.get('name')
-        if not isinstance(username, str) or not username.strip():
-            continue
-        image = source.get('image') or source.get('avatar') or source.get('profilePicture')
-        if isinstance(image, dict):
-            image = image.get('url')
-        return username.strip(), image if isinstance(image, str) and image else None
-
-    return None, None
-
-
-_whoami_cache = {}
-
-
-def whoami(use_cache=True):
-    """Resolve the current account from the API key (cached per key).
-
-    Called in the background on UI load to render the account badge, so the
-    result is memoized per API key to avoid re-hitting the server on every
-    page load. Pass use_cache=False to force a refresh.
-    """
-    key = _get_api_key()
-    if use_cache and key and key in _whoami_cache:
-        return _whoami_cache[key]
-    res = call_tool('whoami', {}, authed=True)
-    if key and res.get('ok'):
-        _whoami_cache[key] = res
-    return res
-
-
 def toggle_follow_user(user):
     """Toggle following a creator (numeric id or username)."""
     return call_tool('toggle_follow_user', {'user': user}, authed=True)
 
 
 def check_notifications():
-    """Return the unread notification count for the badge."""
+    """Return the unread notification count."""
     return call_tool('check_notifications', {}, authed=True)

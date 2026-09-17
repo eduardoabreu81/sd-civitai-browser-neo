@@ -1,4 +1,4 @@
-"""Tests for the CivitAI MCP client envelope and identity extraction.
+"""Tests for the CivitAI MCP client result envelope.
 
 Context (probed live on 2026-08-05 with a real API key): CivitAI's MCP server is
 healthy and authentication works — `list_notifications`, `get_my_resource_review`
@@ -10,10 +10,11 @@ procedure takes NO arguments fails with "Invalid input":
     list_chats          -> chat.getAllByUser: Invalid input
 
 That is a server-side regression; nothing the client sends can influence it,
-since those tools declare an empty `inputSchema`. These tests pin the two
-behaviours that keep the failure from reaching the user as a scary banner:
-the error envelope must carry any payload that came with the failure, and the
-identity extractor must report "no identity" rather than inventing one.
+since those tools declare an empty `inputSchema`. The identity surface built on
+`whoami` has since been removed, but its captured payloads are kept here as
+fixtures: they are the only real failure shape ever observed from this server,
+and they pin what every caller depends on — a failed tool must still hand back
+whatever the server did resolve, and no error envelope may be missing `data`.
 """
 
 import importlib.util
@@ -70,8 +71,9 @@ class TestCallToolEnvelope(unittest.TestCase):
             return self.mcp.call_tool("whoami", {}, authed=True)
 
     def test_tool_error_keeps_the_structured_payload(self):
-        """The real 2026-08-05 whoami failure. `data` must survive onto the error
-        envelope so callers can salvage anything the server did resolve."""
+        """The real 2026-08-05 whoami failure, kept as a fixture. `data` must
+        survive onto the error envelope so callers can salvage anything the
+        server did resolve."""
         res = self._call({
             "content": [{"type": "text", "text": "Error: user.getSelfStatus: Invalid input"}],
             "structuredContent": {"ok": False, "error": "user.getSelfStatus: Invalid input"},
@@ -106,49 +108,6 @@ class TestCallToolEnvelope(unittest.TestCase):
             self.mcp.opts.custom_api_key = "test-key"
         self.assertFalse(res["ok"])
         self.assertIn("no API key", res["error"])
-
-
-class TestExtractIdentity(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.mcp = _load_civitai_mcp_with_stubs()
-
-    def test_the_real_broken_whoami_payload_yields_nothing(self):
-        """What CivitAI actually returns today. Must NOT be mistaken for an
-        identity — the badge has to stay hidden rather than render garbage."""
-        self.assertEqual(
-            self.mcp.extract_identity({"ok": False, "error": "user.getSelfStatus: Invalid input"}),
-            (None, None),
-        )
-
-    def test_top_level_identity(self):
-        self.assertEqual(
-            self.mcp.extract_identity({"id": 1, "username": "alice", "image": "http://x/a.png"}),
-            ("alice", "http://x/a.png"),
-        )
-
-    def test_nested_user_identity(self):
-        self.assertEqual(
-            self.mcp.extract_identity({"ok": False, "user": {"username": "bob"}}),
-            ("bob", None),
-        )
-
-    def test_profile_picture_object(self):
-        """CivitAI embeds user images as {profilePicture: {url: ...}}."""
-        self.assertEqual(
-            self.mcp.extract_identity(
-                {"username": "carol", "profilePicture": {"url": "abc-123", "nsfwLevel": 2}}
-            ),
-            ("carol", "abc-123"),
-        )
-
-    def test_blank_username_is_not_an_identity(self):
-        self.assertEqual(self.mcp.extract_identity({"username": "   "}), (None, None))
-
-    def test_malformed_input(self):
-        for bad in (None, [], "alice", 42, {}):
-            with self.subTest(bad=bad):
-                self.assertEqual(self.mcp.extract_identity(bad), (None, None))
 
 
 if __name__ == "__main__":

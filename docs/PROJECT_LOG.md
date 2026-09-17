@@ -22,6 +22,45 @@
 
 ## Linha do Tempo
 
+### 2026-09-17 — Drop the MCP account badge (user validation)
+
+**What changed:** the Dashboard no longer resolves and displays the CivitAI account
+behind the API key. The passive "Connected as <user>" badge, the `Account badge (MCP
+connection)` setting and the whole identity path are gone.
+
+**Why:** the badge was decorative and had been rendering nothing since 2026-08-05,
+when CivitAI's own tRPC layer started rejecting every zero-argument MCP tool
+(`user.getSelfStatus: Invalid input`). Keeping a feature alive that cannot work, whose
+failure is not ours to fix and whose only output is a name the user already knows, buys
+nothing. The API key is still sent on every authenticated call; the server decides
+whether it is valid. Validating it separately was never a prerequisite for anything.
+
+**Removed:**
+- `build_account_badge_html()`, the `civitai_account_badge` HTML slot and its
+  `civitai_interface.load` hook in `scripts/civitai_gui.py`.
+- The `account_features_mcp` option (`scripts/civitai_gui.py`). Existing installs keep a
+  stale value in `config.json`; nothing reads it and it is harmless.
+- `whoami()`, `_whoami_cache` and `extract_identity()` in `scripts/civitai_mcp.py`, plus
+  the six `TestExtractIdentity` cases.
+- The now-unused `import scripts.civitai_mcp as _mcp` in `scripts/civitai_gui.py`.
+
+**Kept:** `scripts/civitai_mcp.py` itself — the JSON-RPC transport (`_mcp_post`,
+`call_tool`) and the `toggle_follow_user()` / `check_notifications()` wrappers. The
+2026-08-05 probe showed the write-side tools (`toggle_favorite_model`, follow) work, so
+the client stays available for the detail-panel social actions. **No module imports it
+today.**
+
+**Files changed:** `scripts/civitai_gui.py`, `scripts/civitai_mcp.py`,
+`tests/test_civitai_mcp.py`.
+
+**Validation:** `py_compile` clean on both scripts; full suite **417 passed** (423 minus
+the 6 identity tests). The four envelope tests survive and still use the real captured
+whoami payloads as fixtures — they pin `call_tool`, not the removed feature.
+
+**Note for whoever revisits this:** the removal is of the *badge*, not of MCP. If
+CivitAI ever fixes the zero-arg procedures, restoring identity means writing it fresh
+against a shape that has still never been observed working here.
+
 ### 2026-09-15 — Issue #5: survive a `scripts` namespace closed by another extension
 
 **Symptom:** on Forge Neo 2.28 the extension failed to load with five stacked
@@ -55,7 +94,10 @@ failure with a throwaway intruder extension and asserts the repair, path
 preservation, synthesis when `scripts` is absent, idempotence, and the default
 directory. Full suite: 423 passed. Ruff unchanged at its 96-warning baseline.
 
-**Status:** fix implemented; issue #5 not yet answered on GitHub.
+**Status:** shipped in `3edd728`. Issue #5 closed as completed on 2026-09-17 after the
+reporter's restart log came back clean — no `Error loading script` blocks, with
+`forge-neo-local-recon` and `sd-webui-reactor-sfw` (both shipping `scripts/__init__.py`)
+still installed.
 
 ### 2026-08-29 — Release v1.0.1: reliable Browser batch selection
 
