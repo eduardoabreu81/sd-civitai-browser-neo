@@ -35,11 +35,15 @@ Browse, download, and manage your model library directly inside Forge Neo — mu
 
 ## 🆕 What's New
 
-### v1.0.1 — Reliable Batch Downloads
+### v1.0.1 — Reliable Batch Downloads & Smarter LoraDex
 
 - **Complete multi-select batches** — **Download all selected** snapshots the live Browser selection at click time, preventing rapid checkbox changes from reaching Python as a partial list.
 - **Browser/Local isolation** — Browser selections, hidden state, installed/creator filters, and model resolution no longer leak through the Local Models dataset or grid.
 - **Clear queue accounting** — the terminal reports how many selected models were received, enqueued, already current, or skipped; already-installed current models are also explained in the queue UI.
+- **Official tags power LoraDex** — tags are captured automatically on every download, and **Fetch official tags** backfills them for models you already have, sharpening the category auto-suggestion.
+- **Custom LoRA categories** — type any category name instead of picking from a fixed list; your own folders, sidecars, and each model's tags all feed the suggestions.
+- **Bulk category review** — apply changes across every page at once, sort by "least confident first" to focus on the shakiest guesses, or select several rows and set them together.
+- Removed the CivitAI account status badge — it stopped working after an upstream API change and never came back.
 
 ### v1.0.0 — First Stable Release
 
@@ -88,8 +92,10 @@ The largest update since the Neo fork: the Browser is no longer hardwired to Civ
 *[Full details on the Wiki →](https://github.com/eduardoabreu81/sd-civitai-browser-neo/wiki/Feature-LoraDex)*
 
 - Paginated LoRA list with mini-thumbnails and zoom
-- Categories auto-suggested from tags, description, filename, and model name
+- Categories auto-suggested from official CivitAI tags, description, filename, and model name — tags are captured automatically on download, and **Fetch official tags** backfills them for models you already have
+- Custom categories — type any name instead of only picking from the built-in list; suggestions also pull from your own folders, sidecars, and each model's tags
 - Manual assignment per LoRA, individually or in batch, saved to the `.json` sidecar
+- **Bulk review** — apply changes across every page at once, sort by "least confident first," or select multiple rows and set them together
 - Category badge on model cards
 - Organize LoRAs into `Lora/<base>/<category>/` subfolders — on download and in bulk
 
@@ -143,7 +149,6 @@ The largest update since the Neo fork: the Browser is no longer hardwired to Civ
 - Disk usage by category and architecture, with a pie chart breakdown
 - Top 10 largest files and categories · orphan file detection
 - Export to CSV or JSON
-- Passive CivitAI account status badge
 
 ### 🃏 Model Cards & Safety
 
