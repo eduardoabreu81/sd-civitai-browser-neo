@@ -641,13 +641,13 @@ def on_ui_tabs():
                 fix_misplaced_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
                 undo_fix_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
 
-            gr.Markdown('**🗄️ Verify local metadata** — check that cached CivitAI IDs still exist and that `.api_info.json` matches; recover data for delisted models from CivArchive.')
+            gr.Markdown('**🗄️ Verify local metadata** — check that cached CivitAI IDs still exist and that `.api_info.json` matches; recover delisted models from CivArchive and re-fetch mismatched ones from CivitAI.')
             with gr.Row():
                 verify_metadata_btn = gr.Button(value='🔍 Verify local metadata', interactive=True)
-                resolve_civarchive_btn = gr.Button(value='🗄️ Resolve via CivArchive', interactive=True, visible=False, variant='secondary')
+                resolve_metadata_btn = gr.Button(value='🛠️ Resolve issues', interactive=True, visible=False, variant='secondary')
             with gr.Row():
                 verify_metadata_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
-                resolve_civarchive_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
+                resolve_metadata_progress = gr.HTML(value='<div style="min-height: 0px;"></div>')
 
             metadata_issues_state = gr.State(value='{}')
 
@@ -2184,7 +2184,7 @@ def on_ui_tabs():
             inputs=[selected_tags_local],
             outputs=[
                 verify_metadata_progress,
-                resolve_civarchive_btn,
+                resolve_metadata_btn,
                 metadata_issues_state
             ],
             show_progress="full"
@@ -2204,12 +2204,12 @@ def on_ui_tabs():
         )
         cancel_fetch_tags.click(fn=_file.cancel_tag_fetch)
 
-        resolve_civarchive_btn.click(
-            fn=_file.resolve_civarchive_issues,
+        resolve_metadata_btn.click(
+            fn=_file.resolve_metadata_issues,
             inputs=[metadata_issues_state],
             outputs=[
-                resolve_civarchive_progress,
-                resolve_civarchive_btn,
+                resolve_metadata_progress,
+                resolve_metadata_btn,
                 metadata_issues_state
             ],
             show_progress="full"

@@ -13,7 +13,7 @@
 ## Estado Rápido
 
 **Stack:** Python 3.x + Gradio 4.40.0 + Forge Neo + Aria2 + JavaScript vanilla  
-**Features ativas:** Multi-Source Browser (CivitAI/CivArchive/ModelScope/Arc en Ciel + URL paste), Download Queue, Local Models (self-contained, paginated, Update Models merged in), LoraDex, Auto-Organization, Metadata Maintenance (Verify / Resolve via CivArchive / Mark for review), Native Extra Networks cards, Dashboard, Creator Management  
+**Features ativas:** Multi-Source Browser (CivitAI/CivArchive/ModelScope/Arc en Ciel + URL paste), Download Queue, Local Models (self-contained, paginated, Update Models merged in), LoraDex, Auto-Organization, Metadata Maintenance (Verify / Resolve issues / Mark for review), Native Extra Networks cards, Dashboard, Creator Management  
 **Status (main):** v1.0.1 — Reliable Batch Downloads. Browser multi-select now snapshots its live JS state and remains isolated from Local Models filters/data.
 **Status (branch `revamp`):** promoted to `main` as v1.0.0. The branch is no longer a separate development line; its history is kept under "Linha do Tempo — Branch `revamp`".  
 **Twin project:** sd-civitai-browser-ex (Gradio 3, A1111/Forge Classic) — mudanças específicas do Neo não devem migrar automaticamente
@@ -21,6 +21,21 @@
 ---
 
 ## Linha do Tempo
+
+### 2026-09-25 — Resolve issues: route each metadata problem to the right source
+
+**What changed**
+- "Resolve via CivArchive" sent both lists from "Verify local metadata" to CivArchive. The `corrupted` list, though, only ever holds models that **are still listed on CivitAI** (`find_metadata_issues` only reaches the `.api_info.json` comparison after the model id was found), so live models were being overwritten with mirror data.
+- Button renamed to **🛠️ Resolve issues**; `resolve_civarchive_issues()` → `resolve_metadata_issues()`, which now routes per kind:
+  - `orphaned` → `_recover_orphan_via_civarchive()` (CivArchive by SHA256, as before).
+  - `corrupted` → `_repair_mismatch_from_civitai()`: fetches `/api/v1/model-versions/{modelVersionId}` using the id cached in the `.json` sidecar. by-hash is deliberately **not** used here — it is the lookup that produced the collision, so it would return the same wrong listing and the existing guard would discard it.
+- Both paths now cross-check the returned modelId against the sidecar before writing. The CivArchive path had no such guard: `get_version_by_hash` returns whatever the hash maps to, so a collision mirrored on CivArchive would have re-corrupted the file (marked as `civarchive`).
+- The repair path also re-patches the sidecar's `sd version`, which the original by-hash collision could have overwritten. The patch block was extracted from `_fetch_api_info_by_hash()` into `_patch_sidecar_sd_version()` and is shared by both.
+- Result report now shows both counts: recovered via CivArchive / still local-only, and repaired from CivitAI / still mismatched.
+- `.html` sidecars are intentionally left alone: they are built from the same response as the `.json` sidecar (not from the by-hash call), so they are not affected by the collision.
+
+**Files:** `scripts/civitai_file_manage.py`, `scripts/civitai_gui.py`, `scripts/civitai_api.py` (comment), `README.md`, `tests/test_resolve_metadata_issues.py` (new, 9 cases).
+**Validation:** `tests/` 426 passed. Pending: runtime check in Forge Neo (Organization → Verify local metadata → Resolve issues).
 
 ### 2026-09-17 — Drop the MCP account badge (user validation)
 

@@ -2174,7 +2174,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
                 model_main_url = f"https://{get_civitai_domain()}/models/{item['id']}" if not is_local_only else ''
 
                 if is_local_only:
-                    # A file resolved via CivArchive (see resolve_civarchive_issues)
+                    # A file resolved via CivArchive (see _recover_orphan_via_civarchive)
                     # carries real preview images on its version — use those instead
                     # of the empty state. True local-only files have none, so this
                     # is a no-op for them.

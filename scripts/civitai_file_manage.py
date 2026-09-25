@@ -1355,7 +1355,7 @@ def _build_local_fallback_browser_item(file_path):
         }]
     }
 
-    # If resolve_civarchive_issues() already recovered real CivitAI-style
+    # If _recover_orphan_via_civarchive() already recovered real CivitAI-style
     # metadata for this file (removed listing found on CivArchive), use it
     # to enrich this fallback card instead of the empty stub above — the
     # synthetic local 'id' and modelVersions[0]['id'] are kept unchanged so
@@ -3480,6 +3480,20 @@ def normalize_base_model(base_model):
     _debug_log("Returning 'Other'")
     return 'Other'
 
+def _patch_sidecar_sd_version(json_file, base_model):
+    """Write the raw CivitAI baseModel into the .json sidecar's "sd version" field."""
+    if not base_model or not os.path.exists(json_file):
+        return
+    try:
+        content = _api.safe_json_load(json_file) or {}
+        if content.get('sd version') != base_model:
+            content['sd version'] = base_model
+            _api.safe_json_save(json_file, content)
+            _debug_log(f"Patched 'sd version' → '{base_model}' in {os.path.basename(json_file)}")
+    except Exception as patch_err:
+        _debug_log(f"Could not patch {os.path.basename(json_file)}: {patch_err}")
+
+
 def _fetch_api_info_by_hash(file_path, api_info_file):
     """
     Fetch model version info from CivitAI API using the file's SHA256 hash.
@@ -3545,16 +3559,7 @@ def _fetch_api_info_by_hash(file_path, api_info_file):
 
             # 2. Also patch "sd version" in the .json sidecar with the correct raw value
             #    so the .json is also self-consistent and usable offline in the future
-            base_model = data.get('baseModel', '')
-            if base_model and os.path.exists(json_file):
-                try:
-                    content = _api.safe_json_load(json_file) or {}
-                    if content.get('sd version') != base_model:
-                        content['sd version'] = base_model
-                        _api.safe_json_save(json_file, content)
-                        _debug_log(f"Patched 'sd version' → '{base_model}' in {os.path.basename(json_file)}")
-                except Exception as patch_err:
-                    _debug_log(f"Could not patch .json for {model_name}: {patch_err}")
+            _patch_sidecar_sd_version(json_file, data.get('baseModel', ''))
 
             return data
 
@@ -4813,9 +4818,9 @@ def find_metadata_issues(folders, progress=gr.Progress() if queue else None):
             </div>
         </details>
         <div style="margin-top:12px;padding:10px;background:#fff3cd;border-radius:5px;font-size:13px;">
-            💡 Click <strong>Resolve via CivArchive</strong> below to try recovering real metadata for these files from
-            <a href="https://civarchive.com" target="_blank">CivArchive</a>. Files with no CivArchive match are left
-            untouched and keep showing as local-only.
+            💡 Click <strong>Resolve issues</strong> below. Models removed from CivitAI are recovered from
+            <a href="https://civarchive.com" target="_blank">CivArchive</a>; mismatched metadata is re-fetched from
+            CivitAI itself, since those models are still listed there. Files that can't be resolved are left untouched.
         </div>
         {unresolved_note}
     </div>'''
@@ -4824,21 +4829,102 @@ def find_metadata_issues(folders, progress=gr.Progress() if queue else None):
     yield gr.update(value=html), gr.update(visible=True, interactive=True), _json.dumps(issues, ensure_ascii=False)
 
 
-def resolve_civarchive_issues(issues_json, progress=gr.Progress() if queue else None):
+def _recover_orphan_via_civarchive(adapter, issue):
     """
-    Attempt to recover real metadata for orphaned/corrupted local models found
-    by find_metadata_issues(), using CivArchive (a mirror of delisted CivitAI
-    listings) looked up by the file's SHA256.
+    Recover metadata for a model removed from CivitAI from its CivArchive mirror.
 
-    On a CivArchive hit: writes the canonical model dict to .api_info.json
-    (marked "source": "civarchive"), and adds "resolved_via"/"archived_url"
-    to the .json sidecar without touching its existing fields — the original
-    modelId, modelVersionId, sha256 etc. are preserved.
+    Looked up by the file's SHA256, then cross-checked against the modelId cached
+    in the .json sidecar — a hash lookup is not scoped to one listing, so the same
+    collision that can corrupt a CivitAI by-hash write can come back from the
+    mirror too. On a match, writes the canonical model dict to .api_info.json
+    (marked "source": "civarchive") and adds "resolved_via"/"archived_url" to the
+    sidecar without touching its other fields. Returns True when recovered; on a
+    miss or mismatch nothing is written and the file stays local-only.
+    """
+    file_path = issue['file_path']
+    model_name = issue.get('model_name', os.path.basename(file_path))
+    expected_model_id = _normalize_model_id(issue.get('model_id'))
 
-    On a miss: the file is left completely untouched and keeps falling back
-    to the plain local-only card, exactly as it does today.
+    sha256 = issue.get('sha256')
+    if not sha256 and os.path.exists(file_path):
+        sha256 = gen_sha256(file_path)
 
-    Generator: yields inline HTML progress updates to the UI.
+    canonical = adapter.get_version_by_hash(sha256) if adapter and sha256 else None
+    if not isinstance(canonical, dict):
+        debug_print(f"No CivArchive match for: {model_name} (model {expected_model_id})")
+        return False
+
+    archived_model_id = _normalize_model_id(canonical.get('id'))
+    if expected_model_id is not None and archived_model_id != expected_model_id:
+        print(f"[CivitAI Browser Neo] ⚠ CivArchive returned model {archived_model_id} but expected {expected_model_id} for '{model_name}' — skipped")
+        return False
+
+    canonical = dict(canonical)
+    canonical['source'] = 'civarchive'
+    canonical['archived_url'] = canonical.get('browserSourceUrl')
+
+    base_path = os.path.splitext(file_path)[0]
+    _api.safe_json_save(base_path + '.api_info.json', canonical)
+
+    json_file = base_path + '.json'
+    if os.path.exists(json_file):
+        sidecar = _api.safe_json_load(json_file) or {}
+        sidecar['resolved_via'] = 'civarchive'
+        sidecar['archived_url'] = canonical.get('archived_url')
+        _api.safe_json_save(json_file, sidecar)
+
+    print(f"[CivitAI Browser Neo] ✓ Recovered via CivArchive: {model_name}")
+    return True
+
+
+def _repair_mismatch_from_civitai(issue):
+    """
+    Rewrite a mismatched .api_info.json from CivitAI, by version id.
+
+    These models are still listed on CivitAI — only their .api_info.json holds
+    another model's data, left behind by a by-hash collision. Asking by-hash again
+    would return that same wrong listing, so this fetches the exact version pinned
+    by the sidecar's modelVersionId instead, and still checks the returned modelId
+    before writing. Also re-patches the sidecar's "sd version", which the same
+    collision may have overwritten. Returns True when repaired; otherwise nothing
+    is written.
+    """
+    file_path = issue['file_path']
+    model_name = issue.get('model_name', os.path.basename(file_path))
+    expected_model_id = _normalize_model_id(issue.get('model_id'))
+    base_path = os.path.splitext(file_path)[0]
+    json_file = base_path + '.json'
+
+    sidecar = _load_sidecar_dict(json_file) or {}
+    version_id = _normalize_model_id(sidecar.get('modelVersionId'))
+    if version_id is None:
+        debug_print(f"No cached modelVersionId for: {model_name} — cannot repair")
+        return False
+
+    data = _api.request_civit_api(f"https://{_api.get_civitai_domain()}/api/v1/model-versions/{version_id}")
+    if not isinstance(data, dict):
+        debug_print(f"CivitAI version {version_id} unavailable for: {model_name} ({data})")
+        return False
+
+    returned_model_id = _normalize_model_id(data.get('modelId'))
+    if returned_model_id != expected_model_id:
+        print(f"[CivitAI Browser Neo] ⚠ Version {version_id} belongs to model {returned_model_id}, expected {expected_model_id} for '{model_name}' — skipped")
+        return False
+
+    _api.safe_json_save(base_path + '.api_info.json', data)
+    _patch_sidecar_sd_version(json_file, data.get('baseModel', ''))
+    print(f"[CivitAI Browser Neo] ✓ Repaired .api_info.json from CivitAI: {model_name}")
+    return True
+
+
+def resolve_metadata_issues(issues_json, progress=gr.Progress() if queue else None):
+    """
+    Resolve the issues found by find_metadata_issues(), each from the right source:
+      - orphaned (removed from CivitAI) → recovered from CivArchive.
+      - corrupted (still on CivitAI, wrong .api_info.json) → re-fetched from CivitAI.
+
+    Files that can't be resolved are left completely untouched and keep working
+    exactly as before. Generator: yields inline HTML progress updates to the UI.
     """
     import json as _json
 
@@ -4847,7 +4933,8 @@ def resolve_civarchive_issues(issues_json, progress=gr.Progress() if queue else 
     except Exception:
         issues = {}
 
-    targets = (issues.get('orphaned') or []) + (issues.get('corrupted') or [])
+    targets = ([('orphaned', it) for it in issues.get('orphaned') or []]
+               + [('corrupted', it) for it in issues.get('corrupted') or []])
     total = len(targets)
 
     if not total:
@@ -4859,77 +4946,65 @@ def resolve_civarchive_issues(issues_json, progress=gr.Progress() if queue else 
 
     yield (
         gr.update(value='<div style="padding:12px 15px;border:1px solid var(--border-color-primary);border-radius:8px;margin:6px 0;">'
-                        '🗄️ <strong>Looking up CivArchive…</strong>'
+                        '🛠️ <strong>Resolving metadata issues…</strong>'
                         '</div>'),
         gr.update(visible=True),
         '{}'
     )
 
-    adapter = _browser_sources.get_browser_source('civarchive')
+    adapter = None
+    if any(kind == 'orphaned' for kind, _ in targets):
+        adapter = _browser_sources.get_browser_source('civarchive')
 
-    resolved = 0
-    still_local = 0
+    counts = {'recovered': 0, 'repaired': 0, 'still_local': 0, 'still_mismatched': 0}
     errors = []
-    model_name = ''
 
-    for i, issue in enumerate(targets):
+    for i, (kind, issue) in enumerate(targets):
         if gl.cancel_status:
             break
 
-        file_path = issue['file_path']
-        sha256 = issue.get('sha256')
-        model_name = issue.get('model_name', os.path.basename(file_path))
-        expected_model_id = issue.get('model_id')
-
+        model_name = issue.get('model_name', os.path.basename(issue['file_path']))
         if progress is not None:
             progress((i + 1) / total, desc=f"Resolving: {model_name} ({i + 1}/{total})")
 
         try:
-            if not sha256 and os.path.exists(file_path):
-                sha256 = gen_sha256(file_path)
-
-            canonical = adapter.get_version_by_hash(sha256) if adapter and sha256 else None
-
-            if isinstance(canonical, dict):
-                canonical = dict(canonical)
-                canonical['source'] = 'civarchive'
-                canonical['archived_url'] = canonical.get('browserSourceUrl')
-
-                api_info_file = os.path.splitext(file_path)[0] + '.api_info.json'
-                _api.safe_json_save(api_info_file, canonical)
-
-                json_file = os.path.splitext(file_path)[0] + '.json'
-                if os.path.exists(json_file):
-                    sidecar = _api.safe_json_load(json_file) or {}
-                    sidecar['resolved_via'] = 'civarchive'
-                    sidecar['archived_url'] = canonical.get('archived_url')
-                    _api.safe_json_save(json_file, sidecar)
-
-                resolved += 1
-                print(f"[CivitAI Browser Neo] ✓ Resolved via CivArchive: {model_name}")
+            if kind == 'orphaned':
+                ok = _recover_orphan_via_civarchive(adapter, issue)
             else:
-                still_local += 1
-                debug_print(f"No CivArchive match for: {model_name} (model {expected_model_id})")
+                ok = _repair_mismatch_from_civitai(issue)
         except Exception as e:
+            ok = False
             errors.append(f"{model_name}: {e}")
-            still_local += 1
-            debug_print(f"Error resolving {model_name} via CivArchive: {e}")
+            debug_print(f"Error resolving {model_name}: {e}")
+
+        if kind == 'orphaned':
+            counts['recovered' if ok else 'still_local'] += 1
+        else:
+            counts['repaired' if ok else 'still_mismatched'] += 1
 
         if (i + 1) % 10 == 0 or i == total - 1:
             yield (
-                gr.update(value=_make_progress_bar_html(i + 1, total, f'🗄️ Resolving: {model_name}')),
+                gr.update(value=_make_progress_bar_html(i + 1, total, f'🛠️ Resolving: {model_name}')),
                 gr.update(visible=True),
                 '{}'
             )
 
+    lines = []
+    if issues.get('orphaned'):
+        lines.append(f"🗄️ {counts['recovered']} recovered via CivArchive, {counts['still_local']} still local-only")
+    if issues.get('corrupted'):
+        lines.append(f"⚠️ {counts['repaired']} mismatched repaired from CivitAI, {counts['still_mismatched']} still mismatched")
+    detail = ''.join(f'<div>{line}</div>' for line in lines)
+
     result_html = f'''
     <div style="padding:20px;text-align:center;">
         <div style="font-size:48px;margin-bottom:12px;">{'✅' if not errors else '⚠️'}</div>
-        <h3 style="margin:0 0 8px 0;color:var(--body-text-color);">{resolved} resolved via CivArchive, {still_local} still local-only.</h3>
-        <p style="color:var(--body-text-color-subdued);margin:0;font-size:13px;">Local-only files keep working exactly as before — nothing was removed.</p>
+        <h3 style="margin:0 0 8px 0;color:var(--body-text-color);">Done.</h3>
+        <div style="font-size:14px;margin-bottom:8px;">{detail}</div>
+        <p style="color:var(--body-text-color-subdued);margin:0;font-size:13px;">Unresolved files keep working exactly as before — nothing was removed.</p>
     </div>'''
 
-    print(f"[CivitAI Browser Neo] resolve_civarchive_issues: resolved={resolved}, still_local={still_local}, errors={len(errors)}")
+    print(f"[CivitAI Browser Neo] resolve_metadata_issues: {counts}, errors={len(errors)}")
     yield gr.update(value=result_html), gr.update(visible=False), '{}'
 
 
@@ -4946,7 +5021,7 @@ def _fetch_tags_for_model_id(model_id, civarchive_adapter=None):
     """Return (tags, source) for one CivitAI model id.
 
     source is 'civitai', 'civarchive' or None. CivArchive is a mirror of
-    delisted listings — the same fallback resolve_civarchive_issues() uses — so
+    delisted listings — the same fallback _recover_orphan_via_civarchive() uses — so
     a LoRA whose CivitAI page is gone can still recover its tags.
     """
     api_url = f'https://{_api.get_civitai_domain()}/api/v1/models/{model_id}'

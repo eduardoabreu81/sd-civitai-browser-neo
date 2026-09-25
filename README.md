@@ -55,7 +55,7 @@ The largest update since the Neo fork: the Browser is no longer hardwired to Civ
 - **LoraDex** — a new sub-tab for LoRA categories: auto-suggestion from tags and description, manual override saved to the `.json` sidecar, category badges, and `Lora/<base>/<category>/` subfolders. *[→ LoraDex](https://github.com/eduardoabreu81/sd-civitai-browser-neo/wiki/Feature-LoraDex)*
 - **Native Extra Networks cards** — the txt2img/img2img checkpoint and LoRA cards now carry base-model badges, LoRA category, trigger words, and the real CivitAI name, read from local sidecars with no extra API calls. An opt-in theme restyles them to look like the CivitAI website. *[→ Native Cards](https://github.com/eduardoabreu81/sd-civitai-browser-neo/wiki/Feature-Native-Cards)*
 - **Paid and Early Access are told apart** — a timed window that expires into a free download gets an aqua **Early Access** badge; a permanent Buzz purchase gets a gold **Paid** badge, each with its own hide filter. *[→ Paid vs. Early Access](https://github.com/eduardoabreu81/sd-civitai-browser-neo/wiki/Feature-Paid-vs-Early-Access)*
-- **Metadata maintenance** — **Verify local metadata** checks that cached CivitAI IDs still resolve and that `.api_info.json` matches its file; **Resolve via CivArchive** recovers metadata for models delisted from CivitAI. *[→ Metadata Maintenance](https://github.com/eduardoabreu81/sd-civitai-browser-neo/wiki/Feature-Metadata-Maintenance)*
+- **Metadata maintenance** — **Verify local metadata** checks that cached CivitAI IDs still resolve and that `.api_info.json` matches its file; **Resolve issues** recovers models delisted from CivitAI from CivArchive, and re-downloads mismatched info straight from CivitAI. *[→ Metadata Maintenance](https://github.com/eduardoabreu81/sd-civitai-browser-neo/wiki/Feature-Metadata-Maintenance)*
 - **GGUF support** — `.gguf` is a first-class checkpoint format: scanned by Local Models, recognized as installed, with sidecars, delete actions, and update checks working like `.safetensors`/`.ckpt`.
 - **Faster and steadier** — installed-version detection and bulk download no longer walk the model tree per card, previews can be saved as JPEG, Aria2 retries with backoff on HTTP 429, and freshly-published versions no longer show a false "Unable to load preview images" error.
 
@@ -123,7 +123,7 @@ The largest update since the Neo fork: the Browser is no longer hardwired to Civ
 *[Full details on the Wiki →](https://github.com/eduardoabreu81/sd-civitai-browser-neo/wiki/Feature-Metadata-Maintenance)*
 
 - **Verify local metadata** — check that cached CivitAI IDs still resolve and that `.api_info.json` matches its file
-- **Resolve via CivArchive** — recover metadata for models delisted from CivitAI
+- **Resolve issues** — recover models delisted from CivitAI from CivArchive, and fix mismatched info from CivitAI itself
 - **Mark for review** — flag a local model for later attention; status stored by SHA256
 - Bulk metadata, tag, and preview refresh from CivitAI
 
