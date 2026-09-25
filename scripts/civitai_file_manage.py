@@ -1442,19 +1442,20 @@ def render_civarchive_model_html(model_file):
 _RECOVERED_HTML_MARKER = 'recovered via CivArchive'
 
 
-def _write_recovered_html(model_file):
+def _write_recovered_html(model_file, create=False):
     """
     Rebuild a CivArchive-recovered model's .html sidecar from the recovery.
 
     An existing .html holds the page saved while the model was still on CivitAI —
     its links now lead nowhere, and every view that reads the cache would keep
-    serving it — so it is replaced; without one, a page is written only when "Save
-    HTML file when saving model" is on. The old page goes to the recycle bin; a page
-    this function wrote earlier is simply overwritten. Returns True when written.
+    serving it — so it is replaced; without one, a page is written only when asked
+    to (create) or when "Save HTML file when saving model" is on. The old page goes
+    to the recycle bin; a page this function wrote earlier is simply overwritten.
+    Returns True when written.
     """
     html_path = os.path.splitext(model_file)[0] + '.html'
     had_html = os.path.exists(html_path)
-    if not had_html and not getattr(opts, 'save_html_on_save', False):
+    if not had_html and not create and not getattr(opts, 'save_html_on_save', False):
         return False
 
     body = render_civarchive_model_html(model_file)
@@ -1468,6 +1469,133 @@ def _write_recovered_html(model_file):
             send2trash(html_path)
     _write_html_sidecar(html_path, body)
     return True
+
+
+# Sidecar fields that must keep pointing at CivitAI: CivArchive also mirrors other
+# platforms, so its ids are not CivitAI ids for every listing.
+_CIVITAI_ID_FIELDS = ('modelId', 'modelVersionId', 'modelPageURL')
+
+
+def _outside_civitai_files(file_paths, all_ids, civitai_items, not_found_files):
+    """
+    Files a CivitAI scan could not serve: those whose cached model id no longer
+    comes back (delisted), plus those CivitAI's by-hash lookup answered 404.
+
+    A missing id is re-checked with the failure-aware bulk fetch before it counts
+    as delisted — a batch that errored in the scan is not a delisting, and treating
+    it as one would overwrite a live model's metadata with archive data.
+    """
+    returned = {_normalize_model_id(item.get('id')) for item in civitai_items}
+    missing = {}
+    for file_path, model_id in zip(file_paths, all_ids):
+        normalized = _normalize_model_id(model_id)
+        if normalized is not None and normalized not in returned:
+            missing[file_path] = normalized
+
+    delisted = []
+    if missing:
+        found, unresolved = _bulk_fetch_models_by_ids(sorted(set(missing.values())))
+        for file_path, model_id in missing.items():
+            if model_id in found or model_id in unresolved:
+                debug_print(f"[CivArchive scan] {os.path.basename(file_path)}: not confirmed delisted (model {model_id}) — skipped")
+                continue
+            delisted.append(file_path)
+    return delisted + [fp for fp in not_found_files if fp not in delisted]
+
+
+def _civarchive_listing_for(file_path, adapter):
+    """
+    The CivArchive listing for a file outside CivitAI: the recovery saved earlier,
+    or a fresh lookup by SHA256 — validated and saved exactly as Resolve does.
+    Returns None when CivArchive has no match.
+    """
+    archived = _load_civarchive_api_info(file_path)
+    if archived:
+        return archived
+    sidecar = _load_sidecar_dict(os.path.splitext(file_path)[0] + '.json') or {}
+    issue = {
+        'file_path': file_path,
+        'sha256': sidecar.get('sha256'),
+        'model_id': sidecar.get('modelId'),
+        'model_name': os.path.basename(file_path),
+    }
+    if _recover_orphan_via_civarchive(adapter, issue):
+        return _load_civarchive_api_info(file_path)
+    return None
+
+
+def _save_sidecar_from_civarchive(file_path, archived, overwrite_toggle):
+    """
+    Fill the .json sidecar (trigger words, description, base model, tags) from a
+    CivArchive listing through the same find_and_save() the CivitAI scan uses.
+    The CivitAI id fields are put back afterwards (see _CIVITAI_ID_FIELDS).
+    """
+    json_file = os.path.splitext(file_path)[0] + '.json'
+    before = _load_sidecar_dict(json_file) or {}
+    sha256 = before.get('sha256')
+    if not sha256:
+        return False
+
+    result = find_and_save({'items': [archived]}, sha256, os.path.basename(file_path), json_file, False, overwrite_toggle)
+    if result != 'found':
+        return False
+
+    after = _load_sidecar_dict(json_file) or {}
+    for key in _CIVITAI_ID_FIELDS:
+        if key in before:
+            after[key] = before[key]
+        else:
+            after.pop(key, None)
+    after['resolved_via'] = 'civarchive'
+    after['archived_url'] = archived.get('archived_url') or archived.get('browserSourceUrl')
+    _api.safe_json_save(json_file, after)
+    return True
+
+
+def _civarchive_scan(files, update_previews, overwrite_toggle, create_html, progress=None):
+    """
+    Second pass of "Update info & tags" / "Update previews" for the files outside
+    CivitAI: the same update, fed by each file's CivArchive listing instead.
+    Returns counts for the summary: updated / not_archived / errors.
+    """
+    adapter = _browser_sources.get_browser_source('civarchive')
+    counts = {'updated': 0, 'not_archived': 0, 'errors': 0}
+    total = len(files)
+
+    for i, file_path in enumerate(files):
+        if gl.cancel_status:
+            break
+        name = os.path.basename(file_path)
+        if progress is not None:
+            progress((i + 1) / total, desc=f"CivArchive: {name} ({i + 1}/{total})")
+        try:
+            archived = _civarchive_listing_for(file_path, adapter)
+            if not archived:
+                counts['not_archived'] += 1
+                continue
+            if update_previews:
+                save_preview(file_path, {'items': [archived]}, overwrite_toggle)
+            else:
+                _save_sidecar_from_civarchive(file_path, archived, overwrite_toggle)
+                if create_html:
+                    _write_recovered_html(file_path, create=True)
+            counts['updated'] += 1
+        except Exception as e:
+            counts['errors'] += 1
+            print(f"[CivitAI Browser Neo] CivArchive scan failed for {name}: {e}")
+
+    print(f"[CivitAI Browser Neo] CivArchive scan: {counts}")
+    return counts
+
+
+def _civarchive_scan_summary_html(counts):
+    return (
+        '<div style="padding:10px 15px;border:1px solid var(--border-color-primary);border-radius:8px;margin:6px 0;">'
+        f"🗄️ <strong>Models outside CivitAI:</strong> {counts['updated']} updated from CivArchive, "
+        f"{counts['not_archived']} not found on CivArchive"
+        + (f", {counts['errors']} failed (see terminal)" if counts['errors'] else '')
+        + '</div>'
+    )
 
 def gen_sha256(file_path):
     json_file = os.path.splitext(file_path)[0] + '.json'
@@ -2989,7 +3117,7 @@ def get_save_path_and_name(install_path, file_name, api_response, sub_folder=Non
     return save_path, name
 
 ## === ANXETY EDITs ===
-def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish, organize_finish, overwrite_toggle, tile_count, gen_hash, create_html, progress=gr.Progress() if queue else None, organize_by_base=True, organize_by_category=False):
+def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish, organize_finish, overwrite_toggle, tile_count, gen_hash, create_html, use_civarchive=False, progress=gr.Progress() if queue else None, organize_by_base=True, organize_by_category=False):
     global no_update
     proxies, ssl = _api.get_proxies()
     gl.scan_files = True
@@ -3050,6 +3178,11 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
     file_paths = []
     all_ids = []
     local_fallback_items = []
+    # "Update info & tags" / "Update previews" can run a second pass over the files
+    # outside CivitAI, fed by CivArchive (the "look up on CivArchive" scan option).
+    civarchive_pass = bool(use_civarchive) and (from_tag or from_preview)
+    not_found_files = []
+    outside_files = []
 
     for file_path in files:
         if gl.cancel_status:
@@ -3073,6 +3206,8 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
             debug_print(f"model: '{file_name}' not found on CivitAI servers.")
             if from_installed:
                 local_fallback_items.append(_build_local_fallback_browser_item(file_path))
+            if civarchive_pass:
+                not_found_files.append(file_path)
         elif model_id != None:
             all_model_ids.append(f"&ids={model_id}")
             all_ids.append(model_id)
@@ -3089,7 +3224,7 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
 
     all_model_ids = list(set(all_model_ids))
 
-    if not all_model_ids and not local_fallback_items:
+    if not all_model_ids and not local_fallback_items and not not_found_files:
         progress(1, desc='No model IDs could be retrieved.')
         print("Could not retrieve any Model IDs, please make sure to turn on the 'One-Time Hash Generation for externally downloaded models.' option if you haven't already.")
         no_update = True
@@ -3166,7 +3301,11 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
                     url = None
 
         api_response['items'] = all_items
-        if api_response['items'] == []:
+        outside_files = (
+            _outside_civitai_files(file_paths, all_ids, all_items, not_found_files)
+            if civarchive_pass else []
+        )
+        if api_response['items'] == [] and not outside_files:
             return (
                 gr.update(value=_api.api_error_msg('no_items')),
                 gr.update(value=number)
@@ -3241,10 +3380,16 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
         )
 
     elif from_tag:
+        # Files outside CivitAI get the CivArchive pass below instead.
+        outside_set = set(outside_files)
+        civitai_files = [
+            (fp, mid) for fp, mid in zip(file_paths, all_ids)
+            if fp not in outside_set and api_response['items']
+        ]
         completed_tags = 0
-        tag_count = len(file_paths)
+        tag_count = len(civitai_files)
 
-        for file_path, id_value in zip(file_paths, all_ids):
+        for file_path, id_value in civitai_files:
             install_path, file_name = os.path.split(file_path)
 
             try:
@@ -3277,10 +3422,6 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
                     if model_version and item:
                         # Use the specific model version name for HTML generation
                         preview_html = _api.update_model_info(None, model_version.get('name'), True, id_value, api_response, True)
-                    elif _load_civarchive_api_info(file_path):
-                        # Delisted from CivitAI but recovered via CivArchive: build the
-                        # page from the recovery (the CivitAI response has no entry).
-                        preview_html = render_civarchive_model_html(file_path)
                     else:
                         # Fallback to first version if specific version not found
                         model_versions = _api.update_model_versions(id_value, api_response)
@@ -3307,19 +3448,27 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
                     )
                 continue  # Skip this model and continue with the next
 
+        summary = '<div style="min-height: 0px;"></div>'
+        if outside_files:
+            counts = _civarchive_scan(outside_files, False, overwrite_toggle, create_html, progress)
+            summary = _civarchive_scan_summary_html(counts)
+
         if progress != None:
             progress(1, desc='All tags succesfully saved!')
         gl.scan_files = False
         time.sleep(2)
         return (
-            gr.update(value='<div style="min-height: 0px;"></div>'),
+            gr.update(value=summary),
             gr.update(value=number)
         )
 
     elif from_preview:
+        # Files outside CivitAI get the CivArchive pass below instead.
+        outside_set = set(outside_files)
+        civitai_files = [fp for fp in file_paths if fp not in outside_set and api_response['items']]
         completed_preview = 0
-        preview_count = len(file_paths)
-        for file in file_paths:
+        preview_count = len(civitai_files)
+        for file in civitai_files:
             _, file_name = os.path.split(file)
             name = os.path.splitext(file_name)[0]
             completed_preview += 1
@@ -3329,9 +3478,15 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
                     desc=f"Saving preview images... {completed_preview}/{preview_count} | {name}"
                 )
             save_preview(file, api_response, overwrite_toggle)
+
+        summary = '<div style="min-height: 0px;"></div>'
+        if outside_files:
+            counts = _civarchive_scan(outside_files, True, overwrite_toggle, create_html, progress)
+            summary = _civarchive_scan_summary_html(counts)
+
         gl.scan_files = False
         return (
-            gr.update(value='<div style="min-height: 0px;"></div>'),
+            gr.update(value=summary),
             gr.update(value=number)
         )
     

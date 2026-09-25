@@ -125,7 +125,7 @@ The largest update since the Neo fork: the Browser is no longer hardwired to Civ
 - **Verify local metadata** — check that cached CivitAI IDs still resolve and that `.api_info.json` matches its file
 - **Resolve issues** — recover models delisted from CivitAI from CivArchive, and fix mismatched info from CivitAI itself
 - **Mark for review** — flag a local model for later attention; status stored by SHA256
-- Bulk metadata, tag, and preview refresh from CivitAI
+- Bulk metadata, tag, and preview refresh from CivitAI, with an option to also fill in models that are no longer on CivitAI from CivArchive
 
 ### 🖼️ Model Info & Send to txt2img
 *[Full details on the Wiki →](https://github.com/eduardoabreu81/sd-civitai-browser-neo/wiki/Feature-Model-Info)*

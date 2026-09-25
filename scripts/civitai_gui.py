@@ -586,6 +586,7 @@ def on_ui_tabs():
                 overwrite_toggle = gr.Checkbox(elem_id='overwrite_toggle', label='Overwrite existing files (previews, HTMLs, tags, descriptions)', value=True, min_width=300)
                 skip_hash_toggle = gr.Checkbox(elem_id='skip_hash_toggle', label='One-time hash generation for externally downloaded models', value=True, min_width=300)
                 do_html_gen = gr.Checkbox(elem_id='do_html_gen', label='Save an HTML file per model when updating info & tags', value=False, min_width=300)
+                civarchive_scan_toggle = gr.Checkbox(elem_id='civarchive_scan_toggle', label='Also update models missing from CivitAI using CivArchive', value=False, min_width=300)
 
             gr.Markdown('**🔄 Update from CivitAI** — fetch metadata, tags and previews for the selected content types.')
             with gr.Row():
@@ -1892,7 +1893,8 @@ def on_ui_tabs():
             overwrite_toggle,
             tile_count_slider,
             skip_hash_toggle,
-            do_html_gen
+            do_html_gen,
+            civarchive_scan_toggle
         ]
 
         file_scan_inputs_local = [
@@ -1906,6 +1908,7 @@ def on_ui_tabs():
             tile_count_slider,
             skip_hash_toggle_local,
             do_html_gen_local,
+            civarchive_scan_toggle,  # positional slot only; Local scans don't run the CivArchive pass
             org_by_base,
             org_by_category
         ]

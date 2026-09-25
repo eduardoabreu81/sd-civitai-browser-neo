@@ -22,6 +22,22 @@
 
 ## Linha do Tempo
 
+### 2026-09-25 — Scan option: update models missing from CivitAI using CivArchive
+
+**What changed**
+- New scan option in Organization → Scan options: **"Also update models missing from CivitAI using CivArchive"** (off by default: it writes sidecars and can send old `.html` pages to the recycle bin). `file_scan(..., create_html, use_civarchive=False, progress, organize_by_base, organize_by_category)`. The Local inputs list passes the same checkbox only to keep its positional slots aligned.
+- With it on, **Update info & tags** and **Update previews** run as before against CivitAI, then do a second pass (`_civarchive_scan()`) over the files CivitAI could not serve (`_outside_civitai_files()`):
+  - cached id not returned by the scan → re-checked with `_bulk_fetch_models_by_ids()` first. An id that errors or answers late is **not** treated as delisted, because that would overwrite a live model's metadata with archive data;
+  - files `get_models()` marked `Model not found` (CivitAI by-hash 404).
+- For each one, `_civarchive_listing_for()` uses the saved recovery or looks it up by SHA256 through `_recover_orphan_via_civarchive()` (same ID check and writes as Resolve). Then:
+  - info & tags → `_save_sidecar_from_civarchive()`: the same `find_and_save()` fed with the CivArchive listing (trigger words, description, base model, tags; overwrite rules unchanged). `modelId` / `modelVersionId` / `modelPageURL` are restored afterwards, because CivArchive mirrors other platforms too and its ids are not always CivitAI ids. With "Save an HTML file" on → `_write_recovered_html(create=True)`;
+  - previews → `save_preview()` with the CivArchive listing (matched by hash).
+- Files outside CivitAI are skipped in the CivitAI pass when the option is on (there they were no-ops anyway). This also drops the `render_civarchive_model_html` branch added earlier in the CivitAI loop, which wrote through `save_model_info()` and had `local_path_in_html` remap the archive images onto the old local `_N.png`.
+- A selection where every model is outside CivitAI no longer aborts with "no items" when the option is on. The same goes for an all-404 selection ("No model IDs could be retrieved").
+- Summary line in the progress area: "Models outside CivitAI: N updated from CivArchive, M not found on CivArchive[, K failed]".
+
+**Files:** `scripts/civitai_file_manage.py`, `scripts/civitai_gui.py`, `tests/test_civarchive_scan.py` (new, 12 cases, including end-to-end `file_scan` runs). `tests/` 459 passed. Real-data dry run on a copy of the `yesanima_v20` sidecars: description cleaned by the real bs4, CivitAI ids kept as ints.
+
 ### 2026-09-25 — Recovered (CivArchive) models render their real page everywhere
 
 **What changed**
