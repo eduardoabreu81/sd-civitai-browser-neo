@@ -22,6 +22,17 @@
 
 ## Linha do Tempo
 
+### 2026-09-25 — Local base-model filter follows the installed version
+
+**What changed**
+- Runtime report: after downloading (and later deleting) a Z-Image version of an Anima model, Anima models showed under the Local **Z-Image** filter. The folder `Stable-diffusion/Z-Image/` was left behind empty by the download's auto-organize. No sidecar said Z-Image: all 616 `.json` / 624 `.api_info.json` read Anima or Krea 2.
+- Cause: `render_local_browser` kept a card if **any** version of its CivitAI listing matched the filter. Multi-base listings are common — 28 of the user's installed listings also publish a `ZImageTurbo`/`ZImageBase` version (e.g. "Smug Face [ANIMA & IL & ZIT]"), and many more a Krea 2 one. The deletion only made the problem visible; the card badge was already right (it uses the installed version).
+- Fix: `_installed_base_models(item, paths)` matches the installed version(s) by the sidecar's `modelVersionId`, then by file SHA256, and the filter tests those only. If nothing matches, every version counts, so a card never drops out of all filters. `_item_local_paths()` is shared with the mtime stamping.
+- Real-data check: under a Z-Image filter, 28 → 0. Real Dream (Anima + Krea 2 files installed) shows under both.
+
+**Files:** `scripts/civitai_file_manage.py`, `tests/test_local_base_filter.py` (new, 6 cases). `tests/` 465 passed.
+**Not changed:** the empty `Z-Image/` folder a deleted download leaves behind.
+
 ### 2026-09-25 — Scan option: update models missing from CivitAI using CivArchive
 
 **What changed**

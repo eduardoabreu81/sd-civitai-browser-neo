@@ -6476,6 +6476,41 @@ def resort_local_browser(sort_order):
     return _render_local_slice(0)
 
 
+def _item_local_paths(item, id_to_paths):
+    """On-disk file(s) behind a Local card: by model id, or the fallback card's own file."""
+    return id_to_paths.get(item.get('id')) or ([item['local_file_path']] if item.get('local_file_path') else [])
+
+
+def _installed_base_models(item, paths):
+    """
+    Lower-cased base models of the versions of a listing that are actually on disk.
+
+    One CivitAI listing can span many base models — an Anima LoRA may also publish
+    ZImageTurbo and Krea 2 versions — so filtering a local library by base model
+    must look at what is installed, not at every version the listing has. Versions
+    are matched by the sidecar's cached modelVersionId, then by file SHA256. When
+    none can be matched, every version counts, so a card never drops out of all
+    filters.
+    """
+    versions = item.get('modelVersions') or []
+    version_ids, shas = set(), set()
+    for file_path in paths:
+        sidecar = _load_sidecar_dict(os.path.splitext(file_path)[0] + '.json') or {}
+        version_id = _normalize_model_id(sidecar.get('modelVersionId'))
+        if version_id is not None:
+            version_ids.add(version_id)
+        sha = _api.normalize_sha256(sidecar.get('sha256'))
+        if sha:
+            shas.add(sha)
+
+    installed = [
+        v for v in versions
+        if _normalize_model_id(v.get('id')) in version_ids
+        or any(_sha_of(f) in shas for f in v.get('files') or [])
+    ]
+    return {(v.get('baseModel') or '').lower() for v in (installed or versions)}
+
+
 def render_local_browser(content_type, base_filter, use_search_term, search_term, tile_count, nsfw, sort_order='Name (A-Z)'):
     """Scan local model folders (filtered) and render the local-models card grid.
 
@@ -6656,20 +6691,20 @@ def render_local_browser(content_type, base_filter, use_search_term, search_term
         if fb.get('id') not in existing_ids:
             items.append(fb)
 
-    # Local base-model filter (independent of the Browser): keep models that have at
-    # least one version whose baseModel matches one of the selected filters.
+    # Local base-model filter (independent of the Browser): keep models whose
+    # INSTALLED version matches one of the selected filters.
     bf = base_filter if isinstance(base_filter, list) else ([base_filter] if base_filter else [])
     bf = [b for b in bf if b]
     if bf:
         bf_lower = {b.lower() for b in bf}
         items = [it for it in items
-                 if any((v.get('baseModel') or '').lower() in bf_lower for v in it.get('modelVersions', []))]
+                 if _installed_base_models(it, _item_local_paths(it, id_to_paths)) & bf_lower]
 
     # Stamp each item with its on-disk file mtime so the grid can be re-sorted later
     # (resort_local_browser) without re-scanning. API-resolved cards get their mtime
     # from id_to_paths; local-only fallback cards carry their own local_file_path.
     for it in items:
-        paths = id_to_paths.get(it.get('id')) or ([it['local_file_path']] if it.get('local_file_path') else [])
+        paths = _item_local_paths(it, id_to_paths)
         # Persist the installed file path(s) so the detail panel can detect the
         # installed version from just these 1-3 files instead of walking (and
         # json.load-ing) the entire content-type tree on every card click.
