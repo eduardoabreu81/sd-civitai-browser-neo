@@ -1355,32 +1355,87 @@ def _build_local_fallback_browser_item(file_path):
         }]
     }
 
-    # If _recover_orphan_via_civarchive() already recovered real CivitAI-style
-    # metadata for this file (removed listing found on CivArchive), use it
-    # to enrich this fallback card instead of the empty stub above — the
-    # synthetic local 'id' and modelVersions[0]['id'] are kept unchanged so
-    # any code matching cards by that id keeps working.
-    api_info_file = os.path.splitext(file_path)[0] + '.api_info.json'
-    if os.path.exists(api_info_file):
-        try:
-            api_data = _api.safe_json_load(api_info_file) or {}
-        except Exception:
-            api_data = {}
-        if api_data.get('source') == 'civarchive':
-            item['description'] = api_data.get('description') or item['description']
-            item['tags'] = api_data.get('tags') or item['tags']
-            if api_data.get('creator'):
-                item['creator'] = api_data['creator']
-            item['civarchive_url'] = api_data.get('archived_url')
-
-            archived_versions = api_data.get('modelVersions') or []
-            if archived_versions:
-                archived_version = archived_versions[0]
-                item['modelVersions'][0]['baseModel'] = archived_version.get('baseModel') or item['modelVersions'][0]['baseModel']
-                item['modelVersions'][0]['trainedWords'] = archived_version.get('trainedWords') or []
-                item['modelVersions'][0]['images'] = archived_version.get('images') or []
+    # If _recover_orphan_via_civarchive() already recovered the real listing for
+    # this file (removed from CivitAI, found on CivArchive), render that instead
+    # of the empty stub above.
+    archived = _load_civarchive_api_info(file_path)
+    if archived:
+        _apply_civarchive_recovery(item, archived, file_sha)
 
     return item
+
+
+def _load_civarchive_api_info(file_path):
+    """Return the .api_info.json written by a CivArchive recovery, or None."""
+    api_info_file = os.path.splitext(file_path)[0] + '.api_info.json'
+    if not os.path.exists(api_info_file):
+        return None
+    data = _load_sidecar_dict(api_info_file)
+    return data if data and data.get('source') == 'civarchive' else None
+
+
+def _sha_of(file_info):
+    hashes = file_info.get('hashes') or {}
+    return _api.normalize_sha256(hashes.get('SHA256') or file_info.get('sha256'))
+
+
+def _apply_civarchive_recovery(item, archived, file_sha):
+    """
+    Overlay a CivArchive-recovered listing onto a local-only fallback item, so every
+    view built from it (Local card, detail HTML, popups, saved .html) shows the real
+    model: name, creator, description, tags, installed version, images, source link
+    and download mirrors.
+
+    Deliberately kept from the stub: the synthetic negative 'id' (Local treats
+    id < 0 as local-only, which keeps update/download actions off for a delisted
+    model), the item 'type' detected from the install folder, and the stub file
+    entry (the real on-disk name, size and SHA256 — rename, delete and installed
+    detection depend on them). Only the installed version is carried over.
+    """
+    normalized_sha = _api.normalize_sha256(file_sha)
+
+    def _is_installed(file_info):
+        return bool(normalized_sha) and _sha_of(file_info) == normalized_sha
+
+    versions = archived.get('modelVersions') or []
+    version = next(
+        (v for v in versions if any(_is_installed(f) for f in v.get('files') or [])),
+        versions[0] if versions else {},
+    )
+    archived_file = next((f for f in version.get('files') or [] if _is_installed(f)), None)
+
+    for key in ('name', 'description', 'creator', 'tags', 'stats'):
+        if archived.get(key):
+            item[key] = archived[key]
+    item['nsfw'] = bool(archived.get('nsfw'))
+    item['browserSource'] = 'civarchive'
+    item['browserSourceId'] = archived.get('browserSourceId') or archived.get('id')
+    item['browserSourceUrl'] = archived.get('browserSourceUrl') or archived.get('archived_url')
+    item['civarchive_url'] = archived.get('archived_url') or archived.get('browserSourceUrl')
+
+    local_version = item['modelVersions'][0]
+    for key in ('name', 'baseModel', 'trainedWords', 'images', 'description'):
+        if version.get(key):
+            local_version[key] = version[key]
+    published = version.get('publishedAt') or version.get('createdAt')
+    if published:
+        local_version['publishedAt'] = published
+    if archived_file and archived_file.get('browserSourceFileRaw'):
+        local_version['files'][0]['browserSourceFileRaw'] = archived_file['browserSourceFileRaw']
+
+
+def render_civarchive_model_html(model_file):
+    """
+    Build the model detail HTML for a file recovered via CivArchive, or None when
+    the file has no CivArchive recovery. Same generator the Local panel uses, so
+    every place that shows or saves a delisted model's page renders it the same way.
+    """
+    if not model_file or not _load_civarchive_api_info(model_file):
+        return None
+    item = _build_local_fallback_browser_item(model_file)
+    version_name = item['modelVersions'][0]['name']
+    html = _api.update_model_info(None, version_name, True, item['id'], {'items': [item]}, True)
+    return html or None
 
 def gen_sha256(file_path):
     json_file = os.path.splitext(file_path)[0] + '.json'
@@ -1712,6 +1767,25 @@ def _wrap_html_with_css(body: str) -> str:
 _STALE_HTML_MARKER = 'Unable to load preview images'
 
 
+def _delisted_model_body(model_file, error_key):
+    """
+    Detail HTML body for a model CivitAI no longer serves.
+
+    Prefers the cached .html (the original CivitAI page) under a "removed" banner,
+    then the page rebuilt from a CivArchive recovery, then the plain error. A cached
+    page whose gallery had failed to load loses to a recovery, which has images.
+    """
+    cached = _get_cached_html_stripped(model_file)
+    if cached is not None and _STALE_HTML_MARKER not in cached:
+        return _api.inject_removed_banner(cached)
+    recovered = render_civarchive_model_html(model_file)
+    if recovered:
+        return recovered
+    if cached is not None:
+        return _api.inject_removed_banner(cached)
+    return _api.api_error_msg(error_key)
+
+
 def model_from_sent(model_name, content_type):
     modelID_failed = False
     output_html = None
@@ -1788,12 +1862,9 @@ def model_from_sent(model_name, content_type):
         api_response = None
         modelID = get_models(model_file, True)
         if not modelID or modelID == 'Model not found':
-            # SHA256 lookup returned 404 — check for local cached HTML before giving up
-            cached = _get_cached_html_stripped(model_file)
-            if cached is not None:
-                return gr.update(value=_wrap_html_with_css(_api.inject_removed_banner(cached)), placeholder=_download.random_number()),  # Preview HTML
-            output_html = _api.api_error_msg('not_found')
-            modelID_failed = True
+            # SHA256 lookup returned 404 — fall back to cached / CivArchive-recovered data
+            body = _delisted_model_body(model_file, 'not_found')
+            return gr.update(value=_wrap_html_with_css(body), placeholder=_download.random_number()),  # Preview HTML
         if modelID == 'offline':
             output_html = _api.api_error_msg('offline')
             modelID_failed = True
@@ -1801,10 +1872,9 @@ def model_from_sent(model_name, content_type):
             api_response = _api.request_civit_api(f"https://{_api.get_civitai_domain()}/api/v1/models?ids={modelID}&nsfw=true")
         if modelID_failed or api_response in ['timeout', 'error', 'offline']:
             return gr.update(value='<p>ERROR</p>', placeholder=_download.random_number()),  # Preview HTML
-        if api_response == 'not_found':
-            # Model was removed from CivitAI after being cached locally — show cached HTML with banner
-            cached = _get_cached_html_stripped(model_file)
-            body = _api.inject_removed_banner(cached) if cached is not None else _api.api_error_msg('removed')
+        # A delisted model comes back either as a 404 or as 200 with no items.
+        if api_response == 'not_found' or (isinstance(api_response, dict) and not api_response.get('items')):
+            body = _delisted_model_body(model_file, 'removed')
             return gr.update(value=_wrap_html_with_css(body), placeholder=_download.random_number()),  # Preview HTML
 
         # Get SHA256 hash for the file to find the specific version
@@ -1914,6 +1984,12 @@ def send_to_browser(model_name, content_type, click_first_item):
 
         if not modelID_failed:
             gl.json_data = _api.request_civit_api(f"https://{_api.get_civitai_domain()}/api/v1/models?ids={modelID}&nsfw=true")
+            # Delisted from CivitAI: show the CivArchive listing recovered for this
+            # file instead, exactly as the Browser shows it on the CivArchive source.
+            if not (isinstance(gl.json_data, dict) and gl.json_data.get('items')):
+                archived = _load_civarchive_api_info(model_file)
+                if archived:
+                    gl.json_data = {'items': [archived], 'metadata': {}}
             output_html = _api.model_list_html(gl.json_data)
             number = _download.random_number(click_first_item)
 
@@ -3168,6 +3244,10 @@ def file_scan(folders, tag_finish, ver_finish, installed_finish, preview_finish,
                     if model_version and item:
                         # Use the specific model version name for HTML generation
                         preview_html = _api.update_model_info(None, model_version.get('name'), True, id_value, api_response, True)
+                    elif _load_civarchive_api_info(file_path):
+                        # Delisted from CivitAI but recovered via CivArchive: build the
+                        # page from the recovery (the CivitAI response has no entry).
+                        preview_html = render_civarchive_model_html(file_path)
                     else:
                         # Fallback to first version if specific version not found
                         model_versions = _api.update_model_versions(id_value, api_response)

@@ -22,6 +22,20 @@
 
 ## Linha do Tempo
 
+### 2026-09-25 — Recovered (CivArchive) models render their real page everywhere
+
+**What changed**
+- A model recovered via CivArchive only had part of its data shown, and only in the Local panel: the name stayed the filename, the version read "Local file", with no date, mirrors or "Browser Source" block. Every other place ignored the recovery.
+- `_build_local_fallback_browser_item()` now overlays the full listing through `_apply_civarchive_recovery()`: name, creator, description, tags, stats, `browserSource*` fields and the **installed** version (picked by SHA256 among the archived versions: name, baseModel, trigger words, images, `createdAt` as publishedAt, file mirrors). Kept from the stub on purpose: the negative id (Local keys local-only on `id < 0`, which keeps update/download off), the folder-detected type, and the on-disk file entry (rename/delete/installed detection).
+- New `render_civarchive_model_html(model_file)` — one renderer (the same `update_model_info` the Local panel uses) wired into every place the page is built or shown:
+  - native card popup (`model_from_sent`) via `_delisted_model_body()`: cached original `.html` + "removed" banner → CivArchive page → error. A cached page with a broken gallery loses to the recovery. Also fixed two pre-existing gaps there: a CivitAI `200 {"items": []}` (how delisted models actually answer) produced an empty popup, and a by-hash 404 with no cache showed a bare `<p>ERROR</p>`.
+  - `send_to_browser`: when CivitAI returns no items, the Browser gets the recovered CivArchive listing (renders exactly like the CivArchive source).
+  - bulk "Update info & tags" with HTML: delisted-but-recovered files now get a `.html` built from the recovery.
+- Live check with the real CivArchive payload (hash `1cff84ee…`): name `顔踏み / stepping on face`, version V1, Anima, 20 images (URLs return 200), 2 mirrors, CivArchive link.
+
+**Files:** `scripts/civitai_file_manage.py`, `tests/test_civarchive_recovered_html.py` (new, 13 cases). `tests/` 441 passed.
+**Not covered:** the Browser tab's "installed models" listing (`file_scan`, `from_installed`) still drops models whose sidecar id CivitAI no longer returns — a listing gap, separate from the page rendering.
+
 ### 2026-09-25 — Resolve issues: route each metadata problem to the right source
 
 **What changed**
