@@ -1437,6 +1437,38 @@ def render_civarchive_model_html(model_file):
     html = _api.update_model_info(None, version_name, True, item['id'], {'items': [item]}, True)
     return html or None
 
+
+# Present in every page render_civarchive_model_html() builds (the header link label).
+_RECOVERED_HTML_MARKER = 'recovered via CivArchive'
+
+
+def _write_recovered_html(model_file):
+    """
+    Rebuild a CivArchive-recovered model's .html sidecar from the recovery.
+
+    An existing .html holds the page saved while the model was still on CivitAI —
+    its links now lead nowhere, and every view that reads the cache would keep
+    serving it — so it is replaced; without one, a page is written only when "Save
+    HTML file when saving model" is on. The old page goes to the recycle bin; a page
+    this function wrote earlier is simply overwritten. Returns True when written.
+    """
+    html_path = os.path.splitext(model_file)[0] + '.html'
+    had_html = os.path.exists(html_path)
+    if not had_html and not getattr(opts, 'save_html_on_save', False):
+        return False
+
+    body = render_civarchive_model_html(model_file)
+    if not body:
+        return False
+
+    if had_html:
+        with open(html_path, 'r', encoding='utf-8', errors='ignore') as f:
+            previously_recovered = _RECOVERED_HTML_MARKER in f.read()
+        if not previously_recovered:
+            send2trash(html_path)
+    _write_html_sidecar(html_path, body)
+    return True
+
 def gen_sha256(file_path):
     json_file = os.path.splitext(file_path)[0] + '.json'
 
@@ -1769,18 +1801,11 @@ _STALE_HTML_MARKER = 'Unable to load preview images'
 
 def _delisted_model_body(model_file, error_key):
     """
-    Detail HTML body for a model CivitAI no longer serves.
-
-    Prefers the cached .html (the original CivitAI page) under a "removed" banner,
-    then the page rebuilt from a CivArchive recovery, then the plain error. A cached
-    page whose gallery had failed to load loses to a recovery, which has images.
+    Detail HTML body for a model CivitAI no longer serves and that has no CivArchive
+    recovery (model_from_sent renders those first): the cached .html under a
+    "removed" banner, or the plain error.
     """
     cached = _get_cached_html_stripped(model_file)
-    if cached is not None and _STALE_HTML_MARKER not in cached:
-        return _api.inject_removed_banner(cached)
-    recovered = render_civarchive_model_html(model_file)
-    if recovered:
-        return recovered
     if cached is not None:
         return _api.inject_removed_banner(cached)
     return _api.api_error_msg(error_key)
@@ -1839,6 +1864,14 @@ def model_from_sent(model_name, content_type):
         print(f"Content type: '{content_type}'")
         print(f"Main folder path: '{folder}'")
         use_local_html = False
+
+    # A model recovered via CivArchive is delisted from CivitAI: its page comes from
+    # the recovery, ahead of any cached .html (the dead CivitAI page) and without
+    # asking CivitAI at all.
+    if model_file:
+        output_html = render_civarchive_model_html(model_file)
+        if output_html:
+            use_local_html = False
 
     if use_local_html:
         html_file = os.path.splitext(model_file)[0] + '.html'
@@ -2181,6 +2214,18 @@ def _normalize_model_id(value):
 
 
 ## === ANXETY EDITs ===
+def _write_html_sidecar(html_path, preview_html):
+    """Write a model page .html sidecar: the page body under a charset + stylesheet head."""
+    match = re.search(r'(\s*)<div class="main-container">', preview_html)
+    indentation = match.group(1) if match else ''
+    css_link = f'<link rel="stylesheet" type="text/css" href="{css_path}">'
+    utf8_meta_tag = f'{indentation}<meta charset="UTF-8">'
+    head_section = f'{indentation}<head>{indentation}    {utf8_meta_tag}{indentation}    {css_link}{indentation}</head>'
+    with open(html_path, 'wb') as f:
+        f.write((head_section + preview_html).encode('utf8'))
+    print(f"HTML saved at: {html_path}")
+
+
 def save_model_info(install_path, file_name, sub_folder, sha256=None, preview_html=None, overwrite_toggle=False, api_response=None):
     save_path, filename = get_save_path_and_name(install_path, file_name, api_response, sub_folder)
     image_path = get_image_path(install_path, api_response, sub_folder)
@@ -2213,19 +2258,7 @@ def save_model_info(install_path, file_name, sub_folder, sha256=None, preview_ht
                 img_name = f'{filename}_{i}.png'
                 preview_html = preview_html.replace(img_url, f"{os.path.join(image_path, img_name)}")
 
-        match = re.search(r'(\s*)<div class="main-container">', preview_html)
-        if match:
-            indentation = match.group(1)
-        else:
-            indentation = ''
-        css_link = f'<link rel="stylesheet" type="text/css" href="{css_path}">'
-        utf8_meta_tag = f'{indentation}<meta charset="UTF-8">'
-        head_section = f'{indentation}<head>{indentation}    {utf8_meta_tag}{indentation}    {css_link}{indentation}</head>'
-        HTML = head_section + preview_html
-        path_to_new_file = os.path.join(save_path, f'{filename}.html')
-        with open(path_to_new_file, 'wb') as f:
-            f.write(HTML.encode('utf8'))
-        print(f"HTML saved at: {path_to_new_file}")
+        _write_html_sidecar(os.path.join(save_path, f'{filename}.html'), preview_html)
 
     # Always save .api_info.json — this is the source of truth for organization.
     # We fetch the version-specific response via by-hash so that 'baseModel' is
@@ -4952,6 +4985,12 @@ def _recover_orphan_via_civarchive(adapter, issue):
         sidecar['resolved_via'] = 'civarchive'
         sidecar['archived_url'] = canonical.get('archived_url')
         _api.safe_json_save(json_file, sidecar)
+
+    try:
+        _write_recovered_html(file_path)
+    except Exception as e:
+        # The recovery itself is saved; a page that failed to write is rebuilt on demand.
+        debug_print(f"Could not rebuild .html for {model_name}: {e}")
 
     print(f"[CivitAI Browser Neo] ✓ Recovered via CivArchive: {model_name}")
     return True

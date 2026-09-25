@@ -34,6 +34,14 @@
 - Live check with the real CivArchive payload (hash `1cff84ee…`): name `顔踏み / stepping on face`, version V1, Anima, 20 images (URLs return 200), 2 mirrors, CivArchive link.
 
 **Files:** `scripts/civitai_file_manage.py`, `tests/test_civarchive_recovered_html.py` (new, 13 cases). `tests/` 441 passed.
+**Follow-up (same day) — the old CivitAI `.html` kept winning**
+- Runtime report: `yesanima_v20` (model 2580226) was recovered correctly (`.api_info.json` with `source: civarchive`, v2.0 matched by hash), but its page still showed the old CivitAI data. The file had a `yesanima_v20.html` saved on 2026-07-06, pointing at `civitai.red/models/2580226`, which no longer exists. The popup served it first (straight away with `use_local_html`, and by the "cached original first" rule otherwise).
+- Decision (user): a recovered model shows the CivArchive page, not the dead CivitAI one.
+- `model_from_sent` renders the recovery first, before the `.html` cache and without asking CivitAI. `_delisted_model_body()` is back to cached page → error, for delisted models without a recovery.
+- `_recover_orphan_via_civarchive()` now rebuilds the `.html` sidecar through `_write_recovered_html()`. An existing page is replaced and the old one goes to the recycle bin (`send2trash`), except a page this function wrote earlier, which is just overwritten so re-running Resolve doesn't fill the bin. With no `.html`, a page is written only when `save_html_on_save` is on. It keeps remote CivArchive image URLs: `local_path_in_html` would point at the old CivitAI `_N.png` files (10 of them, vs 18 archived images).
+- The `.html` write block in `save_model_info()` was extracted to `_write_html_sidecar()` and is shared.
+- Real-file check (read-only against the user's share): YesAnima / zakp / v2.0 / Anima / 18 images / CivArchive link / mirrors on CivitAI and Hugging Face. `tests/` 447 passed.
+
 **Not covered:** the Browser tab's "installed models" listing (`file_scan`, `from_installed`) still drops models whose sidecar id CivitAI no longer returns — a listing gap, separate from the page rendering.
 
 ### 2026-09-25 — Resolve issues: route each metadata problem to the right source

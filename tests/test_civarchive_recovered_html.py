@@ -92,15 +92,35 @@ class _RecoveredTestCase(unittest.TestCase):
             'folder': self.api.contenttype_folder,
             'list_html': self.api.model_list_html,
             'get_models': self.fm.get_models,
+            'send2trash': self.fm.send2trash,
         }
         self.api.contenttype_folder = lambda ct, desc=None, custom_folder=None: self.tmp
+        # Recycle bin: record what was sent there and move it out of the folder.
+        self.trashed = []
+
+        def fake_send2trash(path):
+            self.trashed.append(os.path.basename(path))
+            os.remove(path)
+
+        self.fm.send2trash = fake_send2trash
+        self.fm.opts.save_html_on_save = False
 
     def tearDown(self):
         self.api.request_civit_api = self._orig['request']
         self.api.contenttype_folder = self._orig['folder']
         self.api.model_list_html = self._orig['list_html']
         self.fm.get_models = self._orig['get_models']
+        self.fm.send2trash = self._orig['send2trash']
+        if hasattr(self.fm.opts, 'save_html_on_save'):
+            del self.fm.opts.save_html_on_save
         shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _html(self, name='54ATE3J7NW08978JEZMTJ20WA0'):
+        path = os.path.join(self.tmp, name + '.html')
+        if not os.path.exists(path):
+            return None
+        with io.open(path, encoding='utf-8') as handle:
+            return handle.read()
 
     def _model(self, name='54ATE3J7NW08978JEZMTJ20WA0', api_info=None, html=None):
         path = os.path.join(self.tmp, name + '.safetensors')
@@ -180,29 +200,102 @@ class TestRecoveredHtml(_RecoveredTestCase):
         self.assertIsNone(self.fm.render_civarchive_model_html(self._model()))
 
 
-class TestDelistedPopupBody(_RecoveredTestCase):
-    def test_recovery_is_used_when_there_is_no_cached_page(self):
-        body = self.fm._delisted_model_body(self._model(api_info=_archived_listing()), 'removed')
-        self.assertIn('Stepping On Face', body)
-        self.assertIn(MIRROR, body)
+OLD_PAGE = '<head></head><div class="info-section">Old CivitAI page civitai.red/models/2646164</div>'
 
-    def test_cached_original_page_wins_over_the_recovery(self):
-        path = self._model(api_info=_archived_listing(),
-                           html='<head></head><div class="info-section">Original CivitAI page</div>')
-        body = self.fm._delisted_model_body(path, 'removed')
-        self.assertIn('Original CivitAI page', body)
-        self.assertIn('removed by its owner', body)
-        self.assertNotIn(MIRROR, body)
 
-    def test_recovery_wins_over_a_cached_page_with_a_broken_gallery(self):
-        path = self._model(api_info=_archived_listing(),
-                           html='<head></head><div>Unable to load preview images</div>')
-        body = self.fm._delisted_model_body(path, 'removed')
-        self.assertIn(IMAGE, body)
+class TestPopup(_RecoveredTestCase):
+    """model_from_sent — the popup from a native card's CivitAI button."""
+
+    def _popup_html(self, name='54ATE3J7NW08978JEZMTJ20WA0'):
+        update = self.fm.gr.update
+        update.reset_mock()
+        self.fm.model_from_sent(name, 'lora')
+        return [c.kwargs['value'] for c in update.call_args_list if 'value' in c.kwargs][-1]
+
+    def test_recovery_wins_over_the_cached_civitai_page(self):
+        self._model(api_info=_archived_listing(), html=OLD_PAGE)
+        self.fm.opts.use_local_html = True
+        try:
+            html = self._popup_html()
+        finally:
+            del self.fm.opts.use_local_html
+        self.assertIn('Stepping On Face', html)
+        self.assertIn(MIRROR, html)
+        self.assertNotIn('Old CivitAI page', html)
+
+    def test_recovery_does_not_ask_civitai(self):
+        self._model(api_info=_archived_listing())
+        asked = []
+        self.fm.get_models = lambda *a, **k: asked.append(a) or 2646164
+        self._popup_html()
+        self.assertEqual(asked, [])
+
+    def test_unrecovered_delisted_model_keeps_its_cached_page(self):
+        self._model(html=OLD_PAGE)
+        self.assertIn('Old CivitAI page', self.fm._delisted_model_body(
+            os.path.join(self.tmp, '54ATE3J7NW08978JEZMTJ20WA0.safetensors'), 'removed'))
 
     def test_nothing_recovered_or_cached_shows_the_error(self):
         body = self.fm._delisted_model_body(self._model(), 'removed')
         self.assertIn('No local cached data was found', body)
+
+
+class TestRecoveredHtmlSidecar(_RecoveredTestCase):
+    """_write_recovered_html — the .html file on disk after a recovery."""
+
+    def test_old_civitai_page_is_trashed_and_rebuilt(self):
+        path = self._model(api_info=_archived_listing(), html=OLD_PAGE)
+
+        self.assertTrue(self.fm._write_recovered_html(path))
+
+        self.assertEqual(self.trashed, ['54ATE3J7NW08978JEZMTJ20WA0.html'])
+        page = self._html()
+        self.assertIn('recovered via CivArchive', page)
+        self.assertIn(MIRROR, page)
+        self.assertIn('<meta charset="UTF-8">', page)
+
+    def test_a_page_already_rebuilt_is_overwritten_not_trashed(self):
+        path = self._model(api_info=_archived_listing(), html=OLD_PAGE)
+        self.fm._write_recovered_html(path)
+        self.trashed.clear()
+
+        self.fm._write_recovered_html(path)
+
+        self.assertEqual(self.trashed, [], 're-running Resolve must not fill the recycle bin')
+        self.assertIn('recovered via CivArchive', self._html())
+
+    def test_no_page_is_created_when_saving_html_is_off(self):
+        path = self._model(api_info=_archived_listing())
+        self.assertFalse(self.fm._write_recovered_html(path))
+        self.assertIsNone(self._html())
+
+    def test_page_is_created_when_saving_html_is_on(self):
+        path = self._model(api_info=_archived_listing())
+        self.fm.opts.save_html_on_save = True
+        self.assertTrue(self.fm._write_recovered_html(path))
+        self.assertIn('Stepping On Face', self._html())
+
+    def test_unrecovered_model_page_is_left_alone(self):
+        path = self._model(html=OLD_PAGE)
+        self.assertFalse(self.fm._write_recovered_html(path))
+        self.assertEqual(self._html(), OLD_PAGE)
+        self.assertEqual(self.trashed, [])
+
+    def test_resolve_rebuilds_the_page(self):
+        path = self._model(html=OLD_PAGE)
+        listing = _archived_listing()
+        listing.pop('source'); listing.pop('archived_url')
+
+        class _Archive:
+            def get_version_by_hash(self, sha256):
+                return listing
+
+        issue = {'file_path': path, 'sha256': SHA, 'model_id': 2646164,
+                 'model_name': os.path.basename(path)}
+        self.assertTrue(self.fm._recover_orphan_via_civarchive(_Archive(), issue))
+
+        self.assertEqual(self.trashed, ['54ATE3J7NW08978JEZMTJ20WA0.html'])
+        self.assertIn('recovered via CivArchive', self._html())
 
 
 class TestSendToBrowser(_RecoveredTestCase):
