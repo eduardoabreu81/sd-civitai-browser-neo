@@ -408,6 +408,42 @@ class TestCivArchiveAdapter(unittest.TestCase):
         self.assertEqual(version['trainedWords'], ['mxpln'])
         self.assertEqual(version['files'][0]['hashes']['SHA256'], 'E2B7A280D6539556F23F380B3F71E4E22BC4524445C4C96526E117C6005C6AD3')
 
+    def test_sha256_lookup_unwraps_the_model_envelope(self):
+        # Real /api/sha256/{hash} shape: the model sits under "model", next to a
+        # "files" list of mirrors — unlike /api/models/{id}, which is the model
+        # itself. Normalizing the envelope directly found no "id" and turned every
+        # hash hit into a miss.
+        sha = '1cff84eed48e013e3a3a2b02fb014d73c2c53e1632acebbcc49de2369ae87bad'
+        payload = {
+            'files': [{
+                'filename': 'lora.safetensors', 'source': 'civitai',
+                'model_id': '2646164', 'model_version_id': '2971246',
+            }],
+            'model': {
+                'id': 2646164,
+                'name': 'Delisted LoRA',
+                'type': 'LORA',
+                'version': {
+                    'id': 2971246, 'modelId': 2646164, 'name': 'v1', 'baseModel': 'Anima',
+                    'files': [{'name': 'lora.safetensors', 'sha256': sha}],
+                },
+                'versions': [{'id': 2971246, 'name': 'v1'}],
+            },
+        }
+
+        with patch.object(self.src, '_request_json', return_value=payload) as mock_request:
+            model = self.src.get_version_by_hash(sha)
+
+        mock_request.assert_called_once_with(f'/sha256/{sha}')
+        self.assertIsNotNone(model)
+        self.assertEqual(model['id'], '2646164')
+        self.assertEqual(model['name'], 'Delisted LoRA')
+        self.assertEqual(model['modelVersions'][0]['id'], '2971246')
+
+    def test_sha256_lookup_miss_returns_none(self):
+        with patch.object(self.src, '_request_json', return_value='not_found'):
+            self.assertIsNone(self.src.get_version_by_hash('a' * 64))
+
 
 
 class TestHuggingFaceAdapter(unittest.TestCase):

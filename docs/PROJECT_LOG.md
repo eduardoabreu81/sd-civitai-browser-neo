@@ -34,8 +34,14 @@
 - Result report now shows both counts: recovered via CivArchive / still local-only, and repaired from CivitAI / still mismatched.
 - `.html` sidecars are intentionally left alone: they are built from the same response as the `.json` sidecar (not from the by-hash call), so they are not affected by the collision.
 
-**Files:** `scripts/civitai_file_manage.py`, `scripts/civitai_gui.py`, `scripts/civitai_api.py` (comment), `README.md`, `tests/test_resolve_metadata_issues.py` (new, 9 cases).
-**Validation:** `tests/` 426 passed. Pending: runtime check in Forge Neo (Organization → Verify local metadata → Resolve issues).
+**Files:** `scripts/civitai_file_manage.py`, `scripts/civitai_gui.py`, `scripts/civitai_api.py` (comment), `scripts/browser_sources/civarchive.py`, `README.md`, `tests/test_resolve_metadata_issues.py` (new, 9 cases), `tests/test_browser_sources.py`.
+**Validation:** `tests/` 426 passed.
+
+**Follow-up (same day) — CivArchive SHA256 lookup never matched**
+- First runtime test: 33 delisted models, `0 recovered via CivArchive, 33 still local-only`, no request errors. CivitAI confirmed all 404; CivArchive had every one of them by id.
+- Cause: `/api/sha256/{hash}` returns an envelope `{"files": [...mirrors], "model": {...}}`, not the model itself like `/api/models/{id}`. `_search_by_sha256()` normalized the envelope, found no `id`, and reported every hit as `sha256_not_found`. This has been broken since the adapter was written — it also affected the Browser's SHA256 search on the CivArchive source.
+- Fix: unwrap `data["model"]` before normalizing (`model["version"]` is the version the hash matched).
+- `tests/test_browser_sources.py`: 2 cases with the real payload shape (the new one failed before the fix). Live check: hash `1cff84ee…` → model 2646164, version 2971246. `tests/` 428 passed.
 
 ### 2026-09-17 — Drop the MCP account badge (user validation)
 

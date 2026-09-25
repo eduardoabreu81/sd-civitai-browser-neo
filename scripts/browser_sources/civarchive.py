@@ -306,6 +306,11 @@ class CivArchiveSource(BrowserSource):
         if isinstance(data, str):
             return data
 
+        # Unlike /models/{id}, this endpoint wraps the model: {"files": [...mirrors],
+        # "model": {...}}, with model["version"] being the version the hash matched.
+        if isinstance(data, dict) and isinstance(data.get("model"), dict):
+            data = data["model"]
+
         model = self._normalize_model(data)
         if not model:
             return "sha256_not_found"
