@@ -26,6 +26,22 @@ def _normalize_url(url: str) -> str:
     return url
 
 
+def is_model_url(value: str) -> bool:
+    """Recognize pasted links independently of the selected search mode."""
+    value = (value or '').strip()
+    if value.lower().startswith(('https://', 'http://')):
+        return True
+    try:
+        host = urlparse(_normalize_url(value)).hostname
+    except ValueError:
+        return False
+    return host in (
+        'civitai.com', 'civitai.red', 'www.civitai.com', 'www.civitai.red',
+        'civarchive.com', 'huggingface.co', 'hf.co', 'arcenciel.io',
+        'modelscope.cn', 'www.modelscope.cn',
+    )
+
+
 def _extract_civitai_model_id(url: str) -> Optional[str]:
     """Return a CivitAI model id from a model page URL, or None."""
     parsed = urlparse(url)
@@ -125,9 +141,11 @@ def _resolve_civitai_version_to_model(version_id: str) -> Optional[str]:
         data = _api.request_civit_api(api_url, skip_error_check=True)
     except Exception as exc:
         debug_print(f"[URLParser] CivitAI version lookup failed: {exc}")
-        return None
+        return 'error'
     if isinstance(data, dict) and data.get("modelId"):
         return str(data["modelId"])
+    if isinstance(data, str):
+        return data
     return None
 
 
@@ -155,11 +173,15 @@ def parse_model_url(url: str) -> dict | str:
 
         if not model_id:
             return "invalid_url"
+        if not model_id.isdigit():
+            return model_id
 
         adapter = get_browser_source("civitai")
         if adapter is None:
             return "error"
-        model = adapter.get_model(model_id)
+        model = adapter.get_model(model_id, preserve_errors=True)
+        if isinstance(model, str):
+            return model
         if model is None:
             return "not_found"
         return paginated_result(

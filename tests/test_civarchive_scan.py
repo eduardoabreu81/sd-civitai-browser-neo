@@ -12,6 +12,8 @@ import sys
 import unittest
 from unittest.mock import patch
 
+import requests
+
 sys.path.insert(0, os.path.dirname(__file__))
 
 from test_civarchive_recovered_html import SHA, _archived_listing, _RecoveredTestCase  # noqa: E402
@@ -20,13 +22,10 @@ LIVE_SHA = 'A' * 64
 
 
 def _response(payload, status=200):
-    class _Resp:
-        status_code = status
-        text = json.dumps(payload)
-
-        def json(self):
-            return payload
-    return _Resp()
+    response = requests.Response()
+    response.status_code = status
+    response._content = json.dumps(payload).encode('utf-8')
+    return response
 
 
 class _ScanTestCase(_RecoveredTestCase):

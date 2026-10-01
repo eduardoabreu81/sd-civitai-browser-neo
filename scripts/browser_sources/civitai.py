@@ -120,10 +120,12 @@ class CivitAISource(BrowserSource):
         result['metadata']['_civitaiPageUrl'] = api_url
         return result
 
-    def get_model(self, source_id: str, **kwargs: Any) -> Optional[dict]:
+    def get_model(self, source_id: str, **kwargs: Any) -> dict | str | None:
         """Fetch a single CivitAI model by id."""
         api_url = f"https://{_api.get_civitai_domain()}/api/v1/models/{source_id}"
         data = _api.request_civit_api(api_url)
+        if isinstance(data, str) and kwargs.get('preserve_errors'):
+            return data
         if not isinstance(data, dict) or "error" in data:
             return None
         return self._normalize_model(data)

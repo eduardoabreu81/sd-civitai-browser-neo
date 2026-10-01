@@ -70,29 +70,31 @@ def _source_display_to_name(display_name):
 def _call_browser_source(source_adapter, operation, **kwargs):
     """Run an adapter operation with source-aware debug diagnostics."""
     source_name = getattr(source_adapter, "name", "unknown")
-    debug_print(
+    started = time.monotonic()
+    print(
         f"[Browser:{source_name}] {operation} started "
         f"(page={kwargs.get('page', 1)}, search_type={kwargs.get('search_type')!r})"
     )
     try:
         result = getattr(source_adapter, operation)(**kwargs)
     except Exception as exc:
-        debug_print(
+        print(
             f"[Browser:{source_name}] {operation} failed with "
-            f"{type(exc).__name__}: {exc}"
+            f"{type(exc).__name__}"
         )
         debug_print(traceback.format_exc())
         return "error"
 
     if isinstance(result, dict) and isinstance(result.get("items"), list):
         metadata = result.get("metadata") or {}
-        debug_print(
+        print(
             f"[Browser:{source_name}] {operation} returned dict "
             f"(items={len(result['items'])}, current_page={metadata.get('currentPage')}, "
-            f"total_pages={metadata.get('totalPages')})"
+            f"total_pages={metadata.get('totalPages')}, elapsed={time.monotonic() - started:.1f}s)"
         )
     else:
-        debug_print(f"[Browser:{source_name}] {operation} returned {type(result).__name__}")
+        outcome = result if isinstance(result, str) else type(result).__name__
+        print(f"[Browser:{source_name}] {operation} returned {outcome} ({time.monotonic() - started:.1f}s)")
     return result
 
 
@@ -739,7 +741,7 @@ def update_mode_page_html(content_type_filter, base_filter, tile_count, current_
             current_page > 1, current_page < total_pages)
 
 
-def model_list_html(json_data, target=''):
+def model_list_html(json_data, target='', *, direct_url=False):
     def filter_versions(item, hide_early_access, hide_paid, current_time):
         """Filter model versions by file presence and by the two paid-gate kinds.
 
@@ -1209,8 +1211,8 @@ def model_list_html(json_data, target=''):
     # Main function logic
     video_playback = getattr(opts, 'video_playback', True)
     playback = 'autoplay loop' if video_playback else ''
-    hide_early_access = getattr(opts, 'hide_early_access', True)
-    hide_paid_models = getattr(opts, 'hide_paid_models', False)
+    hide_early_access = not direct_url and getattr(opts, 'hide_early_access', True)
+    hide_paid_models = not direct_url and getattr(opts, 'hide_paid_models', False)
     current_time = datetime.now(timezone.utc)
 
     # Filter model versions and items
@@ -1222,6 +1224,10 @@ def model_list_html(json_data, target=''):
             filtered_items.append(item)
     json_data['items'] = filtered_items
 
+    if not filtered_items:
+        print('[Browser] No models to display: empty API result or no versions with files after access filters.')
+        return api_error_msg('no_results')
+
     # Collect model folders
     model_folders = set()
     for item in json_data['items']:
@@ -1231,7 +1237,8 @@ def model_list_html(json_data, target=''):
     existing_files, existing_files_sha256, existing_version_ids, file_to_path, sha256_to_path, version_id_to_path = collect_existing_files(model_folders)
 
     # Build HTML
-    HTML = '<div class="column civmodellist">'
+    direct_attr = ' data-direct-url="true"' if direct_url else ''
+    HTML = f'<div class="column civmodellist"{direct_attr}>'
     # The Browser's "sort by date" toggle (gl.sortNewest) groups cards into dated
     # sections. The Local Models grid renders in its own order (set by render_local_browser's
     # Sort by:), so it deliberately ignores gl.sortNewest — keeping the two tabs isolated.
@@ -1438,6 +1445,9 @@ def create_api_url(content_type=None, sort_type=None, period_type=None, use_sear
 def initial_model_page(content_type=None, sort_type=None, period_type=None, use_search_term=None, search_term=None, current_page=None, base_filter=None, only_liked=None, nsfw=None, exact_search=None, tile_count=None, source='CivitAI', deleted_from_civitai=False, *, from_update_tab=False, target=''):
     source_name = _source_display_to_name(source)
     source_adapter = _get_browser_source(source_name)
+    direct_url = bool(search_term and not from_update_tab and not gl.update_mode and (
+        use_search_term == 'URL' or _browser_sources.is_model_url(search_term)
+    ))
 
     debug_print(
         f"[Browser:{source_name}] initial_model_page "
@@ -1445,10 +1455,15 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
     )
 
     current_inputs = (content_type, sort_type, period_type, use_search_term, search_term, tile_count, base_filter, nsfw, exact_search, source_name, deleted_from_civitai)
-    if current_inputs != gl.previous_inputs and gl.previous_inputs != None or not current_page:
+    if direct_url or current_inputs != gl.previous_inputs and gl.previous_inputs != None or not current_page:
         current_page = 1
     gl.previous_inputs = current_inputs
     gl.current_browser_source = source_name
+    print(
+        f"[Browser:{source_name}] request context: mode={'URL' if direct_url else use_search_term}, "
+        f"content_type={content_type!r}, base_model={base_filter!r}, nsfw={nsfw!r}, "
+        f"liked_only={only_liked!r}, direct_url={direct_url}"
+    )
 
     # ── Update Mode: render from gl.update_items, no API call ──
     if gl.update_mode:
@@ -1484,7 +1499,7 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
 
         if current_page == 1:
             # Handle SHA256 search specially
-            if use_search_term == 'SHA256' and search_term:
+            if use_search_term == 'SHA256' and search_term and not direct_url:
                 debug_print(f"Performing SHA256 search for hash: {search_term}")
                 gl.json_data = _call_browser_source(
                     source_adapter,
@@ -1494,9 +1509,18 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
                 if gl.json_data is None:
                     gl.json_data = 'sha256_not_found'
                 gl.url_list = {1: f"sha256_search_{search_term.strip().upper()}" if isinstance(gl.json_data, dict) else 'error'}
-            elif use_search_term == 'URL' and search_term:
-                debug_print(f"[Browser] Parsing pasted model URL: {search_term}")
-                gl.json_data = _browser_sources.parse_model_url(search_term.strip())
+            elif direct_url:
+                print(f"[Browser:URL] Fetching {_safe_api_url(search_term)}; listing filters ignored.")
+                try:
+                    gl.json_data = _browser_sources.parse_model_url(search_term.strip())
+                except Exception as exc:
+                    print(f"[Browser:URL] Lookup failed with {type(exc).__name__}")
+                    debug_print(traceback.format_exc())
+                    gl.json_data = 'error'
+                if isinstance(gl.json_data, dict):
+                    print(f"[Browser:URL] Lookup returned {len(gl.json_data.get('items', []))} model(s).")
+                else:
+                    print(f"[Browser:URL] Lookup returned {gl.json_data}.")
                 gl.url_list = {1: f"url_search_{search_term.strip()}"}
             else:
                 gl.json_data = _call_browser_source(
@@ -1606,7 +1630,7 @@ def initial_model_page(content_type=None, sort_type=None, period_type=None, use_
                 max_page = max(metadata.get('totalPages', 1), current_page)
             else:
                 max_page = max(gl.url_list.keys())
-            HTML = model_list_html(gl.json_data, target=target)
+            HTML = model_list_html(gl.json_data, target=target, direct_url=direct_url)
 
     return (
         gr.update(choices=model_list, value='', interactive=True),     # Model List
@@ -2968,41 +2992,51 @@ def get_headers(referer=None, no_api=None):
 
     return headers
 
+def _safe_api_url(api_url):
+    """Log a request endpoint without credentials, query tokens or fragments."""
+    value = str(api_url or '')
+    if not value.startswith(('http://', 'https://')):
+        value = f'https://{value}'
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        return f'{parsed.scheme}://{parsed.hostname or "unknown"}{parsed.path}'
+    except ValueError:
+        return '<invalid URL>'
+
+
 def request_civit_api(api_url=None, skip_error_check=False):
     headers = get_headers()
     proxies, ssl = get_proxies()
     max_attempts = 3
     base_backoff_seconds = 2
+    endpoint = _safe_api_url(api_url)
 
     for attempt in range(1, max_attempts + 1):
+        started = time.monotonic()
+        print(f'[CivitAI API] GET {endpoint} (attempt {attempt}/{max_attempts})')
         try:
             response = requests.get(api_url, headers=headers, timeout=(60, 30), proxies=proxies, verify=ssl)
-            if not response.text or response.text.strip() == '':
-                print(f"CivitAI API returned empty response for: {api_url}")
-                return 'error'
-
-            if skip_error_check:
-                response.encoding = 'utf-8'
-                try:
-                    data = json.loads(response.text)
-                    return data
-                except json.JSONDecodeError as e:
-                    print(f"CivitAI API: JSON decode error - {e}")
-                    return 'error'
-
+            print(f'[CivitAI API] HTTP {response.status_code} for {endpoint} ({time.monotonic() - started:.1f}s)')
+            if response.status_code == 429:
+                retry_after = response.headers.get('Retry-After', 'not provided')
+                print(f'[CivitAI API] Rate limited (HTTP 429); Retry-After={retry_after}. Wait before searching again.')
+                return 'rate_limited'
+            # Even legacy skip_error_check callers must see HTTP failures.
             response.raise_for_status()
+            if not response.text or response.text.strip() == '':
+                print(f"CivitAI API returned empty response for: {endpoint}")
+                return 'error'
             response.encoding = 'utf-8'
             try:
                 data = json.loads(response.text)
             except json.JSONDecodeError:
-                print(response.text)
-                print('The CivitAI servers are currently offline. Please try again later.')
+                print(f'[CivitAI API] Non-JSON response for {endpoint}. The service may be unavailable.')
                 return 'offline'
             return data
 
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 404:
-                print(f"Model version not found (404): {api_url}")
+                print(f"Model not found (404): {endpoint}")
                 return 'not_found'
             
             if e.response.status_code in [500, 502, 503, 504]:
@@ -3012,7 +3046,7 @@ def request_civit_api(api_url=None, skip_error_check=False):
                     time.sleep(wait_time)
                     continue
             
-            print(f"HTTP Error {e.response.status_code}: {e}")
+            print(f"HTTP Error {e.response.status_code}: {endpoint}")
             return 'error'
 
         except requests.exceptions.Timeout:
@@ -3040,7 +3074,7 @@ def request_civit_api(api_url=None, skip_error_check=False):
                 time.sleep(wait_time)
                 continue
 
-            print(f"[CivitAI Browser Neo] - Error: {e}")
+            print(f"[CivitAI API] {type(e).__name__} while requesting {endpoint}")
             if dns_resolution_error:
                 print(f"[CivitAI Browser Neo] - DNS resolution failed (attempt {max_attempts}/{max_attempts}). No more retries.")
                 return 'dns_error'
@@ -3082,6 +3116,12 @@ def api_error_msg(input_string):
         return div + 'The CivitAI servers are currently offline.<br>Please try again later.</div>'
     elif input_string == 'no_items':
         return div + 'Failed to retrieve any models from CivitAI<br>The servers might be too busy or down if the issue persists.</div>'
+    elif input_string == 'no_results':
+        return div + 'No models to display.<br>Check the search filters; versions without downloadable files are not shown.</div>'
+    elif input_string == 'rate_limited':
+        return div + 'CivitAI rate limit reached (HTTP 429).<br>Wait before searching again. Check the terminal for Retry-After.</div>'
+    elif input_string == 'invalid_url':
+        return div + 'Invalid or unsupported model URL.<br>Paste a model link from a supported browser source.</div>'
     elif input_string == 'invalid_hash':
         return div + 'Invalid SHA256 hash format.<br>Please enter a valid 64-character hexadecimal hash.</div>'
     elif input_string == 'sha256_not_found':

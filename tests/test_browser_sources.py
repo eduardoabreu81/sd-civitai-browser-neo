@@ -1434,7 +1434,7 @@ class TestUrlParser(unittest.TestCase):
         with patch('scripts.browser_sources.url_parser.get_browser_source') as mock_get:
             mock_get.return_value = self._make_mock_adapter('CivitAI Model', 'civitai')
             self.parse_model_url('https://civitai.com/models/12345-model-name')
-            mock_get.return_value.get_model.assert_called_once_with('12345')
+            mock_get.return_value.get_model.assert_called_once_with('12345', preserve_errors=True)
 
     def test_civitai_download_url_resolves_version_to_model(self):
         
@@ -1443,7 +1443,7 @@ class TestUrlParser(unittest.TestCase):
             mock_api.return_value = {'modelId': 99999}
             mock_get.return_value = self._make_mock_adapter('CivitAI Model', 'civitai')
             self.parse_model_url('https://civitai.com/api/download/models/67890')
-            mock_get.return_value.get_model.assert_called_once_with('99999')
+            mock_get.return_value.get_model.assert_called_once_with('99999', preserve_errors=True)
 
     def test_civarchive_url_extracts_id(self):
         

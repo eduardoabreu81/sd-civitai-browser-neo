@@ -73,10 +73,12 @@ The largest update since the Neo fork: the Browser is no longer hardwired to Civ
 - Browse CivitAI directly inside the WebUI — no tab switching
 - Select a source adapter: CivitAI, CivArchive, ModelScope, or Arc en Ciel ⭐
 - Search by model name, tag, username, or **paste a direct model URL** ⭐
+- Direct model URLs ignore listing filters (including NSFW, base model, installed, creator and access filters) without changing your saved preferences. The global **SFW only** setting still selects the CivitAI API domain.
 - Filter by content type, base model, time period, and sort order — the base-model list auto-updates from CivitAI at startup ⭐
 - NSFW toggle, liked-only filter, hide installed models, hide banned creators
 - Independent **Hide early access** and **Hide paid** filters ⭐
 - Search settings persist across restarts ⭐
+- Search outcomes and CivitAI HTTP status codes appear in the terminal even with debug disabled; empty results and rate limits also display a message in the Browser.
 
 ### 🏠 Local Models ⭐
 *[Full details on the Wiki →](https://github.com/eduardoabreu81/sd-civitai-browser-neo/wiki/Feature-Local-Models)*

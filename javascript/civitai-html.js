@@ -1853,6 +1853,11 @@ let _hideBannedCreatorsEnabled = false;
 
 function _applyBrowserCardFilters() {
     _browserCardElements('.civmodelcard').forEach((card) => {
+        // Direct links request this specific model, regardless of browse toggles.
+        if (card.closest('[data-direct-url="true"]')) {
+            card.style.display = '';
+            return;
+        }
         const creator = card.getAttribute('data-creator');
         const hideForInstalled =
             _hideInstalledModels && card.classList.contains('civmodelcardinstalled');
