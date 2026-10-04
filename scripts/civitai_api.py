@@ -45,6 +45,7 @@ from scripts.civitai_global import print, debug_print  # noqa: E402
 
 # Multi-source browser adapters (CivitAI is registered as the default source).
 import scripts.browser_sources as _browser_sources  # noqa: E402
+from scripts.browser_sources.normalizer import expand_content_type_filter  # noqa: E402
 
 
 gl.init()
@@ -647,7 +648,7 @@ def update_mode_page_html(content_type_filter, base_filter, tile_count, current_
 
     # Content-type filter
     if content_type_filter:
-        ct_list = content_type_filter if isinstance(content_type_filter, list) else [content_type_filter]
+        ct_list = expand_content_type_filter(content_type_filter)
         if ct_list:
             items = [i for i in items if i['model_type'] in ct_list]
 
@@ -1380,7 +1381,7 @@ def create_api_url(content_type=None, sort_type=None, period_type=None, use_sear
     params = {'limit': tile_count, 'sort': sort_type, 'period': period_type.replace(' ', '') if period_type else None}
 
     if content_type:
-        params['types'] = content_type
+        params['types'] = expand_content_type_filter(content_type)
 
     ## === ANXETY EDITs ===
     if use_search_term != 'None' and search_term:

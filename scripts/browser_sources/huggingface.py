@@ -21,6 +21,7 @@ from .normalizer import (
     canonical_image,
     canonical_model,
     canonical_version,
+    expand_content_type_filter,
     get_sha256,
     paginated_result,
 )
@@ -645,7 +646,7 @@ class HuggingFaceSource(BrowserSource):
         """Normalize Browser content type selections for matching."""
         if not content_type:
             return []
-        values = content_type if isinstance(content_type, list) else [content_type]
+        values = expand_content_type_filter(content_type)
         return [
             str(value).strip().lower().replace(" ", "")
             for value in values

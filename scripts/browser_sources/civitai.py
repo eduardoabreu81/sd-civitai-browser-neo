@@ -23,6 +23,7 @@ from .normalizer import (
     canonical_image,
     canonical_model,
     canonical_version,
+    expand_content_type_filter,
     get_sha256,
     paginated_result,
 )
@@ -205,7 +206,7 @@ class CivitAISource(BrowserSource):
             params["page"] = page
 
         if content_type:
-            params["types"] = content_type
+            params["types"] = expand_content_type_filter(content_type)
 
         if query:
             lower_query = query.replace("\\", "\\\\").lower()

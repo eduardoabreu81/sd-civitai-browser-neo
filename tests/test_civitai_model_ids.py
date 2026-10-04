@@ -34,6 +34,7 @@ def _load_civitai_api_with_stubs():
     global_mod.debug_print = lambda *args, **kwargs: None
 
     browser_sources_mod = types.ModuleType("scripts.browser_sources")
+    browser_sources_mod.__path__ = [str(API_PATH.parent / "browser_sources")]
     browser_sources_mod.get_browser_source = lambda name: None
     browser_sources_mod.default_source = lambda: None
 

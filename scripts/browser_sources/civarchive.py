@@ -27,6 +27,7 @@ from .normalizer import (
     canonical_image,
     canonical_model,
     canonical_version,
+    expand_content_type_filter,
     get_sha256,
     paginated_result,
 )
@@ -220,21 +221,24 @@ class CivArchiveSource(BrowserSource):
         if deleted_from_civitai:
             params["is_deleted"] = "true"
 
-        # CivArchive accepts a single type and a single base_model.
-        if content_type:
-            types = content_type if isinstance(content_type, list) else [content_type]
-            if types:
-                params["type"] = types[0]
+        # CivArchive accepts a single type per request. Merge type searches
+        # before the existing model-ID deduplication and client-side pagination.
+        types = expand_content_type_filter(content_type)
         if base_filter:
             bases = base_filter if isinstance(base_filter, list) else [base_filter]
             if bases:
                 params["base_model"] = bases[0]
 
-        data = self._request_json("/search", params=params)
-        if isinstance(data, str):
-            return data
-
-        results = data.get("results", []) if isinstance(data, dict) else []
+        results = []
+        for model_type in types or [None]:
+            type_params = dict(params)
+            if model_type:
+                type_params["type"] = model_type
+            data = self._request_json("/search", params=type_params)
+            if isinstance(data, str):
+                return data
+            if isinstance(data, dict):
+                results.extend(data.get("results") or [])
         debug_print(
             f"[CivArchive] search query={normalized_query or '<browse>'!r} page={page} "
             f"deleted_only={bool(deleted_from_civitai)} raw_results={len(results)}"

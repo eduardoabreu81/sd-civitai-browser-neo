@@ -24,6 +24,20 @@ REQUIRED_MODEL_FIELDS = (
 REQUIRED_VERSION_FIELDS = ("id", "name", "files")
 
 
+def expand_content_type_filter(content_type: Optional[str | list[str]]) -> list[str]:
+    """Expand the UI's LORA selection to LoCon and DoRA without changing model metadata."""
+    if not content_type:
+        return []
+    values = content_type if isinstance(content_type, list) else [content_type]
+    expanded: list[str] = []
+    for value in values:
+        group = ("LORA", "LoCon", "DoRA") if str(value).strip().upper() == "LORA" else (value,)
+        for item in group:
+            if item not in expanded:
+                expanded.append(item)
+    return expanded
+
+
 def canonical_model(
     *,
     source: str,

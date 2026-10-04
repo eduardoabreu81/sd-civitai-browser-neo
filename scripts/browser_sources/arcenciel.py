@@ -21,6 +21,7 @@ from .normalizer import (
     canonical_image,
     canonical_model,
     canonical_version,
+    expand_content_type_filter,
     paginated_result,
 )
 from .registry import register_source
@@ -344,7 +345,7 @@ class ArcencielSource(BrowserSource):
         """Normalize UI content type values into canonical Arc en Ciel model types."""
         if not content_type:
             return []
-        values = content_type if isinstance(content_type, list) else [content_type]
+        values = expand_content_type_filter(content_type)
         result: list[str] = []
         for value in values:
             key = re.sub(r"[^A-Z0-9]+", "_", str(value).upper()).strip("_")

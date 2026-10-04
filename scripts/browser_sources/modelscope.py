@@ -24,6 +24,7 @@ from .normalizer import (
     canonical_image,
     canonical_model,
     canonical_version,
+    expand_content_type_filter,
     paginated_result,
 )
 from .registry import register_source
@@ -775,7 +776,7 @@ class ModelScopeSource(BrowserSource):
         """Return canonical model type names requested by the Browser."""
         if not content_type:
             return []
-        values = content_type if isinstance(content_type, list) else [content_type]
+        values = expand_content_type_filter(content_type)
         resolved: list[str] = []
         for value in values:
             key = str(value).strip().lower().replace(" ", "")
