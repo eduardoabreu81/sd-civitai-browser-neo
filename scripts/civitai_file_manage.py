@@ -3652,10 +3652,10 @@ def get_model_categories():
     Get model organization categories from settings or default
     Returns dict mapping folder names to detection patterns
     """
-    # Default categories based on Forge Neo supported models
+    # Default categories for browsing and organization; generation support
+    # depends on Forge Neo and the installed model integrations.
     # Keep in sync with get_base_models() in civitai_gui.py and BASE_MODEL_SHORT
-    # in civitai_api.py. These are the base models officially supported by
-    # Forge Neo (Haoming02/sd-webui-forge-classic neo branch).
+    # in civitai_api.py.
     default_categories = {
         'SD': ['SD 1', 'SD1'],
         'SDXL': ['SDXL'],
@@ -3666,7 +3666,9 @@ def get_model_categories():
         'Krea': ['KREA'],
         'Wan': ['WAN'],
         'LTX': ['LTXV'],
+        'Qwen 2.1': ['QWEN 2.1', 'QWEN IMAGE 2.1', 'QWEN-IMAGE-2.1'],
         'Qwen': ['QWEN'],
+        'MiniMax H3': ['MINIMAX H3', 'MINIMAX-H3'],
         'Z-Image': ['Z-IMAGE', 'ZIMAGE', 'Z IMAGE', 'ZIMAGETURBO', 'ZIMAGEBASE'],
         'Ernie': ['ERNIE'],
         'Lumina': ['LUMINA'],

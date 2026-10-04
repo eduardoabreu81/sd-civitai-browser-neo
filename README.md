@@ -44,6 +44,7 @@ Browse, download, and manage your model library directly inside Forge Neo — mu
 - **Custom LoRA categories** — type any category name instead of picking from a fixed list; your own folders, sidecars, and each model's tags all feed the suggestions.
 - **Bulk category review** — apply changes across every page at once, sort by "least confident first" to focus on the shakiest guesses, or select several rows and set them together.
 - **Unified LoRA filter** — selecting **LORA** also includes **LoCon/LyCORIS and DoRA** across Browser sources and the update grid. Local Models and LoraDex include all three types from every configured LoRA folder.
+- **Qwen 2.1 and MiniMax H3** — available in the Browser, Local Models, and LoraDex base-model filters, with distinct card badges and automatic organization into `Qwen 2.1/` and `MiniMax H3/` folders.
 - Removed the CivitAI account status badge — it stopped working after an upstream API change and never came back.
 
 ### v1.0.0 — First Stable Release

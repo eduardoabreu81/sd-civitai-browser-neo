@@ -96,6 +96,10 @@ class ModelScopeSource(BrowserSource):
 
     # Base model detection: keyword → normalized name
     BASE_MODEL_HINTS = {
+        "qwen-image-2.1": "Qwen 2.1",
+        "qwen 2.1": "Qwen 2.1",
+        "minimax-h3": "MiniMax H3",
+        "minimax h3": "MiniMax H3",
         "sdxl": "SDXL",
         "sd 1.5": "SD 1.5",
         "sd1.5": "SD 1.5",
@@ -167,6 +171,9 @@ class ModelScopeSource(BrowserSource):
         "QWEN_IMAGE": "Qwen Image",
         "QWEN_IMAGE_20_B": "Qwen Image",
         "QWEN": "Qwen",
+        "QWEN_2_1": "Qwen 2.1",
+        "QWEN_IMAGE_2_1": "Qwen 2.1",
+        "MINIMAX_H3": "MiniMax H3",
     }
 
     def __init__(self) -> None:

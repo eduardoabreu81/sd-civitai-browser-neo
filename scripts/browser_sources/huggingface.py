@@ -64,6 +64,10 @@ class HuggingFaceSource(BrowserSource):
 
     # Base model detection: keyword → normalized name
     BASE_MODEL_HINTS = {
+        "qwen-image-2.1": "Qwen 2.1",
+        "qwen 2.1": "Qwen 2.1",
+        "minimax-h3": "MiniMax H3",
+        "minimax h3": "MiniMax H3",
         "sdxl": "SDXL",
         "sd 1.5": "SD 1.5",
         "sd1.5": "SD 1.5",
@@ -95,6 +99,7 @@ class HuggingFaceSource(BrowserSource):
         "image-to-image": "Checkpoint",
         "text-to-video": "Checkpoint",
         "image-to-video": "Checkpoint",
+        "image-text-to-video": "Checkpoint",
         "video-to-video": "Checkpoint",
         "text-to-image-generation": "Checkpoint",
     }
@@ -631,7 +636,10 @@ class HuggingFaceSource(BrowserSource):
         # Stable Video Diffusion and LTX. HF classifies those by pipeline tags,
         # not by the broad "stable-diffusion" tag.
         if video_search:
-            return ["text-to-video", "image-to-video"]
+            filters = ["text-to-video", "image-to-video"]
+            if any(str(base).strip().lower() == "minimax h3" for base in target_base_models):
+                filters.append("image-text-to-video")
+            return filters
 
         # Default checkpoint/common-model search should prefer actual image
         # generation pipelines. The old "stable-diffusion" tag was too broad
@@ -683,6 +691,7 @@ class HuggingFaceSource(BrowserSource):
             "hunyuanvideo",
             "stable video diffusion",
             "ltx",
+            "minimax h3",
         }
         return any(str(base).strip().lower() in video_base_models for base in target_base_models)
 

@@ -202,8 +202,8 @@ def txt2img_output(image_url):
 def get_base_models():
     api_url = f'https://{_api.get_civitai_domain()}/api/v1/models?baseModels=GetModels'
     json_return = _api.request_civit_api(api_url, True)
-    # The data below is taken from the API response (last synced: 2026-02-18)
-    # Forge Neo supported base models (per Haoming02/sd-webui-forge-classic neo branch).
+    # Base models available for browsing, including optional Forge Neo integrations.
+    # Qwen 2.1 and MiniMax H3 labels verified with CivitAI on 2026-10-04.
     # Keep this list in sync with get_model_categories() and BASE_MODEL_SHORT.
     default_options = [
         'Anima',
@@ -222,11 +222,13 @@ def get_base_models():
         'Krea 2',
         'LTXV',
         'Lumina',
+        'MiniMax H3',
         'NoobAI',
         'Other',
         'Pony',
         'Pony V7',
         'Qwen',
+        'Qwen 2.1',
         'SD 1.4',
         'SD 1.5',
         'SD 1.5 Hyper',
@@ -260,7 +262,7 @@ def get_base_models():
         try:
             parsed_message = json.loads(json_return['error']['message'])
             options = parsed_message[0]['errors'][0][0]['values']
-            return sorted(options)
+            return sorted(set(options).union(default_options))
         except (KeyError, IndexError, json.JSONDecodeError, TypeError) as e:
             print(f"Basemodel fetch error extracting options: {e}")
             return default_options
@@ -2915,7 +2917,7 @@ def on_ui_settings():
             component_args=lambda: {'lines': 8, 'placeholder': 'Leave empty to use default categories\n\nExample:\n{\n  "SD": ["SD 1", "SD1", "SD 2", "SD2"],\n  "SDXL": ["SDXL"],\n  "Pony": ["PONY"],\n  "FLUX": ["FLUX"]\n}'},
             section=organization,
             category_id=cat_id
-        ).info('Advanced: Customize folder names and detection patterns. Leave empty for defaults (SD, SDXL, Pony, Illustrious, FLUX, Wan, Qwen, Z-Image, Lumina, Anima, Cascade, PixArt, Playground, SVD, Hunyuan, Kolors, AuraFlow, Chroma)')
+        ).info('Advanced: Customize folder names and detection patterns. Leave empty for defaults (SD, SDXL, Pony, Illustrious, NoobAI, FLUX, Krea, Wan, LTX, Qwen, Qwen 2.1, MiniMax H3, Z-Image, Ernie, Lumina, Anima, Chroma)')
     )
 
 script_callbacks.on_ui_tabs(on_ui_tabs)
