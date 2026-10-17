@@ -200,12 +200,12 @@ def txt2img_output(image_url):
 
 ## === ANXETY EDITs ===
 def get_base_models():
-    api_url = f'https://{_api.get_civitai_domain()}/api/v1/models?baseModels=GetModels'
-    json_return = _api.request_civit_api(api_url, True)
-    # Base models available for browsing, including optional Forge Neo integrations.
-    # Qwen 2.1 and MiniMax H3 labels verified with CivitAI on 2026-10-04.
+    # Curated on purpose: CivitAI lists base models Forge Neo cannot run, so
+    # only models supported natively or through a Forge Neo extension belong
+    # here. Labels verified with CivitAI's /api/v1/enums on 2026-10-17; Iris 3B
+    # has no CivitAI label and is matched through Hugging Face and local files.
     # Keep this list in sync with get_model_categories() and BASE_MODEL_SHORT.
-    default_options = [
+    return [
         'Anima',
         'Chroma',
         'Ernie',
@@ -218,11 +218,20 @@ def get_base_models():
         'Flux.2 Klein 4B-base',
         'Flux.2 Klein 9B',
         'Flux.2 Klein 9B-base',
+        'Flux.3 Klein',
+        'Flux.3 Klein-base',
         'Illustrious',
+        'Iris 3B',
         'Krea 2',
+        'Krea 2 Turbo',
         'LTXV',
+        'LTXV2',
+        'LTXV 2.3',
+        'LTXV 2.5',
         'Lumina',
         'MiniMax H3',
+        'MOSS Image',
+        'MOSS Image Base',
         'NoobAI',
         'Other',
         'Pony',
@@ -253,21 +262,6 @@ def get_base_models():
         'ZImageBase',
         'ZImageTurbo',
     ]
-
-    if not isinstance(json_return, dict):
-        print("[CivitAI Browser Neo] - Couldn't fetch latest baseModel options, using default.")
-        return default_options
-
-    if 'error' in json_return and 'message' in json_return['error']:
-        try:
-            parsed_message = json.loads(json_return['error']['message'])
-            options = parsed_message[0]['errors'][0][0]['values']
-            return sorted(set(options).union(default_options))
-        except (KeyError, IndexError, json.JSONDecodeError, TypeError) as e:
-            print(f"Basemodel fetch error extracting options: {e}")
-            return default_options
-    else:
-        return default_options
 
 ## === ANXETY EDITs ===
 def on_ui_tabs():
@@ -2917,7 +2911,7 @@ def on_ui_settings():
             component_args=lambda: {'lines': 8, 'placeholder': 'Leave empty to use default categories\n\nExample:\n{\n  "SD": ["SD 1", "SD1", "SD 2", "SD2"],\n  "SDXL": ["SDXL"],\n  "Pony": ["PONY"],\n  "FLUX": ["FLUX"]\n}'},
             section=organization,
             category_id=cat_id
-        ).info('Advanced: Customize folder names and detection patterns. Leave empty for defaults (SD, SDXL, Pony, Illustrious, NoobAI, FLUX, Krea, Wan, LTX, Qwen, Qwen 2.1, MiniMax H3, Z-Image, Ernie, Lumina, Anima, Chroma)')
+        ).info('Advanced: Customize folder names and detection patterns. Leave empty for defaults (SD, SDXL, Pony, Illustrious, NoobAI, Flux.1, Flux.2, Flux.3, Krea, Wan, LTX, LTX 2, Qwen, Qwen 2.1, MiniMax H3, MOSS Image, Iris 3B, Z-Image, Ernie, Lumina, Anima, Chroma)')
     )
 
 script_callbacks.on_ui_tabs(on_ui_tabs)

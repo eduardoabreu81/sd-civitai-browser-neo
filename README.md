@@ -45,6 +45,9 @@ Browse, download, and manage your model library directly inside Forge Neo — mu
 - **Bulk category review** — apply changes across every page at once, sort by "least confident first" to focus on the shakiest guesses, or select several rows and set them together.
 - **Unified LoRA filter** — selecting **LORA** also includes **LoCon/LyCORIS and DoRA** across Browser sources and the update grid. Local Models and LoraDex include all three types from every configured LoRA folder.
 - **Qwen 2.1 and MiniMax H3** — available in the Browser, Local Models, and LoraDex base-model filters, with distinct card badges and automatic organization into `Qwen 2.1/` and `MiniMax H3/` folders.
+- **FLUX 3 Klein, MOSS Image, Iris 3B, Krea 2 Turbo and LTX 2** — new base-model filters for models Forge Neo runs natively or through an extension. The filter list is now curated instead of mirroring every CivitAI base model.
+- **One folder per model generation** — Organize now sorts Flux into `Flux.1/`, `Flux.2/` and `Flux.3/` (previously a single `FLUX/`), LTX 2.x into `LTX 2/`, and adds `MOSS Image/` and `Iris 3B/`. Card badges read **F1 / F2 / F3**, **Q21**, **LTX2**, **MOSS**, **Iris**, and Krea 2 shows **Krea**.
+- **Right companion files for Flux.2 and FLUX 3** — the model panel now lists the FLUX.2 autoencoder and the matching Qwen text encoder for Flux.2 Klein 4B/9B and FLUX 3 Klein instead of the FLUX.1 files, and any precision you already have (bf16, int8, fp8) counts as installed. Flux.2 models from Hugging Face are detected as Flux.2 instead of FLUX.1.
 - Removed the CivitAI account status badge — it stopped working after an upstream API change and never came back.
 
 ### v1.0.0 — First Stable Release

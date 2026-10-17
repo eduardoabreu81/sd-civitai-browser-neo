@@ -242,9 +242,29 @@ def get_banned_creators_text() -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 # Companion Files Lookup Table
 # Required companion files (VAE, text encoders, etc.) per base model architecture.
-# Keys are substrings matched against baseModel.upper().
+# Keys are substrings matched against baseModel.upper(); the first match wins,
+# so versioned keys must stay ahead of the generic ones. 'alternatives' lists
+# other filenames that satisfy the same slot (e.g. bf16 vs int8 encoders).
 # ─────────────────────────────────────────────────────────────────────────────
 _COMPANION_FILES = {
+    'FLUX.3': [
+        {'label': 'VAE (FLUX.2 autoencoder)', 'filename': 'flux2-vae.safetensors',                          'folder': 'models/VAE',          'size': '336 MB', 'url': 'https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy'},
+        {'label': 'Text Encoder (Qwen3-VL 4B)', 'filename': 'qwen3vl_4b_int8_convrot.safetensors',           'folder': 'models/text_encoder', 'size': '4.9 GB', 'url': 'https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy',
+         'alternatives': ['qwen3vl_4b_bf16.safetensors', 'qwen3vl_4b_fp8_scaled.safetensors']},
+    ],
+    'FLUX.2 KLEIN 9B': [
+        {'label': 'VAE (FLUX.2 autoencoder)', 'filename': 'flux2-vae.safetensors',                          'folder': 'models/VAE',          'size': '336 MB', 'url': 'https://huggingface.co/Comfy-Org/vae-text-encorder-for-flux-klein-9b'},
+        {'label': 'Text Encoder (Qwen3-8B)',  'filename': 'qwen_3_8b_fp8mixed.safetensors',                 'folder': 'models/text_encoder', 'size': '8.7 GB', 'url': 'https://huggingface.co/Comfy-Org/vae-text-encorder-for-flux-klein-9b',
+         'alternatives': ['qwen_3_8b.safetensors', 'qwen_3_8b_fp4mixed.safetensors']},
+    ],
+    'FLUX.2 KLEIN 4B': [
+        {'label': 'VAE (FLUX.2 autoencoder)', 'filename': 'flux2-vae.safetensors',                          'folder': 'models/VAE',          'size': '336 MB', 'url': 'https://huggingface.co/Comfy-Org/vae-text-encorder-for-flux-klein-4b'},
+        {'label': 'Text Encoder (Qwen3-4B)',  'filename': 'qwen_3_4b.safetensors',                          'folder': 'models/text_encoder', 'size': '8.0 GB', 'url': 'https://huggingface.co/Comfy-Org/vae-text-encorder-for-flux-klein-4b',
+         'alternatives': ['qwen_3_4b_fp4_flux2.safetensors']},
+    ],
+    # Flux.2 Dev is not supported by Forge Neo; an empty entry keeps it from
+    # falling through to the FLUX.1 companions below.
+    'FLUX.2': [],
     'FLUX': [
         {'label': 'VAE',                     'filename': 'ae.safetensors',                                    'folder': 'models/VAE',          'size': '335 MB', 'url': 'https://huggingface.co/black-forest-labs/FLUX.1-dev'},
         {'label': 'Text Encoder (CLIP-L)',   'filename': 'clip_l.safetensors',                               'folder': 'models/text_encoder', 'size': '246 MB', 'url': 'https://huggingface.co/comfyanonymous/flux_text_encoders'},
@@ -328,9 +348,10 @@ def get_companion_banner(base_model: str, model_filename: str = '', model_name: 
         dest_folder = base_path / sub
         present = False
         if dest_folder.exists():
-            present = (dest_folder / comp['filename']).exists()
-            if not present:
-                present = bool(list(dest_folder.rglob(comp['filename'])))
+            for filename in [comp['filename'], *comp.get('alternatives', [])]:
+                present = (dest_folder / filename).exists() or bool(list(dest_folder.rglob(filename)))
+                if present:
+                    break
         if not present:
             any_missing = True
         status_icon = '✅' if present else '⬇️'
@@ -3662,13 +3683,20 @@ def get_model_categories():
         'Pony': ['PONY', 'PONYXL', 'PONY XL', 'PONY V6', 'PONYV6', 'PONY V7', 'PONYV7'],
         'Illustrious': ['ILLUSTRIOUS'],
         'NoobAI': ['NOOBAI', 'NOOB AI', 'NOOB', 'NAI'],
-        'FLUX': ['FLUX'],
+        # One folder per Flux generation; unversioned "Flux" labels are Flux.1.
+        # Flux must stay ahead of Krea so "Flux.1 Krea" lands in Flux.1.
+        'Flux.3': ['FLUX.3', 'FLUX 3', 'FLUX-3'],
+        'Flux.2': ['FLUX.2', 'FLUX 2', 'FLUX-2'],
+        'Flux.1': ['FLUX'],
         'Krea': ['KREA'],
         'Wan': ['WAN'],
+        'LTX 2': ['LTXV2', 'LTXV 2', 'LTX-2', 'LTX 2'],
         'LTX': ['LTXV'],
         'Qwen 2.1': ['QWEN 2.1', 'QWEN IMAGE 2.1', 'QWEN-IMAGE-2.1'],
         'Qwen': ['QWEN'],
         'MiniMax H3': ['MINIMAX H3', 'MINIMAX-H3'],
+        'MOSS Image': ['MOSS IMAGE', 'MOSS-IMAGE'],
+        'Iris 3B': ['IRIS 3B', 'IRIS-3B'],
         'Z-Image': ['Z-IMAGE', 'ZIMAGE', 'Z IMAGE', 'ZIMAGETURBO', 'ZIMAGEBASE'],
         'Ernie': ['ERNIE'],
         'Lumina': ['LUMINA'],
