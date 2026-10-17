@@ -48,6 +48,10 @@ Browse, download, and manage your model library directly inside Forge Neo — mu
 - **FLUX 3 Klein, MOSS Image, Iris 3B, Krea 2 Turbo and LTX 2** — new base-model filters for models Forge Neo runs natively or through an extension. The filter list is now curated instead of mirroring every CivitAI base model.
 - **One folder per model generation** — Organize now sorts Flux into `Flux.1/`, `Flux.2/` and `Flux.3/` (previously a single `FLUX/`), LTX 2.x into `LTX 2/`, and adds `MOSS Image/` and `Iris 3B/`. Card badges read **F1 / F2 / F3**, **Q21**, **LTX2**, **MOSS**, **Iris**, and Krea 2 shows **Krea**.
 - **Right companion files for Flux.2 and FLUX 3** — the model panel now lists the FLUX.2 autoencoder and the matching Qwen text encoder for Flux.2 Klein 4B/9B and FLUX 3 Klein instead of the FLUX.1 files, and any precision you already have (bf16, int8, fp8) counts as installed. Flux.2 models from Hugging Face are detected as Flux.2 instead of FLUX.1.
+- **Delisted models recovered everywhere** — models CivitAI no longer serves are now filled in from CivArchive by **Update info & tags** and **Update previews** (new scan option), and shown in full in the card popup, **Send to Browser**, and the saved `.html` page, which replaces the dead CivitAI one.
+- **"Resolve issues" fixed** — CivArchive SHA256 lookups were being discarded, so delisted models were never actually recovered. Orphaned models now resolve through CivArchive and corrupted info through CivitAI by model version, and the returned model is checked against the sidecar before anything is written.
+- **Local base-model filter follows what you installed** — a listing that spans several base models (e.g. `[ANIMA & IL & ZIT]`) no longer shows up under every one of them; it is matched by the version you actually have.
+- **Pasted links always resolve** — a pasted URL ignores the search type and listing filters, and timeouts, HTTP 429 and 404 are now reported as such instead of "model not found".
 - Removed the CivitAI account status badge — it stopped working after an upstream API change and never came back.
 
 ### v1.0.0 — First Stable Release
@@ -79,7 +83,7 @@ The largest update since the Neo fork: the Browser is no longer hardwired to Civ
 - Select a source adapter: CivitAI, CivArchive, ModelScope, or Arc en Ciel ⭐
 - Search by model name, tag, username, or **paste a direct model URL** ⭐
 - Direct model URLs ignore listing filters (including NSFW, base model, installed, creator and access filters) without changing your saved preferences. The global **SFW only** setting still selects the CivitAI API domain.
-- Filter by content type, base model, time period, and sort order — the base-model list auto-updates from CivitAI at startup ⭐
+- Filter by content type, base model, time period, and sort order — the base-model list is curated for the architectures Forge Neo runs ⭐
 - The **LORA** filter includes **LoCon/LyCORIS and DoRA** across Browser sources. Local Models and LoraDex include all three types from your configured LoRA folders.
 - NSFW toggle, liked-only filter, hide installed models, hide banned creators
 - Independent **Hide early access** and **Hide paid** filters ⭐
@@ -121,7 +125,7 @@ The largest update since the Neo fork: the Browser is no longer hardwired to Civ
 ### 🗂️ Auto-Organization ⭐
 *[Full details on the Wiki →](https://github.com/eduardoabreu81/sd-civitai-browser-neo/wiki/Feature-Auto-Organization)*
 
-- New downloads automatically sorted into subfolders by base model (SDXL/, Pony/, FLUX/, …)
+- New downloads automatically sorted into subfolders by base model (SDXL/, Pony/, Flux.1/, Flux.2/, Flux.3/, …)
 - Modular: organize by base model, by LoRA category, or both
 - Validate organization, fix misplaced files, and one-click rollback (keeps last 5 backups)
 - Custom folder mapping in Settings
