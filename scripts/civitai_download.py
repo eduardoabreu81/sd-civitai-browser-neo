@@ -634,22 +634,30 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
             # For update-mode queuing: find the old installed file path from gl.update_items
             # so retention can be applied even when old and new filenames differ.
             # keep_installed=True skips this entirely → old version is kept alongside the new.
+            # Retention never crosses baseModel: one model page can hold an Anima and a
+            # MOSS Image version, and downloading one must never delete the other. Only an
+            # installed file of the SAME baseModel counts as the old version; anything we
+            # cannot classify is kept.
             old_file_path = None
-            if not keep_installed:
+            if not keep_installed and output_basemodel:
                 if gl.update_items:
                     for _upd in gl.update_items:
-                        if _api.model_id_matches(_upd.get('model_id'), model_id):
-                            upd_family = (_upd.get('family') or '').upper()
-                            new_family = (output_basemodel or '').upper()
-                            if not upd_family or not new_family or upd_family == new_family:
-                                old_file_path = _upd.get('old_file', '') or None
-                                break
+                        if not _api.model_id_matches(_upd.get('model_id'), model_id):
+                            continue
+                        candidate = _upd.get('old_file', '') or None
+                        if candidate and _file.same_base_model(
+                                _file.installed_base_model(candidate, versions_list, index=_batch_index),
+                                output_basemodel):
+                            old_file_path = candidate
+                            break
 
                 # Fallback: no update-scan ran (e.g. update triggered from Local Models), so
                 # locate the currently-installed file for this model on disk so retention can
                 # still remove/trash the old version when the new filename differs.
                 if not old_file_path:
-                    old_file_path = _file.find_installed_file_by_model_id(model_id, model_filename, index=_batch_index) or None
+                    old_file_path = _file.find_installed_file_by_model_id(
+                        model_id, model_filename, index=_batch_index,
+                        base_model=output_basemodel, versions_list=versions_list) or None
 
             model_item = create_model_item(dl_url, model_filename, install_path, model_name, version_name, model_sha256, model_id, create_json, from_batch, old_file_path=old_file_path, version_id=version_id, origin=origin)
             if model_item:

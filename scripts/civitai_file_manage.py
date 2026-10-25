@@ -679,9 +679,10 @@ def build_installed_index():
     single pass returns reusable lookups so the per-model cost drops to O(1):
 
       {'hashes': {SHA256...}, 'ver_ids': {modelVersionId...},
-       'by_model_id': {modelId: [model_file_path, ...]}}
+       'by_model_id': {modelId: [model_file_path, ...]},
+       'info_by_path': {normalized model_file_path: _sidecar_install_info(...)}}
     """
-    index = {'hashes': set(), 'ver_ids': set(), 'by_model_id': {}}
+    index = {'hashes': set(), 'ver_ids': set(), 'by_model_id': {}, 'info_by_path': {}}
     for model_folder in _get_all_model_folders():
         for root, _, files in os.walk(model_folder, followlinks=True):
             fileset = set(files)
@@ -710,12 +711,70 @@ def build_installed_index():
                 json_base = os.path.splitext(file)[0]
                 for ext in MODEL_FILE_EXTENSIONS:
                     if (json_base + ext) in fileset:
-                        index['by_model_id'].setdefault(mid, []).append(os.path.join(root, json_base + ext))
+                        model_path = os.path.join(root, json_base + ext)
+                        index['by_model_id'].setdefault(mid, []).append(model_path)
+                        index['info_by_path'][_path_key(model_path)] = _sidecar_install_info(data)
                         break
     return index
 
 
-def find_installed_file_by_model_id(model_id, exclude_filename=None, index=None):
+def _path_key(path):
+    return os.path.normcase(os.path.normpath(path))
+
+
+def _sidecar_install_info(data):
+    """Identity of an installed file as recorded in its .json sidecar."""
+    ver_id = data.get('modelVersionId')
+    try:
+        ver_id = int(ver_id) if ver_id is not None else None
+    except (TypeError, ValueError):
+        ver_id = None
+    return {
+        'ver_id': ver_id,
+        'sha256': (data.get('sha256') or '').upper(),
+        'base_model': (data.get('baseModel') or data.get('sd version') or '').strip(),
+    }
+
+
+def installed_base_model(model_path, versions_list=None, index=None):
+    """baseModel of an installed model file, or '' when it cannot be determined.
+
+    The model's own version list (from the API) is authoritative: the installed
+    version is identified by its sidecar modelVersionId, then by file hash. The
+    sidecar's recorded baseModel / "sd version" is only the offline fallback.
+    """
+    info = (index or {}).get('info_by_path', {}).get(_path_key(model_path))
+    if info is None:
+        data = _load_sidecar_dict(os.path.splitext(model_path)[0] + '.json') or {}
+        info = _sidecar_install_info(data)
+
+    versions = versions_list or []
+    if info['ver_id'] is not None:
+        for ver in versions:
+            if ver.get('id') == info['ver_id'] and ver.get('baseModel'):
+                return ver['baseModel'].strip()
+    if info['sha256']:
+        for ver in versions:
+            for file_entry in ver.get('files', []):
+                sha = ((file_entry.get('hashes') or {}).get('SHA256') or '').upper()
+                if sha == info['sha256'] and ver.get('baseModel'):
+                    return ver['baseModel'].strip()
+    return info['base_model']
+
+
+def same_base_model(a, b):
+    """True only when both baseModels are known and equal (case-insensitive).
+
+    Retention uses this to decide whether an installed file is an older version of
+    the one being downloaded. An unknown baseModel never matches, so a file we
+    cannot classify is kept rather than deleted.
+    """
+    a = (a or '').strip().lower()
+    b = (b or '').strip().lower()
+    return bool(a) and a == b
+
+
+def find_installed_file_by_model_id(model_id, exclude_filename=None, index=None, base_model=None, versions_list=None):
     """Locate an installed model file by its CivitAI modelId (via the .json sidecar).
 
     Retention fallback for updates triggered without a prior update-scan (e.g. from the
@@ -725,6 +784,11 @@ def find_installed_file_by_model_id(model_id, exclude_filename=None, index=None)
     Returns the full path of an installed file for this model whose base name differs
     from exclude_filename, or '' if none is found. Pass a prebuilt index from
     build_installed_index() to avoid re-walking the tree (used by batch downloads).
+
+    When base_model is given, only a file of that same baseModel qualifies (see
+    installed_base_model / same_base_model). One CivitAI model can hold versions for
+    several families (an Anima and a MOSS Image LoRA on the same page); downloading
+    one family must never pick the other family's file as the "old version".
     """
     try:
         target_id = int(model_id)
@@ -734,9 +798,16 @@ def find_installed_file_by_model_id(model_id, exclude_filename=None, index=None)
     exclude_base = os.path.splitext(exclude_filename)[0] if exclude_filename else None
     model_extensions = MODEL_FILE_EXTENSIONS
 
+    def _family_ok(path):
+        if base_model is None:
+            return True
+        return same_base_model(installed_base_model(path, versions_list, index=index), base_model)
+
     if index is not None:
         for path in index.get('by_model_id', {}).get(target_id, []):
             if exclude_base and os.path.splitext(os.path.basename(path))[0] == exclude_base:
+                continue
+            if not _family_ok(path):
                 continue
             return path
         return ''
@@ -764,7 +835,9 @@ def find_installed_file_by_model_id(model_id, exclude_filename=None, index=None)
                 for ext in model_extensions:
                     candidate = os.path.join(root, json_base + ext)
                     if os.path.exists(candidate):
-                        return candidate
+                        if _family_ok(candidate):
+                            return candidate
+                        break
     return ''
 
 
