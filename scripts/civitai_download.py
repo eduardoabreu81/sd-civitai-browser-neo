@@ -442,12 +442,33 @@ def _all_known_items(preferred_origin=None):
     return browser_items + local_items
 
 
-def selected_to_queue(model_list, subfolder, download_start, create_json, current_html, forced_version_ids=None, keep_installed=False, origin='browser', base_filter=None, forced_file_labels=None):
+def custom_download_filename(requested, api_filename):
+    """Sanitized user-chosen filename for a download, or None to keep the API name.
+
+    Only the basename is used, and the API file's extension is appended when the
+    user typed the name without it (e.g. 'ABG_Krea2' -> 'ABG_Krea2.safetensors').
+    """
+    requested = os.path.basename((requested or '').strip().replace('\\', '/'))
+    if not requested or not api_filename:
+        return None
+    ext = os.path.splitext(api_filename)[1]
+    if ext and os.path.splitext(requested)[1].lower() != ext.lower():
+        requested += ext
+    name = _api.cleaned_name(requested)
+    if not os.path.splitext(name)[0] or name == api_filename:
+        return None
+    return name
+
+
+def selected_to_queue(model_list, subfolder, download_start, create_json, current_html, forced_version_ids=None, keep_installed=False, origin='browser', base_filter=None, forced_file_labels=None, forced_file_names=None):
     """Enqueue models for download.
 
     Args:
         forced_version_ids: Optional dict mapping model_id (str) -> list of version IDs.
             When provided, those specific versions are used instead of auto-resolution.
+        forced_file_names: Optional dict mapping model_id (str) -> filename to save as.
+            Applied only when a single version is queued for that model, so two
+            versions never end up under the same name.
         keep_installed: When True, do NOT resolve/pass the old installed file path, so the
             currently-installed version is kept alongside the newly downloaded one
             (retention is skipped). Default False = replace the old version.
@@ -552,6 +573,9 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
 
             if chosen_file:
                 model_filename = _api.cleaned_name(chosen_file.get('name'))
+                if len(versions_to_download) == 1:
+                    model_filename = custom_download_filename(
+                        (forced_file_names or {}).get(str(model_id)), model_filename) or model_filename
                 model_sha256 = chosen_file.get('hashes', {}).get('SHA256')
                 dl_url = chosen_file.get('downloadUrl')
             else:
@@ -767,6 +791,7 @@ def download_single_update(trigger_value, download_start, create_json, current_h
       - Legacy:  'model_id|family'
       - Revamp:  'model_id|family|[456, 789]'  (JSON array of selected version IDs)
       - Revamp+: 'model_id|family|[456]|file_label'  (also forces a specific file)
+      - Named:   'model_id|family|[456]|file_label|file_name'  (saves under file_name)
     """
     keep = _keep_from_mode(update_mode)
     if not trigger_value or '|' not in trigger_value:
@@ -783,11 +808,12 @@ def download_single_update(trigger_value, download_start, create_json, current_h
 
     # Parse trigger value: model_id|family|json_version_ids|file_label
     try:
-        parts = trigger_value.split('|', 3)
+        parts = trigger_value.split('|', 4)
         model_id_str = parts[0].strip()
         family_str   = parts[1].strip().upper() if len(parts) > 1 else ''
         version_ids_json = parts[2] if len(parts) > 2 else '[]'
-        file_label = parts[3].strip() if len(parts) > 3 else None
+        file_label = (parts[3].strip() or None) if len(parts) > 3 else None
+        file_name = (parts[4].strip() or None) if len(parts) > 4 else None
         model_id_int = int(model_id_str)
         selected_version_ids = json.loads(version_ids_json) if version_ids_json else []
     except Exception:
@@ -827,7 +853,11 @@ def download_single_update(trigger_value, download_start, create_json, current_h
     if file_label:
         forced_file_labels = {str(model_id_int): file_label}
 
-    return selected_to_queue(model_list_json, None, download_start, create_json, current_html, forced_version_ids=forced_version_ids, forced_file_labels=forced_file_labels, keep_installed=keep, origin='local')
+    forced_file_names = None
+    if file_name:
+        forced_file_names = {str(model_id_int): file_name}
+
+    return selected_to_queue(model_list_json, None, download_start, create_json, current_html, forced_version_ids=forced_version_ids, forced_file_labels=forced_file_labels, forced_file_names=forced_file_names, keep_installed=keep, origin='local')
 
 
 def gr_progress_threadable():

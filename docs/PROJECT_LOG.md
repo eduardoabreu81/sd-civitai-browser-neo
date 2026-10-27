@@ -22,6 +22,16 @@
 
 ## Linha do Tempo
 
+### 2026-10-27 — Local "Download selected version" honors the edited filename
+
+**What changed:** The Local panel's Model filename box is editable, but "⬇️ Download selected version" only sent model id, version and file label, so a typed name was dropped and the API filename was always used. The button now also sends `local_filename`. The trigger gains an optional fifth field (`model_id|family|[ver]|file_label|file_name`), `download_single_update` parses it, and `selected_to_queue` takes `forced_file_names`. The new `custom_download_filename` keeps only the basename, appends the API extension when it was left out, runs `cleaned_name`, and returns None when the name is empty or unchanged. The forced name applies only when one version is queued for the model, so two versions never share it.
+
+**Files changed:** `scripts/civitai_gui.py`, `scripts/civitai_download.py`, `tests/test_same_filename_versions.py`, `docs/PROJECT_LOG.md`.
+
+**Validation:** `tests/test_same_filename_versions.py` 7 passed (extension appended, full name kept, empty/unchanged ignored, directory parts dropped). Full suite: 513 passed. WebUI smoke test pending.
+
+**Sensitive points:** The Browser tab's single download already used its File name box through `download_start`; that path was not changed and still passes the raw value without sanitizing.
+
 ### 2026-10-27 — Sibling versions with the same filename are no longer shown as installed
 
 **What changed:** Model 2006914 publishes `ABG.safetensors` for MOSS Image, Krea 2 and SDXL. With the MOSS file installed, the Browser panel showed the Krea version as installed and hid its Download button. The "Keep installed" radio did not help, because it only controls retention in the Local tab. Root cause: three installed-detection paths in `civitai_api.py` (`update_model_info`, `update_file_info`, and the `[Installed]` labels in `update_model_versions` / `_match_installed_versions_from_paths`) accepted a filename match on its own. A new helper, `_same_name_is_other_version`, rejects a filename match when the file's `.json` sidecar records a different `modelVersionId`, or a different SHA256 if it has no version id. A file without sidecar identity still counts as a match, as before.

@@ -65,5 +65,49 @@ class TestSameFilenameVersions(unittest.TestCase):
         self.assertFalse(self._other(KREA))
 
 
+class TestCustomDownloadFilename(unittest.TestCase):
+    """The Local tab's editable Model filename box names the downloaded file.
+
+    civitai_download starts aria2 on import, so the helper is loaded on its own.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import ast
+        import types
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with io.open(os.path.join(root, 'scripts', 'civitai_download.py'), encoding='utf-8') as handle:
+            source = handle.read()
+        node = next(n for n in ast.parse(source).body
+                    if isinstance(n, ast.FunctionDef) and n.name == 'custom_download_filename')
+        saved = dict(sys.modules)
+        try:
+            for name in [n for n in sys.modules if n == 'scripts' or n.startswith('scripts.')]:
+                del sys.modules[name]
+            _install_stubs()
+            import scripts.civitai_api as api
+            namespace = {'os': os, '_api': types.SimpleNamespace(cleaned_name=api.cleaned_name)}
+        finally:
+            sys.modules.clear()
+            sys.modules.update(saved)
+        exec(compile(ast.Module(body=[node], type_ignores=[]), 'civitai_download.py', 'exec'), namespace)
+        cls.fn = staticmethod(namespace['custom_download_filename'])
+
+    def test_extension_is_added(self):
+        self.assertEqual(self.fn('ABG_Krea2', 'ABG.safetensors'), 'ABG_Krea2.safetensors')
+
+    def test_full_name_is_kept(self):
+        self.assertEqual(self.fn('ABG_Krea2.safetensors', 'ABG.safetensors'), 'ABG_Krea2.safetensors')
+
+    def test_unchanged_or_empty_keeps_api_name(self):
+        self.assertIsNone(self.fn('ABG.safetensors', 'ABG.safetensors'))
+        self.assertIsNone(self.fn('  ', 'ABG.safetensors'))
+        self.assertIsNone(self.fn(None, 'ABG.safetensors'))
+
+    def test_directories_are_dropped(self):
+        self.assertEqual(self.fn('../evil/ABG_x', 'ABG.safetensors'), 'ABG_x.safetensors')
+        self.assertEqual(self.fn('..\\evil\\ABG_y.safetensors', 'ABG.safetensors'), 'ABG_y.safetensors')
+
+
 if __name__ == '__main__':
     unittest.main()

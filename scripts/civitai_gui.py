@@ -1188,10 +1188,12 @@ def on_ui_tabs():
                 return gr.update(value=f"{model_id_value}||[{target_id}]")
             return gr.update(value=f"{model_id_value}||[]")
 
-        def trigger_local_version_download(model_id_value, version_display, file_label):
+        def trigger_local_version_download(model_id_value, version_display, file_label, file_name=''):
             """Funnel 'download the version chosen in the dropdown' into the single-update
-            pipeline as model_id||[version_id]||file_label. The 'When updating:' radio decides
-            whether the installed version is replaced or kept alongside (same as Update to latest)."""
+            pipeline as model_id||[version_id]||file_label[|file_name]. The 'When updating:'
+            radio decides whether the installed version is replaced or kept alongside (same
+            as Update to latest). file_name is the editable Model filename box, so versions
+            that share one filename can be saved side by side under different names."""
             if not model_id_value or not version_display:
                 return gr.update()
             vname = _api.strip_version_suffixes(version_display)
@@ -1203,6 +1205,9 @@ def on_ui_tabs():
                 debug_print(f"Download selected version: could not resolve '{version_display}' for model {model_id_value}")
                 return gr.update()
             file_label = (file_label or '').strip()
+            file_name = (file_name or '').strip().replace('|', '')
+            if file_name:
+                return gr.update(value=f"{model_id_value}||[{ver['id']}]|{file_label}|{file_name}")
             if file_label:
                 return gr.update(value=f"{model_id_value}||[{ver['id']}]||{file_label}")
             return gr.update(value=f"{model_id_value}||[{ver['id']}]")
@@ -1376,9 +1381,9 @@ def on_ui_tabs():
         # forced (model_id||[version_id]||file_label); honors the 'When updating:' replace/keep radio.
         local_download_version_btn.click(
             fn=trigger_local_version_download,
-            inputs=[local_model_id, local_version, local_file_list],
+            inputs=[local_model_id, local_version, local_file_list, local_filename],
             outputs=[update_single_trigger],
-            _js="(mid, ver, files) => { setCivDownloadOrigin('local'); return [mid, ver, files]; }"
+            _js="(mid, ver, files, fname) => { setCivDownloadOrigin('local'); return [mid, ver, files, fname]; }"
         )
 
         # Batch update of checked (outdated) cards → reuses the update_selected pipeline
