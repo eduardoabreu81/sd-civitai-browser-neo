@@ -22,6 +22,98 @@
 
 ## Linha do Tempo
 
+### 2026-10-27 — Sibling versions with the same filename are no longer shown as installed
+
+**What changed:** Model 2006914 publishes `ABG.safetensors` for MOSS Image, Krea 2 and SDXL. With the MOSS file installed, the Browser panel showed the Krea version as installed and hid its Download button. The "Keep installed" radio did not help, because it only controls retention in the Local tab. Root cause: three installed-detection paths in `civitai_api.py` (`update_model_info`, `update_file_info`, and the `[Installed]` labels in `update_model_versions` / `_match_installed_versions_from_paths`) accepted a filename match on its own. A new helper, `_same_name_is_other_version`, rejects a filename match when the file's `.json` sidecar records a different `modelVersionId`, or a different SHA256 if it has no version id. A file without sidecar identity still counts as a match, as before.
+
+**Files changed:** `scripts/civitai_api.py`, `tests/test_same_filename_versions.py`, `docs/PROJECT_LOG.md`.
+
+**Validation:** `tests/test_same_filename_versions.py` 3 passed. Full suite: 509 passed. `git diff --check` clean. WebUI smoke test pending.
+
+**Sensitive points:** Without auto-organize, both versions resolve to the same folder and filename. Downloading the second one then replaces the first (`handle_existing_model_file`). The user has to rename the file in the File name box first. Even in separate subfolders, two LoRAs named `ABG` share one Forge alias, so renaming is advisable anyway.
+
+### 2026-10-25 — Retention no longer deletes another baseModel's file
+
+**What changed:** Downloading a version of a multi-family model deleted the installed version of a *different* family. Example from the user's log: a creator publishes `male_bottom_pov` for Anima and for MOSS Image on the same model page (same modelId). Downloading the MOSS version from the Browser picked `Lora/Anima/male_bottom_pov_Anima.safetensors` as the "old version" and the default `replace` policy deleted it (`os.remove`, not the recycle bin), plus its sidecars and images. Three Anima LoRAs were lost in one batch. Root cause: the retention fallback `find_installed_file_by_model_id` matched by modelId only. The `gl.update_items` path was also permissive (`family=None` from a non-precise scan matched any download). Now retention never crosses baseModel. `selected_to_queue` accepts an old file only when `installed_base_model(old) == output_basemodel`, for both the update-scan candidate and the on-disk fallback. `installed_base_model` takes the installed version's baseModel from the API version list (by sidecar `modelVersionId`, then by file SHA256) and only falls back to the sidecar's `baseModel`/`sd version`. `same_base_model` is a strict case-insensitive equality, and an unknown base never matches, so a file that cannot be classified is kept. `build_installed_index` gains `info_by_path` so the batch path stays walk-free.
+
+**Files changed:** `scripts/civitai_file_manage.py`, `scripts/civitai_download.py`, `tests/test_retention_family.py`, `docs/PROJECT_LOG.md`.
+
+**Validation:** `tests/test_retention_family.py` 9 passed (other family not chosen, same-family older version still replaced, same family chosen when both are installed, API version wins over stale sidecar, hash fallback, unknown family kept, unfiltered delete lookup unchanged, source guard on `selected_to_queue`). Full suite: 506 passed. WebUI smoke test pending.
+
+**Sensitive points:** Behavior change: an update that moves to a different baseModel (for example a non-precise "update to latest" from Pony to Illustrious) now keeps the old file next to the new one instead of replacing it. This is intentional: losing data is worse than a duplicate. `delete_installed_by_sha256` still falls back to an unfiltered modelId lookup when the SHA256 is not found. That path is a user-initiated delete, not retention, and was left as is. The deleted Anima `.safetensors` files did not go to the recycle bin (`replace` uses `os.remove`); only their sidecars and images did.
+
+### 2026-10-17 — Flux.2/Flux.3 companion files and Hugging Face labels
+
+**What changed:** The companion-files banner in the model panel no longer suggests the FLUX.1 VAE, CLIP-L and T5-XXL for every Flux label. `_COMPANION_FILES` gains versioned keys ahead of the generic `FLUX`. `FLUX.3` → `flux2-vae` + Qwen3-VL 4B. `FLUX.2 KLEIN 9B` → `flux2-vae` + Qwen3-8B. `FLUX.2 KLEIN 4B` → `flux2-vae` + Qwen3-4B. `FLUX.2` is empty, so Flux.2 Dev (not supported by Forge Neo) shows no banner. A new optional `alternatives` list counts any accepted variant (bf16 / int8 / fp8 / fp4) as present, so users are not asked to download a file they already have in another precision. HF and ModelScope now map Flux.2 Klein 4B/9B (and -base, fp8 repos, Comfy file names) and Flux.2 Dev to their CivitAI labels instead of `FLUX.1`, so they are organized into `Flux.2/`. The UI-value space forms keep `_normalize_base_model_value` from collapsing `Flux.2 Klein 4B` into `FLUX.1`.
+
+**Evidence:** File names and sizes verified on Hugging Face: `black-forest-labs/flux-3-image-klein-comfy` (`vae/flux2-vae`, `text_encoders/qwen3vl_4b_{int8_convrot,bf16}`), `Comfy-Org/Qwen3-VL` (`qwen3vl_4b_fp8_scaled`, accepted per the flux3 extension README), and `Comfy-Org/vae-text-encorder-for-flux-klein-{4b,9b}` (`qwen_3_4b`, `qwen_3_4b_fp4_flux2`, `qwen_3_8b{,_fp8mixed,_fp4mixed}`, `flux2-vae`). Forge Neo README: Flux.2-Klein 4B/9B supported, not Flux.2-Dev.
+
+**Files changed:** `scripts/civitai_file_manage.py`, `scripts/browser_sources/{huggingface,modelscope}.py`, `tests/test_new_base_models.py`, `docs/PROJECT_LOG.md`.
+
+**Validation:** `tests/test_new_base_models.py` 11 passed (new: companion files per Flux generation, alternative encoder counts as present, Flux.2 repo detection for HF/ModelScope). Full suite from the repo root: 497 passed. `git diff --check` clean. A Python rewrite briefly turned both source files to CRLF; that was restored to LF before validation. WebUI smoke test still pending.
+
+**Sensitive points:** MOSS Image, Iris 3B and LTX 2 still have no companion entries, so their panels show no banner. Flux.1 HF labels stay `FLUX.1` and still go to `Flux.1/` through the generic pattern.
+
+### 2026-10-17 — Curated base models for FLUX 3, MOSS Image, Iris 3B, Krea 2 Turbo and LTX 2
+
+**What changed:** Added `Flux.3 Klein`, `Flux.3 Klein-base`, `MOSS Image`, `MOSS Image Base`, `Iris 3B`, `Krea 2 Turbo`, `LTXV2`, `LTXV 2.3` and `LTXV 2.5` to the shared base-model filters (Browser, Local Models, LoraDex). `get_base_models()` now returns a curated list only. Default organization uses one folder per generation: `Flux.1/`, `Flux.2/`, `Flux.3/` replace `FLUX/`, `LTX 2/` sits next to `LTX/`, and `MOSS Image/` and `Iris 3B/` are new. Badges: F1/F2/F3 (Flux.2 and Flux.3 keys moved ahead of the bare `flux` prefix fallback), `Q21` replaces `Q2.1`, Krea 2 and Krea 2 Turbo share `Krea`, LTX 2.x is `LTX2`, plus `MOSS` and `Iris`. Hugging Face and ModelScope detect the official repositories and map them to the same names. LTX 2.x searches on HF use the video pipelines.
+
+**Evidence:** CivitAI `/api/v1/enums` (`ActiveBaseModel`, identical on civitai.com and civitai.red) lists 42 active base models missing from the old list. The old `baseModels=GetModels` trick that read the enum from a validation error no longer works: the API now ignores unknown values and returns `{"items": []}`, so the dropdown always fell back to the static list. Filtering by `Flux.3 Klein`, `MOSS Image Base` and `LTXV 2.5` returns matching models. `Iris 3B` has no CivitAI label. An unknown `baseModels` value is ignored next to a valid one and returns nothing on its own. Forge Neo support was checked against the Forge Neo README (Krea 2 points to `krea/Krea-2-Turbo`) and the user's extensions (`flux3-image-forge-neo` covers Klein and Klein-base only, plus `moss-image-forge-neo`, `iris-3b-forge-neo` and `ltx-video-forge-neo` for LTX-2/2.3/2.5). HF repos confirmed: `black-forest-labs/flux-3-image-klein[-base]`, `OpenMOSS-Team/MOSS-Image-{SFT,Base}`, `speridlabs/iris-3b`, `krea/Krea-2-Turbo`, `Lightricks/LTX-2{,.3,.5}`.
+
+**Decisions (user):** The list is not synced from CivitAI, because CivitAI lists models Forge Neo cannot run. Ideogram, Boogu, HiDream, Hunyuan, Qwen 2/3, Wan 2.7/3.0 and full `Flux.3` stay out. Flux badges are F1/F2/F3 only, and Qwen is split into Qwen/Q21. Each model generation gets its own folder.
+
+**Files changed:** `scripts/civitai_gui.py`, `scripts/civitai_api.py`, `scripts/civitai_file_manage.py`, `scripts/browser_sources/{huggingface,modelscope}.py`, `tests/test_new_base_models.py`, `README.md`, `docs/PROJECT_LOG.md`.
+
+**Validation:** `tests/test_new_base_models.py` 8 passed. Full suite from the repo root: 495 passed. Manual smoke test in the WebUI is still pending.
+
+**Sensitive points:** Users who organized before this change keep Flux files in `FLUX/`. Running Organize again moves them into `Flux.1/`/`Flux.2/`. Custom `civitai_neo_model_categories` still overrides every default. The two pre-existing Flux gaps found here (companion files, HF Flux.2 labels) are fixed in the entry above.
+
+### 2026-10-04 — Add Qwen 2.1 and MiniMax H3 base models
+
+**O que mudou (pt-BR):** Adicionados os base models `Qwen 2.1` (nome solicitado pelo usuário) e `MiniMax H3` à lista compartilhada dos filtros de Browser, Local Models e LoraDex. A lista mantém os defaults quando recebe opções antigas da API. Badges próprios `Q2.1`/`H3` e organização padrão em `Qwen 2.1/` e `MiniMax H3/`; Qwen 2.1 é identificado antes do padrão genérico Qwen. ModelScope e Hugging Face normalizam os nomes e identificam os repositórios oficiais. A descoberta de checkpoints H3 no Hugging Face inclui o pipeline `image-text-to-video`.
+
+**Evidências:** Consultas reais a `https://civitai.com/api/v1/models` com `baseModels=Qwen%202.1` e `baseModels=MiniMax%20H3` retornaram modelos com esses valores em `modelVersions[].baseModel`. A API pública do Hugging Face confirmou os repositórios `Qwen/Qwen-Image-2.1` e `MiniMaxAI/MiniMax-H3`, com pipelines `text-to-image` e `image-text-to-video`. Antes da alteração, os testes novos reproduziram opções ausentes, Qwen 2.1 classificado como Qwen, H3 em Other e identificação/filtro incorretos nos adapters.
+
+**Arquivos alterados:** `scripts/civitai_gui.py`, `scripts/civitai_api.py`, `scripts/civitai_file_manage.py`, `scripts/browser_sources/{huggingface,modelscope}.py`, `tests/test_new_base_models.py`, `README.md`, `AGENTS.local.md`, `docs/PROJECT_LOG.md`.
+
+**Decisões:** Alteração limitada à descoberta, identificação e organização no CivitAI Browser Neo; nomes do CivitAI preservados nas consultas a CivitAI/CivArchive. Sem alteração no carregador do Forge ou nas dependências. Categorias customizadas continuam sendo respeitadas. Novidade registrada no README em v1.0.1, sem bump de versão.
+
+**Validação:** 8 testes novos passaram; suíte completa Python com 495 testes passou; `git diff --check` passou. Sem Forge nas portas 7860–7862: smoke manual na WebUI pendente; o usuário fará o teste local.
+
+**Entrega:** Commit `ebbb64880ab87daf0fbeb30742a2e57f31600982` (`feat(python): add Qwen 2.1 and MiniMax H3 base models`) enviado para `origin/main`; SHA remoto confirmado via `git ls-remote`. Apenas código, testes e README entraram no commit; documentação privada preservada localmente.
+
+**Pontos sensíveis:** Oferecer base model no Browser não valida geração/carregamento. Qwen 2.1 e H3 dependem das integrações de modelo instaladas no Forge; contratos de geração estão fora deste ajuste.
+
+### 2026-10-04 — Group LoCon and DoRA under the LORA filter
+
+**O que mudou (pt-BR):** A opção única `LORA` passa a incluir `LORA`, `LoCon` e `DoRA` nas consultas e filtros do Browser, usando um helper compartilhado pelos adapters CivitAI, CivArchive, Arc en Ciel, ModelScope e Hugging Face. O construtor legado de consultas e o filtro da grade de updates usam a mesma expansão. CivArchive aceita um tipo por consulta: os resultados das consultas são unidos antes da deduplicação por model ID e da paginação já existente.
+
+**Evidências anteriores à correção:** Issue #7 reproduzido na API pública com o modelo SFW `47085` (`EnvyBetterHands LoCon`): sem filtro → 1 item; `types=LORA` → 0 itens; `types=LORA&types=LoCon` → 1 item. `types=LyCORIS` retorna HTTP 400; `LORA`, `LoCon` e `DoRA` são aceitos. Os testes novos falharam por exclusão de LoCon/DoRA nos filtros remotos e de updates antes da mudança. Local Models e LoraDex já incluíam os três tipos por suas pastas compartilhadas; os testes de varredura passaram antes da alteração.
+
+**Arquivos alterados:** `scripts/browser_sources/{normalizer,civitai,civarchive,arcenciel,modelscope,huggingface}.py`, `scripts/civitai_api.py`, `tests/test_lora_type_filter.py`, `tests/test_civitai_model_ids.py`, `README.md`, `AGENTS.local.md`, `docs/PROJECT_LOG.md`.
+
+**Decisões:** Manter uma opção `LORA`, seu valor salvo e os tipos originais dos modelos. A expansão não modifica a seleção recebida, não duplica tipos e preserva filtros de outros tipos. Nenhuma mudança nas varreduras de Local Models/LoraDex: usam as pastas de LoRA e `--lora-dirs`. Preservar a consulta direta de URLs. Falhas de uma consulta CivArchive são propagadas, evitando apresentar resultados parciais como uma busca completa. O stub de `browser_sources` nos testes de IDs passa a expor seu caminho de pacote para carregar o helper real.
+
+**Validação:** Nove testes focados passaram após a correção, incluindo paginação CivArchive, filtros dos demais sources, updates, varredura local e LoraDex com DoRA em pasta extra. `python -m unittest discover -s tests`: **487 passed**; `node --test tests/test_browser_card_filters.cjs`: **3 passed**. `git diff --check`: OK.
+
+**Publicação (autorizada pelo usuário):** README atualizado também em What's New → v1.0.1, sem bump de versão. Commit `a1342be67762e125eec34899c8d92b4c6c48812b` (`fix(python): include LoCon and DoRA in the LORA filter`) enviado a `origin/main`; SHA remoto confirmado por `git ls-remote`. Issue #7 respondido em inglês com link do commit e orientação de atualizar/reiniciar o Forge: https://github.com/eduardoabreu81/sd-civitai-browser-neo/issues/7#issuecomment-5983803465. Publicação do comentário confirmada pela leitura posterior da API. Documentos locais ficam fora do commit, conforme regra do projeto.
+
+**Pontos sensíveis:** CivArchive faz uma consulta de busca por tipo selecionado, mantendo a limitação pré-existente da janela de resultados do serviço. Sem Forge escutando nas portas locais 7860–7862 durante a verificação; smoke test na WebUI pendente.
+
+### 2026-10-01 — Direct URL search and visible request diagnostics
+
+**O que mudou (pt-BR):** Links colados entram automaticamente na consulta direta do provider, independentemente do search type/source selecionado, sem filtros de listagem (tipo, base, NSFW, favoritos/período) ou de ocultação (installed/banned/early/paid). As preferências ficam preservadas para buscas por nome. Logs normais mostram contexto, contagem de resultados e falhas dos adapters, além de endpoint sem query/credenciais, tentativa, tempo e status HTTP do CivitAI. HTTP 429 ganha diagnóstico de rate limit e Retry-After no terminal e mensagem na UI. Timeout e rate limit não viram falsos `not_found` ao resolver URLs. Resultados vazios deixam de renderizar apenas um grid em branco.
+
+**Evidências anteriores à correção:** API pública do modelo `2857451` em ambos os domínios: `ids=2857451&nsfw=true` → HTTP 200 / 1 item (Anima); acrescentar `baseModels=FLUX.1 D` ou trocar para `nsfw=false` → HTTP 200 / 0 itens. O usuário identificou Checkpoint selecionado, mas o construtor deste checkout gera a mesma consulta com tipo Checkpoint/LoRA/nenhum para o mesmo link; portanto esse filtro isolado não foi confirmado como causa. Simulações com funções reais comprovaram ausência de log normal em exceções de adapter com debug desligado e HTTP 429 com `skip_error_check=True`; Hide paid removeu o único modelo sem explicação.
+
+**Arquivos alterados:** `scripts/civitai_api.py`, `scripts/browser_sources/{__init__,url_parser,civitai}.py`, `javascript/civitai-html.js`, `tests/test_browser_url_search.py`, `tests/test_browser_card_filters.cjs`, `tests/test_browser_sources.py`, `tests/test_civarchive_scan.py`, `README.md`, `AGENTS.local.md`.
+
+**Decisões:** Consultar o ID pelo endpoint de detalhe, sem apagar filtros da UI nem alterar configurações globais. Preservar o domínio definido por SFW only e as regras de autorização de downloads pagos. `preserve_errors=True` só no parser CivitAI; demais callers de `get_model` mantêm dict/None. Não repetir automaticamente HTTP 429; orientar espera conforme header. `skip_error_check` mantém a assinatura por compatibilidade, mas não omite mais falhas HTTP. Testes usam respostas reais de `requests.Response`, sem executar Aria2 ou consultas externas.
+
+**Validação:** Testes de regressão Python falharam antes da correção; teste JS de card direto também falha com o código do HEAD anterior. `python -m unittest discover -s tests`: **478 passed**; `node --test tests/test_browser_card_filters.cjs`: **3 passed**; `node --check javascript/civitai-html.js` e `git diff --check`: OK.
+
+**Pontos sensíveis:** A causa da intermitência e o comportamento no Forge em execução não foram comprovados; testar ao vivo depois de reiniciar o Forge e recarregar a página para carregar Python/JS atualizados. Nenhum commit/push/release nesta sessão.
+
 ### 2026-09-25 — Local base-model filter follows the installed version
 
 **What changed**

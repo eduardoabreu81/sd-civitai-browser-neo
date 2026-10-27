@@ -1792,8 +1792,9 @@ def _match_installed_versions_from_paths(file_paths, version_files, installed_ve
     """
     for file_path in file_paths or []:
         base = os.path.basename(file_path).lower()
-        for version_name, version_filename, _ in version_files:
-            if base == version_filename.lower():
+        for version_name, version_filename, file_sha256, version_id in version_files:
+            if base == version_filename.lower() and not _same_name_is_other_version(
+                    os.path.dirname(file_path), os.path.basename(file_path), version_id, file_sha256):
                 installed_versions.add(version_name)
                 break
         sidecar = os.path.splitext(file_path)[0] + '.json'
@@ -1803,7 +1804,7 @@ def _match_installed_versions_from_paths(file_paths, version_files, installed_ve
                     data = json.load(f)
                 sha256 = normalize_sha256(data.get('sha256')) if isinstance(data, dict) else None
                 if sha256:
-                    for version_name, _, file_sha256 in version_files:
+                    for version_name, _, file_sha256, _ in version_files:
                         if sha256 == file_sha256:
                             installed_versions.add(version_name)
                             break
@@ -1837,7 +1838,7 @@ def update_model_versions(model_id, json_input=None, base_filter=None, installed
                 for version_file in version['files']:
                     file_sha256 = normalize_sha256(version_file.get('hashes', {}).get('SHA256', ''))
                     version_filename = version_file['name']
-                    version_files.add((version['name'], version_filename, file_sha256))
+                    version_files.add((version['name'], version_filename, file_sha256, version.get('id')))
 
             if installed_file_paths is not None:
                 # Local detail panel: we already know this model's installed file(s),
@@ -1855,7 +1856,7 @@ def update_model_versions(model_id, json_input=None, base_filter=None, installed
                                     if isinstance(json_data, dict):
                                         sha256 = normalize_sha256(json_data.get('sha256'))
                                         if sha256:
-                                            for version_name, _, file_sha256 in version_files:
+                                            for version_name, _, file_sha256, _ in version_files:
                                                 if sha256 == file_sha256:
                                                     installed_versions.add(version_name)
                                                     break
@@ -1863,8 +1864,9 @@ def update_model_versions(model_id, json_input=None, base_filter=None, installed
                                 print(f"failed to read: '{file}': {e}")
 
                         # filename_check
-                        for version_name, version_filename, _ in version_files:
-                            if file.lower() == version_filename.lower():
+                        for version_name, version_filename, file_sha256, version_id in version_files:
+                            if file.lower() == version_filename.lower() and not _same_name_is_other_version(
+                                    root, file, version_id, file_sha256):
                                 installed_versions.add(version_name)
                                 break
 
@@ -2744,7 +2746,8 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
             else:
                 # filename_check
                 for filename in files:
-                    if filename.lower() == model_filename.lower() or filename.lower() == cleaned_name(model_filename).lower():
+                    if (filename.lower() == model_filename.lower() or filename.lower() == cleaned_name(model_filename).lower()) \
+                            and not _same_name_is_other_version(root, filename, version_id, sha256_value):
                         folder_location = root
                         BtnDownInt = False
                         BtnDel = True
@@ -2859,6 +2862,29 @@ def sub_folder_value(content_type, desc=None):
         return 'None'
     return folder
 
+def _same_name_is_other_version(root, filename, version_id, sha256):
+    """True when a same-named installed file is recorded by its sidecar as another version.
+
+    Authors often reuse one filename across a model's versions (a LoRA published for
+    MOSS Image and Krea 2 as ABG.safetensors in both), so a filename match alone would
+    mark every sibling version as installed and block its download. A file without
+    sidecar identity still counts as a match, as before.
+    """
+    data = _file._load_sidecar_dict(os.path.join(root, os.path.splitext(filename)[0] + '.json'))
+    if not data:
+        return False
+    info = _file._sidecar_install_info(data)
+    if info['ver_id'] is not None and version_id is not None:
+        try:
+            return info['ver_id'] != int(version_id)
+        except (TypeError, ValueError):
+            pass
+    sha256 = normalize_sha256(sha256)
+    if info['sha256'] and sha256 and sha256 != 'UNKNOWN':
+        return info['sha256'] != sha256
+    return False
+
+
 def update_file_info(model_string, model_version, selected_file_label, json_input=None):
     file_list = []
     is_LORA = False
@@ -2914,7 +2940,7 @@ def update_file_info(model_string, model_version, selected_file_label, json_inpu
                                 dl_url = file['downloadUrl']
                                 gl.json_info = item
                                 for root, _, files in os.walk(model_folder, followlinks=True):
-                                    if file_name in files:
+                                    if file_name in files and not _same_name_is_other_version(root, file_name, model.get('id'), sha256):
                                         installed = True
                                         folder_location = root
                                         break
