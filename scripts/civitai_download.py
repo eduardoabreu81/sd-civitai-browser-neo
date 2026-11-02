@@ -122,6 +122,9 @@ except:
 ## === ANXETY EDITs ===
 
 def start_aria2_rpc():
+    if not getattr(opts, "use_aria2", True):
+        return
+
     start_file = os.path.join(aria2path, '_')
     running_file = os.path.join(aria2path, 'running')
     null = open(os.devnull, 'w')
