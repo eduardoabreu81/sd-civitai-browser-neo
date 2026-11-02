@@ -52,6 +52,7 @@ Browse, download, and manage your model library directly inside Forge Neo — mu
 - **"Resolve issues" fixed** — CivArchive SHA256 lookups were being discarded, so delisted models were never actually recovered. Orphaned models now resolve through CivArchive and corrupted info through CivitAI by model version, and the returned model is checked against the sidecar before anything is written.
 - **Local base-model filter follows what you installed** — a listing that spans several base models (e.g. `[ANIMA & IL & ZIT]`) no longer shows up under every one of them; it is matched by the version you actually have.
 - **Pasted links always resolve** — a pasted URL ignores the search type and listing filters, and timeouts, HTTP 429 and 404 are now reported as such instead of "model not found".
+- **Aria2 stays off when you turn it off** — with **Download models using Aria2** turned off in the settings, the Aria2 RPC server is no longer started with the WebUI; downloads use the built-in downloader (thanks to [LastStardaughter](https://github.com/LastStardaughter)).
 - Removed the CivitAI account status badge — it stopped working after an upstream API change and never came back.
 
 ### v1.0.0 — First Stable Release
@@ -115,7 +116,7 @@ The largest update since the Neo fork: the Browser is no longer hardwired to Civ
 *[Full details on the Wiki →](https://github.com/eduardoabreu81/sd-civitai-browser-neo/wiki/Feature-Downloads)*
 
 - Download any model, version, and file variant (`.safetensors`, `.ckpt`, `.gguf`, …)
-- High-speed multi-connection downloads via Aria2, with 429 backoff and auto-reconnect
+- High-speed multi-connection downloads via Aria2, with 429 backoff and auto-reconnect — or turn Aria2 off to use the built-in downloader, and its server is not started at all
 - Queue that survives session disconnects, with one-click restore ⭐
 - Independent progress bars for the Browser and Local Models tabs ⭐
 - File integrity check with silent-update detection — a hash mismatch re-queries the API before failing ⭐
