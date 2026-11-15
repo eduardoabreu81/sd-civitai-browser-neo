@@ -46,6 +46,7 @@ from scripts.civitai_global import print, debug_print  # noqa: E402
 # Multi-source browser adapters (CivitAI is registered as the default source).
 import scripts.browser_sources as _browser_sources  # noqa: E402
 from scripts.browser_sources.normalizer import expand_content_type_filter  # noqa: E402
+from scripts.organization_paths import LORA_CONTENT_TYPES  # noqa: E402
 
 
 gl.init()
@@ -2107,7 +2108,7 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
             if model_id_matches(item.get('id'), model_id):
                 is_local_only = bool(item.get('local_only'))
                 content_type = item['type']
-                if content_type == 'LORA':
+                if content_type in LORA_CONTENT_TYPES:
                     is_LORA = True
                 desc = item['description']
 
@@ -2847,7 +2848,8 @@ def update_model_info(model_string=None, model_version=None, only_html=False, in
         )
 
 def sub_folder_value(content_type, desc=None):
-    if content_type == 'LORA':
+    # LoCon and DoRA share the LoRA folder and its settings; only LORA has a setting.
+    if content_type in LORA_CONTENT_TYPES:
         folder = getattr(opts, 'LORA_default_subfolder', 'None')
     elif content_type == 'Upscaler':
         folder = getattr(opts, 'ESRGAN_default_subfolder', 'None')  # default
@@ -2900,7 +2902,7 @@ def update_file_info(model_string, model_version, selected_file_label, json_inpu
         for item in api_data['items']:
             if model_id_matches(item.get('id'), model_id):
                 content_type = item['type']
-                if content_type == 'LORA':
+                if content_type in LORA_CONTENT_TYPES:
                     is_LORA = True
                 desc = item['description']
                 for model in item['modelVersions']:

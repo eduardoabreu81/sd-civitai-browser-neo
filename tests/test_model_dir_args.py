@@ -83,6 +83,20 @@ class TestContentTypeFolder(_DirArgsTestCase):
                          Path('C:/a1111/models/Stable-diffusion'))
 
 
+class TestSubFolderValue(_DirArgsTestCase):
+    """sub_folder_value() — LoCon/DoRA have no setting of their own and use LoRA's."""
+
+    def tearDown(self):
+        for attr in ('LORA_default_subfolder', 'LoCon_default_subfolder'):
+            if hasattr(self.api.opts, attr):
+                delattr(self.api.opts, attr)
+
+    def test_locon_and_dora_use_the_lora_default_subfolder(self):
+        self.api.opts.LORA_default_subfolder = '/{BASEMODEL}'
+        for content_type in ('LORA', 'LoCon', 'DoRA'):
+            self.assertEqual(self.api.sub_folder_value(content_type), '/{BASEMODEL}', content_type)
+
+
 class TestContentTypeFolders(_DirArgsTestCase):
     """contenttype_folders() — every folder to READ from."""
 

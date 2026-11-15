@@ -600,7 +600,7 @@ def selected_to_queue(model_list, subfolder, download_start, create_json, curren
                 if base_folder:
                     # Optional LoRA category subfolder based on tags
                     lora_category_sort = getattr(opts, 'civitai_neo_lora_category_sort', False)
-                    if lora_category_sort and content_type == 'LORA':
+                    if lora_category_sort and content_type in _api.LORA_CONTENT_TYPES:
                         tags = version.get('tags', []) or []
                         # Honor any manual category saved on an existing installed file,
                         # and fall back to persisted modelTags if the API response has none.
