@@ -2874,6 +2874,22 @@ def sub_folder_value(content_type, desc=None):
         return 'None'
     return folder
 
+def _converted_default_subfolder(content_type, desc, item, version):
+    """Default subfolder with {BASEMODEL}/{AUTHOR}/... filled in, or 'None'.
+
+    Mirrors what update_model_info() passes to convertCustomFolder, so changing
+    the selected file does not show the raw placeholders in the install path.
+    """
+    default_sub = sub_folder_value(content_type, desc)
+    if default_sub == 'None':
+        return default_sub
+    creator = item.get('creator') or {}
+    uploader = creator.get('username') or 'User not found'
+    return _file.convertCustomFolder(
+        default_sub, version.get('baseModel') or '', is_model_nsfw(item), uploader,
+        item.get('name'), item.get('id'), version.get('name'), version.get('id'))
+
+
 def _same_name_is_other_version(root, filename, version_id, sha256):
     """True when a same-named installed file is recorded by its sidecar as another version.
 
@@ -2971,7 +2987,7 @@ def update_file_info(model_string, model_version, selected_file_label, json_inpu
                                                             break
                                                     except Exception as e:
                                                         print(f"Error decoding JSON: {str(e)}")
-                                default_sub = sub_folder_value(content_type, desc)
+                                default_sub = _converted_default_subfolder(content_type, desc, item, model)
                                 if folder_location == 'None':
                                     folder_location = model_folder
                                     if default_sub != 'None':
