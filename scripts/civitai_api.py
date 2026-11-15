@@ -1918,6 +1918,11 @@ def cleaned_name(file_name):
     name, extension = os.path.splitext(file_name)
     clean_name = re.sub(illegal_chars_pattern, '', name)
     clean_name = re.sub(r'\s+', ' ', clean_name.strip())
+    # splitext treats everything after the last dot as the extension, so a
+    # version name like 'v1.5?' yields ext '.5?' — clean it as well.
+    extension = re.sub(illegal_chars_pattern, '', extension)
+    if not extension.strip('. '):
+        extension = ''
 
     # Limit to 246 bytes (UTF-8) to avoid filesystem limits on Linux (ext4 max: 255 bytes)
     # Reserve bytes for the extension
@@ -1927,7 +1932,12 @@ def cleaned_name(file_name):
     if len(name_encoded) > max_name_bytes:
         clean_name = name_encoded[:max_name_bytes].decode('utf-8', errors='ignore').rstrip()
 
-    return f"{clean_name}{extension}"
+    result = f"{clean_name}{extension}"
+    if platform.system() == "Windows":
+        # Windows silently drops trailing dots and spaces, so the path we build
+        # would not match the one actually created on disk.
+        result = result.rstrip('. ')
+    return result
 
 def _swarmui_to_a1111(geninfo):
     """Convert SwarmUI-embedded JSON params to an A1111 infotext string.
