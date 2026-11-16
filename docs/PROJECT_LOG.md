@@ -1,6 +1,6 @@
 # PROJECT_LOG
 
-## Current Scope (v1.0.1)
+## Current Scope (v1.0.2)
 
 - **Extension para Forge Neo** — Browse, download e organize modelos do CivitAI diretamente no WebUI com suporte a Gradio 4+
 - **Auto-organização inteligente** — Modelos organizados por base model (SDXL/, Pony/, FLUX/, Wan/, etc.) com backup/rollback automático e suporte a subpastas por subtipo Wan (I2V/T2V/TI2V)
@@ -14,13 +14,26 @@
 
 **Stack:** Python 3.x + Gradio 4.40.0 + Forge Neo + Aria2 + JavaScript vanilla  
 **Features ativas:** Multi-Source Browser (CivitAI/CivArchive/ModelScope/Arc en Ciel + URL paste), Download Queue, Local Models (self-contained, paginated, Update Models merged in), LoraDex, Auto-Organization, Metadata Maintenance (Verify / Resolve issues / Mark for review), Native Extra Networks cards, Dashboard, Creator Management  
-**Status (main):** v1.0.1 — Reliable Batch Downloads. Browser multi-select now snapshots its live JS state and remains isolated from Local Models filters/data.
+**Status (main):** v1.0.2 — Safer Updates & Correct Install Paths. Retention keeps other baseModel families, same-named sibling versions are told apart by sidecar identity, and install paths stay right for LoCon/DoRA, odd version names and file switches under auto-organize (fixes partly contributed by LastStardaughter and kumapo0313).
 **Status (branch `revamp`):** promoted to `main` as v1.0.0. The branch is no longer a separate development line; its history is kept under "Linha do Tempo — Branch `revamp`".  
 **Twin project:** sd-civitai-browser-ex (Gradio 3, A1111/Forge Classic) — mudanças específicas do Neo não devem migrar automaticamente
 
 ---
 
 ## Linha do Tempo
+
+### 2026-11-15 — Ported three fixes from the kumapo0313 fork + auto-organize on file switch
+
+**Ported (credit: [kumapo0313](https://github.com/kumapo0313/sd-civitai-browser-neo), cherry-picked with `-x`, original authorship kept):**
+- `293cce8` — `sub_folder_value()`, `update_model_info()`, `update_file_info()` and the LoRA category sort in `selected_to_queue()` compared `content_type == 'LORA'`, so LoCon/DoRA ignored `LORA_default_subfolder` and category sorting. They now use `LORA_CONTENT_TYPES`.
+- `aedb08c` — `cleaned_name()` left illegal characters in the `splitext` "extension" (`v1.5?` → ext `.5?`), which breaks file creation on Windows. The extension part is now cleaned too, and on Windows trailing dots/spaces are stripped so the built path matches the one created on disk.
+- `4511002` — `update_file_info()` appended the raw default-subfolder setting, so switching files showed `{BASEMODEL}`/`{AUTHOR}` literally. New `_converted_default_subfolder()` resolves the placeholders with the same values as `update_model_info()`.
+
+**Gap fixed on top (ours):** `update_file_info()` had no equivalent of the `civitai_neo_auto_organize` branch in `update_model_info()`, so with auto-organize on, switching files on a not-yet-installed model moved the install path from `<type>/<Family>/` back to the type root (or the default subfolder). The branch is now the shared `_auto_organize_subfolder(content_type, model_folder, base_model)` — returns `'/<Family>'`, `'None'` (type root), or `None` (setting rules) — used by both callbacks. Wildcard rule unchanged.
+
+**Tests:** `tests/test_cleaned_name.py`, `tests/test_file_info_subfolder.py`, `TestSubFolderValue` in `tests/test_model_dir_args.py` (fork); `tests/test_file_info_auto_organize.py` (ours — the integration case fails on the pre-fix code with `'/ignored' != '\SDXL'`). Full suite: 528 passed. Not yet smoke-tested in the WebUI.
+
+**Files changed:** `scripts/civitai_api.py`, `scripts/civitai_download.py`, `tests/`, `README.md`, `docs/PROJECT_LOG.md`.
 
 ### 2026-10-27 — Local "Download selected version" honors the edited filename
 

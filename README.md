@@ -8,7 +8,7 @@
 
 [![Forge Neo](https://img.shields.io/badge/Forge-Neo-blue)](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo)
 [![Gradio](https://img.shields.io/badge/Gradio-4.40.0-orange)](https://gradio.app/)
-[![Version](https://img.shields.io/badge/Version-1.0.1-brightgreen)](https://github.com/eduardoabreu81/sd-civitai-browser-neo/wiki/Changelog)
+[![Version](https://img.shields.io/badge/Version-1.0.2-brightgreen)](https://github.com/eduardoabreu81/sd-civitai-browser-neo/wiki/Changelog)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Wiki](https://img.shields.io/badge/📖-Wiki-blueviolet)](https://github.com/eduardoabreu81/sd-civitai-browser-neo/wiki)
 
@@ -35,6 +35,15 @@ Browse, download, and manage your model library directly inside Forge Neo — mu
 
 ## 🆕 What's New
 
+### v1.0.2 — Safer Updates & Correct Install Paths
+
+- **Updates never delete another family's file** — on a model page that publishes versions for several base models (e.g. an Anima and a MOSS Image LoRA), downloading one no longer treats the other as its "old version" and removes it. An update that changes base model now keeps the old file next to the new one.
+- **Same-named sibling versions told apart** — when an author reuses one filename across versions (`ABG.safetensors` for MOSS Image, Krea 2 and SDXL), only the version you actually have shows as installed; the others keep their Download button.
+- **Local "Download selected version" uses your filename** — a name typed in the Local panel's filename box is now used for the download instead of the API filename.
+- **Aria2 stays off when you turn it off** — with **Download models using Aria2** turned off in the settings, the Aria2 RPC server is no longer started with the WebUI; downloads use the built-in downloader (thanks to [LastStardaughter](https://github.com/LastStardaughter)).
+- **LoCon, DoRA and odd version names saved correctly** — LoCon and DoRA now follow the LoRA default subfolder and LoRA category sorting, switching to another file no longer shows raw `{BASEMODEL}`/`{AUTHOR}` placeholders in the install path, and version names such as `v1.5?` no longer leave characters Windows rejects in the filename (thanks to [kumapo0313](https://github.com/kumapo0313)).
+- **Auto-organize survives a file switch** — with auto-organization on, picking another file of a model you have not installed keeps its base-model folder (e.g. `Lora/SDXL/`) instead of falling back to the type root.
+
 ### v1.0.1 — Reliable Batch Downloads & Smarter LoraDex
 
 - **Complete multi-select batches** — **Download all selected** snapshots the live Browser selection at click time, preventing rapid checkbox changes from reaching Python as a partial list.
@@ -52,7 +61,6 @@ Browse, download, and manage your model library directly inside Forge Neo — mu
 - **"Resolve issues" fixed** — CivArchive SHA256 lookups were being discarded, so delisted models were never actually recovered. Orphaned models now resolve through CivArchive and corrupted info through CivitAI by model version, and the returned model is checked against the sidecar before anything is written.
 - **Local base-model filter follows what you installed** — a listing that spans several base models (e.g. `[ANIMA & IL & ZIT]`) no longer shows up under every one of them; it is matched by the version you actually have.
 - **Pasted links always resolve** — a pasted URL ignores the search type and listing filters, and timeouts, HTTP 429 and 404 are now reported as such instead of "model not found".
-- **Aria2 stays off when you turn it off** — with **Download models using Aria2** turned off in the settings, the Aria2 RPC server is no longer started with the WebUI; downloads use the built-in downloader (thanks to [LastStardaughter](https://github.com/LastStardaughter)).
 - Removed the CivitAI account status badge — it stopped working after an upstream API change and never came back.
 
 ### v1.0.0 — First Stable Release
@@ -208,6 +216,7 @@ Everything lives on the **[Wiki](https://github.com/eduardoabreu81/sd-civitai-br
 - **[sd-webui-civbrowser](https://github.com/SignalFlagZ/sd-webui-civbrowser)** by SignalFlagZ — creator management inspiration
 - **[CivArchive](https://civarchive.com)** — mirror used to recover metadata for delisted models
 - **[Forge Neo](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo)** by Haoming02
+- **Contributors** — [LastStardaughter](https://github.com/LastStardaughter) (Aria2 off when disabled), [kumapo0313](https://github.com/kumapo0313) (LoCon/DoRA subfolders, filename and install-path fixes)
 
 ---
 
