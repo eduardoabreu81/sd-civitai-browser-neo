@@ -1059,6 +1059,93 @@ def _preview_file_matches(file_entry, local_file, sha256=None):
     return False, None
 
 
+VIDEO_PREVIEW_EXTS = ('.mp4', '.webm')
+
+
+def _video_preview_url(url, width=None, height=None, target_size=None):
+    """CivitAI CDN URL for a video preview, scaled so its longer side is target_size.
+
+    The CDN takes the size as a path segment before the file name
+    (``.../<uuid>/original=true/123.mp4`` → ``.../<uuid>/width=512/123.mp4``)
+    and transcodes the clip itself, so no local ffmpeg is needed. Without a
+    target size, or with an unknown layout, the URL is returned unchanged.
+    """
+    if not url or not target_size:
+        return url
+    head, sep, file_name = url.rpartition('/')
+    base, sep2, options = head.rpartition('/')
+    if not sep or not sep2 or '=' not in options:
+        return url
+    scale_width = int(target_size)
+    try:
+        w, h = int(width or 0), int(height or 0)
+    except (TypeError, ValueError):
+        w = h = 0
+    if w > 0 and h > w:
+        scale_width = max(1, round(target_size * w / h))
+    if w > 0 and scale_width >= w:
+        return f"{base}/original=true/{file_name}"
+    return f"{base}/width={scale_width}/{file_name}"
+
+
+def _remove_old_previews(paths):
+    for old_path in paths:
+        if not old_path.exists():
+            continue
+        try:
+            send2trash(str(old_path))
+            print(f"Removed old preview: {old_path}")
+        except Exception:
+            try:
+                os.remove(old_path)
+                print(f"Removed old preview: {old_path}")
+            except Exception as _e:
+                print(f"Could not remove old preview {old_path}: {_e}")
+
+
+def _save_video_preview(images, install_path, name, proxies, ssl, image_previews):
+    """Save the first downloadable video of a version as <name>.preview.mp4/.webm."""
+    resize_saved = getattr(opts, 'resize_preview_on_save', True)
+    resize_size = getattr(opts, 'resize_preview_size', 512) if resize_saved else None
+
+    for image in images:
+        if image.get('type') != 'video' or not image.get('url'):
+            continue
+        video_url = _video_preview_url(image['url'], image.get('width'), image.get('height'), resize_size)
+        try:
+            response = requests.get(
+                video_url,
+                headers=_api.get_headers(),
+                proxies=proxies,
+                verify=ssl,
+                timeout=(60, 60),
+            )
+        except requests.exceptions.RequestException as exc:
+            debug_print(f"[Preview] video request failed: {exc}")
+            continue
+
+        content_type = response.headers.get('Content-Type', '').split(';')[0].strip().lower()
+        debug_print(f"[Preview] video response status={response.status_code} type={content_type!r}")
+        if response.status_code != 200 or not content_type.startswith('video/') or not response.content:
+            continue
+
+        video_ext = '.webm' if content_type == 'video/webm' else '.mp4'
+        video_path = install_path / f"{name}.preview{video_ext}"
+        try:
+            video_path.write_bytes(response.content)
+        except OSError as exc:
+            debug_print(f"[Preview] video write failed: {type(exc).__name__}: {exc}")
+            continue
+
+        other_videos = [install_path / f"{name}.preview{ext}" for ext in VIDEO_PREVIEW_EXTS if ext != video_ext]
+        _remove_old_previews([*image_previews, *other_videos])
+        print(f"Preview saved at: {video_path}")
+        debug_print(f"[Preview] saved video preview: {video_path}")
+        return True
+
+    return False
+
+
 def save_preview(file_path, api_response, overwrite_toggle=False, sha256=None):
     proxies, ssl = _api.get_proxies()
     file_path = Path(file_path)
@@ -1072,13 +1159,14 @@ def save_preview(file_path, api_response, overwrite_toggle=False, sha256=None):
     image_path = install_path / f"{name}{ext}"
     alt_ext = '.preview.png' if preview_fmt == 'JPEG' else '.preview.jpg'
     alt_image_path = install_path / f"{name}{alt_ext}"
+    video_paths = [install_path / f"{name}.preview{video_ext}" for video_ext in VIDEO_PREVIEW_EXTS]
 
     debug_print(
         f"[Preview] start file={file_path.name!r} target={image_path.name!r} "
         f"sha256={str(sha256 or '')[:12]}... overwrite={overwrite_toggle}"
     )
 
-    if not overwrite_toggle and (image_path.exists() or alt_image_path.exists()):
+    if not overwrite_toggle and any(p.exists() for p in [image_path, alt_image_path, *video_paths]):
         debug_print(f"[Preview] skipped: preview already exists for {file_path.name!r}")
         return False
 
@@ -1167,19 +1255,16 @@ def save_preview(file_path, api_response, overwrite_toggle=False, sha256=None):
                         debug_print(f"[Preview] image processing failed: {type(exc).__name__}: {exc}")
                         continue
 
-                    if alt_image_path.exists():
-                        try:
-                            send2trash(str(alt_image_path))
-                            print(f"Removed old preview: {alt_image_path}")
-                        except Exception:
-                            try:
-                                os.remove(alt_image_path)
-                                print(f"Removed old preview: {alt_image_path}")
-                            except Exception as _e:
-                                print(f"Could not remove old preview {alt_image_path}: {_e}")
+                    _remove_old_previews([alt_image_path, *video_paths])
 
                     print(f"Preview saved at: {image_path}")
                     debug_print(f"[Preview] saved successfully: {image_path}")
+                    return True
+
+                # No still image: video models (Wan, LTX, H3...) often only have
+                # clips. Forge Neo shows .preview.mp4 / .preview.webm in its cards.
+                if _save_video_preview(images, install_path, name, proxies, ssl,
+                                       [image_path, alt_image_path]):
                     return True
 
                 debug_print(f"[Preview] no usable preview image for matched file {file_path.name!r}")
@@ -4502,7 +4587,7 @@ def execute_rollback(progress=None):
             base_name_source = os.path.splitext(source_path)[0]
             base_name_target = os.path.splitext(target_path)[0]
             
-            associated_extensions = ['.json', '.png', '.jpg', '.jpeg', '.txt', '.html', '.civitai.info']
+            associated_extensions = ['.json', '.png', '.jpg', '.jpeg', '.mp4', '.webm', '.txt', '.html', '.civitai.info']
             
             # Move exact matches back
             for ext in associated_extensions:
@@ -4572,7 +4657,7 @@ def _move_associated_files(source_path, target_path):
     base_name        = os.path.splitext(source_path)[0]
     target_base_name = os.path.splitext(target_path)[0]
 
-    associated_extensions = ['.json', '.png', '.jpg', '.jpeg', '.txt', '.html', '.civitai.info']
+    associated_extensions = ['.json', '.png', '.jpg', '.jpeg', '.mp4', '.webm', '.txt', '.html', '.civitai.info']
 
     # Exact base name matches
     for ext in associated_extensions:
